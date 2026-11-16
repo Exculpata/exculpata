@@ -1,11 +1,20 @@
 """Synthetic parity and resource contracts for atomic project publication."""
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, replace
+import json
 from types import SimpleNamespace
 
 import pytest
 
 from case_intelligence.modules.discovery_review import fields, load_files, reader
-from case_intelligence.modules.discovery_review.stored_index.repository import digest
+from case_intelligence.modules.discovery_review.production.repository import ProductionRepository
+from case_intelligence.modules.discovery_review.stored_index.rebuild import Service
+from case_intelligence.modules.discovery_review.stored_index.repository import Transaction, digest
+from tests.fixture_write import fixture_write
+from tests.test_discovery_review_index import add_population, drive, manifest, service_for
+from tests.test_discovery_review_list import production as production
+from tests.test_intake_receipt_http import ACTOR
 
 
 def test_aliases_are_lazy_and_cached_by_definition_digest(monkeypatch):
@@ -41,18 +50,6 @@ def test_aliases_are_lazy_and_cached_by_definition_digest(monkeypatch):
     calls.clear()
     reader.project_item(source, equivalent, {}, match, definition_digest=key + '-distinct')
     assert len(calls) == first
-
-
-from contextlib import contextmanager
-import json
-
-from case_intelligence.modules.discovery_review.stored_index.rebuild import Service
-from case_intelligence.modules.discovery_review.stored_index.repository import Transaction
-from case_intelligence.modules.discovery_review.production.repository import ProductionRepository
-from tests.fixture_write import fixture_write
-from tests.test_discovery_review_index import add_population, drive, manifest, service_for
-from tests.test_discovery_review_list import production as production
-from tests.test_intake_receipt_http import ACTOR
 
 
 def index_rows(service, mid):
@@ -247,7 +244,7 @@ def test_cancel_and_reopen_after_atomic_publication(production, monkeypatch):
     drive(production, manifest(40))
     actual = index_rows(service, matter.matter_id)
     assert sorted(actual['value']) == sorted(expected['value'])
-    assert [(row[1], row[7]) for row in actual['item']] == [(row[1], row[7]) for row in expected['item']]
+    assert actual['item'] == expected['item']
     assert len(actual['item']) == len({row[1] for row in actual['item']}) == 40
 
 
@@ -256,3 +253,45 @@ def test_coding_resume_enters_the_existing_single_record_path():
     service.prepare_window = lambda *args: (_ for _ in ()).throw(AssertionError('coding resume entered a window'))
     cursor = {'phase': 'project', 'active': None}
     assert service.prepare(None, cursor, None, {}, {'coding_resume': {'active': {}}}) == {'window_checked': True}
+
+
+@pytest.mark.parametrize('profile', ['email', 'load-file'])
+def test_single_path_project_steps_and_commits_match_base(tmp_path, monkeypatch, profile):
+    from tests.test_discovery_review_dat_opt_storage import app_case, complete_http_page
+    from tests.test_discovery_review_list import EMAIL
+
+    population = 25
+    suffix, content = ('eml', EMAIL) if profile == 'email' else ('csv', b'BEGBATES,NATIVEPATH\r\n')
+    files = [(f'record-{number:04}.{suffix}', content) for number in range(population - 1)]
+    with app_case(tmp_path, count=0, extra_files=files) as case:
+        service = service_for(case.bench)
+        in_project = ContextVar('in_project', default=False)
+        counts = {'steps': 0, 'commits': 0}
+        original = Service.step
+
+        def trace(statement):
+            if in_project.get() and statement.strip().upper() == 'COMMIT':
+                counts['commits'] += 1
+
+        def step(candidate, job, budget, *args):
+            state = candidate.repository.state(job.matter_id)
+            project = job.matter_id == case.matter.matter_id and state and state['phase'] == 'project'
+            token = in_project.set(project)
+            counts['steps'] += bool(project)
+            try:
+                return original(candidate, job, budget, *args)
+            finally:
+                in_project.reset(token)
+
+        monkeypatch.setattr(Service, 'step', step)
+        with case.workspace._lock:
+            case.workspace.connection.set_trace_callback(trace)
+        try:
+            complete_http_page(case, case.matter, load_records=0)
+        finally:
+            with case.workspace._lock:
+                case.workspace.connection.set_trace_callback(None)
+        assert service.repository.state(case.matter.matter_id)['phase'] == 'complete'
+        # Measured on dafce68 with this fixture; see PR.md for the baseline run.
+        assert 0 < counts['steps'] / population <= 1.0, counts
+        assert 0 < counts['commits'] / population <= 1.0, counts

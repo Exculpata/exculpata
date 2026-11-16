@@ -835,13 +835,19 @@ class Service:
                 return False
         repo, mid, active = self.repository, job.matter_id, cursor['active']
         if active is None:
-            if not prepared.get('window_checked'):
-                return False
             rows = repo.documents(tx, mid, cursor['after_document'], cursor['generation'])
             if not rows:
                 self.transition(cursor, 'order')
                 return True
             row = repo.document(tx, mid, rows[0][0])
+            source = SourceSnapshot(**json.loads(row[0]))
+            if (not prepared.get('window_checked') and not summaries.get('coding_resume')
+                    and not self.prepare_requires_io(job, source) and not load_files.source_format(source.display_name)):
+                following = repo.documents(tx, mid, rows[0][0], cursor['generation'])
+                if following:
+                    neighbor = SourceSnapshot(**json.loads(repo.document(tx, mid, following[0][0])[0]))
+                    if not self.prepare_requires_io(job, neighbor) and not load_files.source_format(neighbor.display_name):
+                        return False
             active = active_document(rows[0][0], row, 'prepare')
             cursor['active'] = active
             source = SourceSnapshot(**active['source'])

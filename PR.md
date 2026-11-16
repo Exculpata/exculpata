@@ -9,17 +9,24 @@
 
 This kickoff was recorded before implementation, after phase 0, and is in the branch's first commit. It matches the requested scope and user-visible outcome.
 
+## Kickoff: review fix r1
+
+- Goal: restore in-transaction next-record selection after single-record publication so email and load-file lists need no more project steps or commits than the original base. Strengthen full-row resume evidence and report all traced profiles.
+- Expected files: stored_index/rebuild.py, the two new publication test files as needed, and PR.md. Optional style cleanup stays within the authorized fence.
+- Acceptance check: reproduce the single-path regression on starting commit `4a5a741ce0bb342b408503242bd9c9671753ba3a`; measure original `dafce68` steps and commits for email and load-file populations; assert no regression for either; retain clean DAT Gate A, full-row resume equality, hard caps and unchanged existing tests.
+- Issue: https://github.com/Exculpata/exculpata/issues/503. Rechecked the issue: no assignees or comments. The supplied review fix is the scope authority; no competing claim or hold was found. This matches the requested user-visible outcome and acceptance criteria. Recorded before fix coding; the original kickoff remains in the branch's first commit.
+
 ## Limits
 
 The 1.583 ms publication ceiling is not a goal of this item and remains unmet. The broader performance item stays stopped. No order windows, contract changes, cursor/key version changes, field-build changes or existing-test restatements are included.
 
-## Phase 0
+## Phase 0 and parent measurements
 
 Base: `dafce68a89d06e4d2538e56faceddd64e32b308a`, matching origin/main at launch; clean source tree. Existing synthetic DAT/OPT pipeline generator, clean profile, 1,000 records, width 512, warm-up, tracemalloc enabled. Real HTTP publication, SQLite execute/executemany counted as one statement per invocation; implicit commits counted separately. Phase means the phase at entry to the step, so the final project step includes its transition into order. Counters are context-local to the step thread; an initial diagnostic with a global context was discarded because it included background SQL.
 
 The counter run overlapped unrelated validation. Its elapsed time and instrumented peak are not timing or memory acceptance evidence. Separate fresh-process memory checks without the SQL observer are reported below.
 
-| Metric | Before | After |
+| Metric | Base | Parent implementation |
 | --- | ---: | ---: |
 | Project steps | 1,001 | 87 |
 | Project statements, including control | 47,048 | 2,935 |
@@ -97,25 +104,25 @@ Counts below are measured, not inferred. Variable-length bound-parameter lists a
 
 Fix level: code. Header aliases are lazy and held in an eight-entry LRU whose key compares only the definition digest. Callers without a digest retain the per-call path.
 
-Production preparation uses a bounded, read-only repository snapshot and the existing single-document projection method. It preserves own-attempt states and diagnostics, format priority, family context, page references, provenance ambiguity and attempt validation. Every preparation read is capped at 24 touched rows; provenance reads retain at most two distinct proofs per document and split into primitives of at most 24 touches.
+Production preparation uses a bounded, read-only repository snapshot and the existing single-document projection method. It covers own-attempt states and diagnostics, format priority, family context, page references, provenance ambiguity and attempt validation. The two known selection edge cases below remain outside this fix. Every preparation read is capped at 24 touched rows; provenance reads retain at most two distinct proofs per document and split into primitives of at most 24 touches.
 
 A project window prepares at most 12 simple records before the transaction. Inside the transaction it reads documents and source captures in batches, rechecks catalog versions and source types, reads identifiers and attachments in batches, and reads at most 12 coding rows in document/position/code order. A full coding page excludes its last document and everything after it. The remaining row allowance can further shorten the prefix. Publication uses bounded executemany and advances after_document only after the whole window is written. Rejected preparation and coding continuations use the existing single-record cursor. No partial window is persisted.
 
 The design note's proposed project value read does not exist on this base: repository.values is an order-phase insertion primitive, and project does not read old value rows. Likewise the stored-index family-parent lookup belongs to order. These paths remain unchanged, following main with the smallest edit; family catalog context is batched in production preparation. The order phase retains its existing rows, keys, fields and single-record continuation. No frozen file, existing test or snapshot was edited.
 
-Regression baseline: `dafce68a89d06e4d2538e56faceddd64e32b308a` (the kickoff commit has identical product source). Before implementation, the alias probe failed on the unsupported definition_digest argument and the production batch probe failed on the missing document_projections method. The new full-row test restores all derived tables, including attachment rows subject to cascading deletion, and compares complete item rows and every value/key byte against the single-record path on the same generation. It includes retired coding labels, more than 12 coding rows in a window, and a heavily coded record requiring fallback. Additional tests cover family budgets, a projection exception ending the window, cancellation/reopen, and single-record coding resume.
+Regression baseline: `dafce68a89d06e4d2538e56faceddd64e32b308a` (the kickoff commit has identical product source). Before implementation, the alias probe failed on the unsupported definition_digest argument and the production batch probe failed on the missing document_projections method. The new full-row test restores all derived tables, including attachment rows subject to cascading deletion, and compares complete item rows and every value/key byte against the in-tree single-record path with `prepare_window` patched to fall back, on the same generation. AC 7 does not run a separate dafce68 build for full-row comparison. It includes retired coding labels, more than 12 coding rows in a window, and a heavily coded record requiring fallback. Additional tests cover family budgets, a projection exception ending the window, cancellation/reopen, and single-record coding resume.
 
-## Gate A correction
+## Parent Gate A correction
 
-The initial window integration did not reach a preparation boundary: it measured the baseline again, 47.048 statements and 1.001 commits per record. The allowed correction connected window preparation and combined bounded attempt/catalog reads. The next measurement passed at 2.841 statements and 0.086 commits per record. Subsequent correctness checks required yielding at a record boundary so a rejected window could actually take the single-record path, preserving coding resume, and rechecking classification inside the transaction. The final-source measurement passes at 2.935 statements and 0.087 commits per record, as recorded above. Caps, budgets and window size were never increased.
+The initial window integration did not reach a preparation boundary: it measured the baseline again, 47.048 statements and 1.001 commits per record. The allowed correction connected window preparation and combined bounded attempt/catalog reads. The next measurement passed at 2.841 statements and 0.086 commits per record. Subsequent correctness checks required yielding at a record boundary so a rejected window could actually take the single-record path, preserving coding resume, and rechecking classification inside the transaction. The parent-source measurement passes at 2.935 statements and 0.087 commits per record, as recorded above. Caps, budgets and window size were never increased.
 
-## Validation
+## Parent validation
 
 - New projection/window regressions: 26 passed.
 - Repository policy checks: 2,069 passed, including fixture writes/inventory, import boundaries, source size and DB access. Snapshots are unchanged.
 - Final focused suite: **359 passed, 1 existing opt-in skip**, including PostgreSQL portability and the unchanged lifecycle, checkpoint, resume, updates, perf, list, boundaries and source-load QC tests. The new regressions are included in this total.
 - The focused run overlapped other validation. Its heavily coded lifecycle test took **126.61 seconds**, exceeding the existing 125-second exception ceiling; a serialized rerun was queued but never started because the shared lock remained held by another full CI job. That duplicate queued run was cancelled; the launcher must rerun this unchanged test as part of full parity. This duration gate remains unresolved. The 10,000-record row-budget test took 113.36 seconds, within its existing 135-second exception. No timeout or exception was changed.
-- Final Gate A: **PASS**, 1,000 records traced; 2.935 statements and 0.087 commits per record, controls included. The observed publication maximum was 236 touches per step; the new coded/family tests independently enforce 256 touches, 24 rows per read and 24 touches per primitive.
+- Parent Gate A: **PASS**, 1,000 records traced; 2.935 statements and 0.087 commits per record, controls included. The observed publication maximum was 236 touches per step; the new coded/family tests independently enforce 256 touches, 24 rows per read and 24 touches per primitive.
 - Targeted Ruff and whitespace checks passed. The private-term scan passed on all nine changed paths. The working-tree publication scan passed with `--skip-history` after generated scratch artifacts and Ruff caches were moved out of the publishable tree; this does not claim a history scan.
 
 | Fresh-process tracemalloc profile | Base ceiling (MiB) | Final peak (MiB) | Result |
@@ -123,6 +130,53 @@ The initial window integration did not reach a preparation boundary: it measured
 | 500 records | 7.376 | 4.277 | Pass |
 | 1,000 records | 11.529 | 6.843 | Pass |
 
-Full CI parity is assigned to the launcher after this work finishes. Acceptance 12 remains open: no full-parity result, zero `not_run_unexpected` claim, clean duration-gate claim or readiness approval is made here.
+The parent launcher subsequently completed full parity: `ran=45 failed=0 not_run=30 not_run_unexpected=0`, GREEN OVERALL. That supersedes the parent duration-gate uncertainty above; it is evidence for the parent revision only. The launcher will run full parity again after this fix commit. No fix-revision parity or readiness approval is claimed here.
 
 Synthetic fixtures only. No push, merge, force-push, hook bypass, schema change, timeout change, durability change, skip or xfail was introduced.
+
+
+## Review fix r1
+
+Fix level: code, at the project transaction boundary. Selection now checks whether the next two records can form a simple window before yielding for preparation. Email, load-file, lone-simple and final records retain in-transaction selection; the existing single-record path still owns their preparation, coding and publication. A failed window still selects its first record for single-record preparation. No persistent cursor state, row cap, window size, timeout or parity configuration changes.
+
+Regression baseline: `4a5a741ce0bb342b408503242bd9c9671753ba3a`. Before the fix, the traced phase-0 harness measured **51 project steps and 51 commits for 25 records**, for both email and load-file populations. Original-base measurements at `dafce68a89d06e4d2538e56faceddd64e32b308a` measured **25 steps and 25 commits** for each. The regression pins these measured base rates (1.0 step and commit per record); it does not substitute a mocked single path for dafce68. Each fixture contains one header-only DAT plus 24 ready email originals or 24 header-only CSV sources. Counts are taken at project-step entry, and commits are observed from SQLite transaction completion. Fixture generation uses the existing synthetic historical-manifest generator and real HTTP completion.
+
+The first attempted correction restored continuation after publication but left one extra phase-entry step and prevented simple DAT records from returning to windows. It was discarded. The final correction checks actual adjacent eligibility before yielding. The final Gate A results below determine acceptance; no budget or cap was relaxed.
+
+AC 8 now compares complete item rows as well as all value rows after cancellation/reopen. Test imports formerly in the middle of the new window test file are at the top.
+
+Known P3 selection differences remain unchanged: batched attachments rank after joining to the source index item, whereas the single path selects its lowest-order attachment before that join; a missing source item can therefore change the chosen attachment. The public `document_projections` read model retains the last non-stale own attempt by attempt ID, whereas `document_projection` takes the first unordered current attempt; multiple non-stale own attempts can therefore differ. Load-file sources remain excluded from publication windows. Neither selection semantic is changed in this item.
+
+
+### Traced profile results for r1
+
+Original-base source for the new comparisons was extracted from `dafce68` into an isolated measurement directory; the same external observer ran against that source and the fix source. The observer uses context-local project-step attribution and counts SQL execute/executemany calls, actual commits and control statements as in phase 0. All runs below use tracemalloc. Shared-machine elapsed times are not timing acceptance evidence.
+
+| Profile and denominator | Base project steps | Fix project steps | Base statements/record | Fix statements/record | Base commits/record | Fix commits/record | Base/fix controls/step |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Clean DAT: 1,000 generated data rows, 1,001 indexed sources | 1,001 | 86 | 47.048 | **2.923** | 1.001 | **0.086** | 13 / 13 |
+| Email: 999 ready emails and one header-only DAT, 1,000 indexed sources | 1,000 | 1,000 | 36.016 | 36.016 | 1.000 | 1.000 | 13 / 13 |
+| Load-file: 999 header-only CSV sources and one header-only DAT, 1,000 indexed sources | 1,000 | 1,000 | 29.023 | 29.023 | 1.000 | 1.000 | 13 / 13 |
+
+Gate A passes for the clean DAT window profile: 2,923 project statements and 86 commits. The email and load-file profiles deliberately use the unchanged single-record path; both miss the numeric window thresholds, and neither is claimed as a Gate A pass. Their acceptance here is no regression against dafce68, which both meet. Every project SQL shape count, not just the totals, is identical between base and fix in these two profiles. The 1.583 ms publication ceiling remains unmet.
+
+The 1,000-source load-file comparison uses a separate synthetic receipt per source. The initial shared-receipt runs were stopped during dependency matching, before project publication; they produced no Gate A result and are not included in this table. This changes only the measurement fixture, not importer behavior. The 25-record load-file regression retains a single shared receipt. Clean DAT and email profiles also retain their original shared-receipt layout.
+
+Control shapes were counted at project-step entry, including the transition to order in the last project step. For each email and load-file run, base and fix both recorded 3,000 code-event-token SELECTs, 3,000 code-count SELECTs, 3,000 production-stamp SELECTs, 2,000 index-state SELECTs, 1,000 BEGINs and 1,000 state UPDATEs: 13,000 control statements across 1,000 steps. Actual commits are reported separately, consistently with phase 0. The clean fix has the same shape ratios: 258, 258, 258, 172, 86 and 86 respectively, totaling 1,118 controls across 86 steps.
+
+Fresh-process existing pipeline memory profiles, without the SQL observer and including completion verification, measured 4.301 MiB at 500 records and 10.521 MiB at 1,000. Both are below the original 7.376/11.529 MiB ceilings. The traced clean publication maximum remains 236 touches per step.
+
+
+### Fix validation
+
+The new regression was executed against isolated source copies: **2 passed on dafce68**, and **2 expected failures on 4a5a741**, each reporting `steps=51, commits=51` against the measured 25-record baseline. The initial standalone fix command failed collection because its checkout PYTHONPATH was omitted; it produced no test result. The broader focused command explicitly selects this checkout and includes both regressions. It runs serially after acquiring the shared pytest lock; all tracing and memory profiles finished before it began.
+
+
+The serial focused run completed with **2,413 passed, 2 existing skips and one test-policy failure**. All product tests passed, including the strengthened full-row resume check. The policy failure identified unguarded trace-callback setup/cleanup in the new regression; both operations now use the existing workspace-lock pattern from the unchanged lifecycle test. No product source changed after the measured profiles or focused run. One skip was the existing opt-in million-item benchmark; the other was PostgreSQL portability because no DSN was set, so this run does not claim real PostgreSQL validation.
+
+JUnit total durations were **102.588 seconds** for heavily coded lifecycle resume (ceiling 125) and **42.275 seconds** for the 10,000-record budget test (ceiling 135). Every other executed test was below 30% of its pytest timeout. No timeout, exception or parity setting was changed.
+
+
+The final affected-test and policy rerun passed **2,082 tests**: both new test files, fixture-write policy/inventory/coverage/reflective-denial checks, DB access ratchet and import boundaries. The final regression, including locked callback setup, was rechecked: 2 passed on dafce68 and 2 expected failures on 4a5a741, again recording 51 steps and commits per 25 records on that parent. The unchanged PostgreSQL portability test then passed against a disposable instance of the already-cached CI-pinned PostgreSQL 17/pgvector image; its synthetic container was removed afterward. The opt-in million-item benchmark remains the only unexecuted focused test. The short PostgreSQL and final historical checks ran directly after another full parity job acquired the shared queue; no timing acceptance claim uses those concurrent runs.
+
+Ruff, whitespace validation, the PR-body check, the working-tree publication scan (`--skip-history`) and the required added-lines private-term scan pass. Full parity on the fix commit remains assigned to the launcher. No push or main merge was performed.
