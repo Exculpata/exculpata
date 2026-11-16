@@ -10,7 +10,7 @@ PAUSED = 'Indexing paused: the sources keep changing. Reload to resume.'
 
 
 def test_building_attempt_list_is_pending_then_converges(tmp_path, monkeypatch):
-    with app_case(tmp_path, count=40, width=512) as case:
+    with app_case(tmp_path, count=20, width=512) as case:
         production = service_for(case.bench).production
         original = production.attempt_current
         forced = []
@@ -32,12 +32,9 @@ def test_building_attempt_list_is_pending_then_converges(tmp_path, monkeypatch):
         assert PENDING in page.text
         assert 'data-production-records ' not in page.text
         monkeypatch.setattr(production, 'attempt_current', original)
-        for _ in range(8):
-            page = case.client.get(url, params=params)
-            assert page.status_code == 200
-            attempt = production.repository.current_attempt(case.matter.matter_id, source.document_id)
-            if attempt['status'] == 'complete':
-                break
+        page = case.client.get(url, params=params)
+        assert page.status_code == 200
+        attempt = production.repository.current_attempt(case.matter.matter_id, source.document_id)
         assert attempt['status'] == 'complete'
         assert production.attempt_current(case.matter.matter_id, attempt)
         assert 'data-production-records ' in page.text
@@ -48,6 +45,9 @@ def request_list(case, **extra):
     page = case.client.get(f'/matters/{case.matter.slug}/production', params={
         'doc': case.store.action_token(source), 'view': 'fields', **extra})
     assert page.status_code == 200
+    attempt = current_attempt(case)
+    if attempt and attempt['status'] != 'complete':
+        assert 'data-production-records ' not in page.text
     return page
 
 
@@ -156,11 +156,22 @@ def test_relevant_changes_pause_and_reload_resumes(tmp_path, monkeypatch):
         assert current_attempt(case)['dependencies']['restarts'] == 0
 
 
-def test_stale_record_cursor_still_refuses_previous_attempt(tmp_path):
+def test_stale_record_cursor_still_refuses_previous_attempt(tmp_path, monkeypatch):
     with app_case(tmp_path, count=3) as case:
         from case_intelligence.modules.discovery_review.production.service import source_from_attempt
         attempt = converge(case)
         production = service_for(case.bench).production
+        native = case.store.get('00000000000000000000000000000002')
+        production.repository.restart_matching(case.matter.matter_id, attempt['attempt_id'], attempt['target'])
+        assert production.repository.attempt(case.matter.matter_id, attempt['attempt_id'])['generation'] != attempt['generation']
+        with monkeypatch.context() as held:
+            held.setattr(production, 'match_step', lambda *args: None)
+            page = case.client.get(f'/matters/{case.matter.slug}/production', params={
+                'doc': case.store.action_token(native), 'view': 'fields',
+                'record': f"dat:{attempt['attempt_id']}:1"})
+            assert page.status_code == 409
+            assert 'These production records changed. Reload the list.' in page.text
+            assert 'data-production-records ' not in page.text
         production.repository.begin_attempt(case.matter.matter_id, source_from_attempt(attempt),
             parser_revision=attempt['parser_revision'], definition_digest=attempt['definition_digest'],
             target=attempt['target'] + '-replacement', input_revision=attempt['input_revision'])
@@ -204,3 +215,77 @@ def test_regular_input_cycle_cannot_resume_without_reload(tmp_path, monkeypatch)
         replay = case.client.get(link)
         assert replay.status_code == 200
         assert PAUSED in replay.text
+
+
+def test_legacy_revision_revalidates_once(tmp_path, monkeypatch):
+    with app_case(tmp_path, count=3) as case:
+        attempt = converge(case)
+        production = service_for(case.bench).production
+        observed = observe_work(case, monkeypatch)
+        old_revision = f"{case.store.source_changes.epoch}:{case.store.revision}:{production.binding(case.matter.matter_id)['human']}"
+        production.repository.update_attempt(case.matter.matter_id, attempt['attempt_id'],
+            status='complete', phase='complete', input_revision=old_revision)
+        refreshed = converge(case)
+        assert refreshed['attempt_id'] == attempt['attempt_id']
+        assert refreshed['generation'] != attempt['generation']
+        assert observed['restarts'] == 1
+        converge(case)
+        assert observed['restarts'] == 1
+
+
+def test_source_version_replacement_keeps_the_lineage_limit(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from tests.fixture_write import fixture_write
+    with app_case(tmp_path, count=80) as case:
+        observed = observe_work(case, monkeypatch)
+        request_list(case)
+        source_id = '00000000000000000000000000000001'
+        for number in range(10):
+            with case.store.mutation_guard():
+                source = case.store.get(source_id)
+                version = f'{number + 1000:032x}'
+                with fixture_write(case.workspace) as connection:
+                    connection.execute('UPDATE workbench_intake_transfer SET source_version_id=? '
+                        'WHERE matter_id=? AND source_version_id=?',
+                        (version, case.matter.matter_id, source.version_id))
+                case.store.documents[source_id] = replace(source, version_id=version)
+                case.store._save((source_id,))
+            page = request_list(case)
+            assert observed['restarts'] <= 3
+        assert observed['restarts'] == 3
+        assert PAUSED in page.text
+        assert 'data-production-restarts="3"' in page.text
+        assert case.client.get(reload_link(page)).status_code == 200
+        converge(case)
+
+
+def test_other_production_root_does_not_consume_restarts(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from tests.fixture_write import fixture_write
+    with app_case(tmp_path, count=80) as case:
+        document_id = '00000000000000000000000000000051'
+        source = case.store.get(document_id)
+        with case.store.mutation_guard():
+            with fixture_write(case.workspace) as connection:
+                connection.execute('UPDATE workbench_intake_item SET relative_path=? '
+                    'WHERE matter_id=? AND relative_path=?',
+                    ('Other/unrelated.txt', case.matter.matter_id, source.relative_path))
+                connection.execute('UPDATE workbench_upload_item SET relative_path=? '
+                    'WHERE matter_id=? AND document_id=?',
+                    ('Other/unrelated.txt', case.matter.matter_id, document_id))
+            case.store.documents[document_id] = replace(source, relative_path='Other/unrelated.txt')
+            case.store._save((document_id,))
+        observed = observe_work(case, monkeypatch)
+        request_list(case)
+        original = current_attempt(case)
+        for number in range(10):
+            with case.store.mutation_guard():
+                source = case.store.get(document_id)
+                case.store.documents[document_id] = replace(source, display_name=f'Generated unrelated {number}.txt')
+                case.store._save((document_id,))
+            page = request_list(case)
+            assert PAUSED not in page.text
+            assert current_attempt(case)['dependencies']['restarts'] == 0
+        completed = converge(case)
+        assert completed['generation'] == original['generation']
+        assert observed['restarts'] == 0

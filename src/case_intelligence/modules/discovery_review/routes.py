@@ -148,8 +148,8 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         unit: int = Query(1, ge=1, le=MAX_POSITION),
         record: str = Query('', max_length=56),
         record_dir: str = Query('at', pattern='^(at|next|previous)$'),
-        reload_attempt: str = Query('', pattern=TOKEN.replace('^', '^(|').replace('$', ')$')),
-        reload_token: str = Query('', pattern=TOKEN.replace('^', '^(|').replace('$', ')$')),
+        reload_attempt: str = Query('', pattern='^(|[0-9a-f]{32})$'),
+        reload_token: str = Query('', pattern='^(|[0-9a-f]{32})$'),
         all_columns: str = Query("", pattern="^(|1)$"),
         notice: str = Query("", pattern="^(|saved|shared|reset|unavailable|assigned|cleared|conflict|nothing|invalid|confirm|range|retry)$"),
     ):
@@ -182,6 +182,9 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         return respond(request, matter, actor, "workbench_production_documents.html", {
             "codes": codes.list(matter.matter_id),
             "document_count": index.total, "listing": listing, "panel": panel,
+            "production_paused": [{**paused, 'url': base + '?' + urlencode({
+                **state, 'reload_attempt': paused['attempt_id'], 'reload_token': paused['reload']})}
+                for paused in production.paused.get(matter.matter_id, {}).values()],
             "production_coverage": index.summaries.get("production", {}).get("counts", {}),
             "chooser": presentation.chooser(definition, index, choice), "load_files": index.reports,
             "notice": notice, "base_url": base, "index_summary": index.summaries,
