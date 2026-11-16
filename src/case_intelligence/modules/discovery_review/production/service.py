@@ -950,6 +950,28 @@ class ProductionService:
             result["references"] += (self.reference(self.repository.attempt(matter_id, page["attempt_id"]), "page"),)
         return result
 
+    def document_projections(self, matter_id, pairs):
+        """Prepare up to twelve projections with one bounded read model."""
+        binding = self.binding(matter_id)
+
+        class WindowService(ProductionService):
+            def attempt_current(window, mid, attempt):
+                key = attempt['attempt_id']
+                if key not in window.validated:
+                    budget = self.repository.budget()
+                    if budget is not None and budget.remaining < 35:
+                        from .repository import ProjectionWindowFull
+                        raise ProjectionWindowFull('attempt validation needs a smaller window')
+                    window.validated[key] = super().attempt_current(mid, attempt)
+                return window.validated[key]
+
+        with binding['store'].mutation_guard(), self.repository.db.lock:
+            repository = self.repository.projection_reader(matter_id, pairs, load_files.document_format_order())
+            window = WindowService(self.context, repository=repository)
+            window.bindings, window.discovery_done = self.bindings, self.discovery_done
+            window.validated = {}
+            return tuple(window.document_projection(matter_id, document, version) for document, version in pairs)
+
     def page_image(self, matter_id, attempt, record):
         """Resolve only one admitted image; embedded names remain inert metadata."""
         page = load_files.record_semantics(record)

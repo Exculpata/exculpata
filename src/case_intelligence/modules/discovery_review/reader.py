@@ -16,6 +16,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field, replace
 from email import policy
 from email.parser import BytesHeaderParser
+from functools import lru_cache
 from pathlib import PurePosixPath
 from typing import Any, Mapping
 
@@ -381,7 +382,18 @@ def forget(matter_id: str) -> None:
         _cache.pop(matter_id, None)
 
 
-def project_item(d, definition, assigned, match=None, stored=None):
+@dataclass(frozen=True)
+class AliasDefinition:
+    digest: str
+    definition: Definition = field(compare=False, hash=False)
+
+
+@lru_cache(maxsize=8)
+def header_aliases(key):
+    return {normalize_header(header): f.key for f in key.definition.fields for header in f.headers}
+
+
+def project_item(d, definition, assigned, match=None, stored=None, *, definition_digest=None):
     """Project one captured source and its already-read metadata without I/O."""
     stored = stored or {}
     suffix = PurePosixPath(d.display_name).suffix.casefold()
@@ -403,7 +415,8 @@ def project_item(d, definition, assigned, match=None, stored=None):
     }
     produced = match.values if match else {}
     if produced:
-        aliases = {normalize_header(header): f.key for f in definition.fields for header in f.headers}
+        aliases = (header_aliases(AliasDefinition(definition_digest, definition)) if definition_digest is not None
+                   else {normalize_header(header): f.key for f in definition.fields for header in f.headers})
         for header, value in produced.items():
             key = aliases.get(normalize_header(header))
             if key and value.strip() and not values.get(key):
