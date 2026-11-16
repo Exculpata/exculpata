@@ -107,6 +107,13 @@ Exact unavailable steps and evidence are recorded in
 [`ci-parity-expected-skips.toml`](../scripts/ci-parity-expected-skips.toml) and printed
 in every report. HEAD differs from the hosted integration candidate; runner images,
 services, browser/model runtimes, installs/downloads and hosted timing remain gaps.
+The application suite's `test_reports_browser_timezone_survives_loss_of_cdp_session`
+executes the reports journey up to its browser launch boundary and verifies that
+ChromeDriver receives `TZ=America/New_York` under a UTC runner or standalone shell.
+The browser and its renderer processes inherit that zone without relying on a CDP
+session override; the application process retains UTC. This regression runs in
+local parity without Chrome. It does not execute the browser journey: browser
+provisioning and synthetic journeys remain explicitly NOT RUN in local parity.
 [`test_ci_parity.py`](../tests/test_ci_parity.py), discovered by the existing
 application shards on non-documentation PRs, rejects missing/stale mappings and
 compares plans using real synthetic classification outputs. After reviewing drift,
