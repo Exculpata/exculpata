@@ -8,6 +8,59 @@ from tests.test_ci_parity import ROOT, document, run_repository
 
 
 HEADER = '============================= slowest 25 durations ============================='
+REBUILD_ID = 'tests/test_discovery_review_index.py::test_rebuild_step_row_budget[10000]'
+RESUME_ID = ('tests/test_discovery_review_index_lifecycle.py::'
+             'test_single_heavily_coded_item_stays_pending_with_complete_values_on_resume')
+
+
+def test_accepted_exceptions_are_exactly_the_approved_literal_table():
+    import ast
+
+    from scripts import ci_parity_durations
+
+    expected = {REBUILD_ID: (135, '2026-11-15T15:24'), RESUME_ID: (125, '2026-11-15T17:17')}
+    assert ci_parity_durations.ACCEPTED_EXCEPTIONS == expected
+    tree = ast.parse((ROOT / 'scripts/ci_parity_durations.py').read_text())
+    assignment, = [node for node in tree.body if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Name) and target.id == 'ACCEPTED_EXCEPTIONS'
+                           for target in node.targets)]
+    assert ast.literal_eval(assignment.value) == expected
+    with pytest.raises(TypeError):
+        near_limit('pytest --timeout=360', HEADER, exceptions={})
+
+
+@pytest.mark.parametrize('test_id,ceiling,approval,observed', [
+    (REBUILD_ID, 135, '2026-11-15T15:24', 125.77),
+    (RESUME_ID, 125, '2026-11-15T17:17', 120.41),
+])
+def test_accepted_exception_ceiling_and_phase_totals(test_id, ceiling, approval, observed):
+    for seconds in (1, observed, ceiling, ceiling + 0.01):
+        messages = []
+        log = f'{HEADER}\n0.25s setup {test_id}\n{seconds - 0.5:.2f}s call {test_id}\n' \
+              f'0.25s teardown {test_id}\n'
+        result = near_limit('pytest --timeout=360', log, step_tag='synthetic', emit=messages.append)
+        if seconds <= ceiling:
+            assert result == []
+            assert messages == [f'ACCEPTED EXCEPTION synthetic: {test_id} took {seconds:.2f}s '
+                                f'of 360s (ceiling {ceiling}s, approval {approval})']
+        else:
+            assert result == [(test_id, seconds)]
+            assert messages == [f'NEAR TIMEOUT synthetic: {test_id} took {seconds:.2f}s '
+                                f'of 360s (limit 0.30, ceiling {ceiling}s)']
+
+
+@pytest.mark.parametrize('test_id', [
+    REBUILD_ID.replace('[10000]', '[5000]'),
+    REBUILD_ID.replace('[10000]', '[20000]'),
+    REBUILD_ID.replace('test_discovery_review_index.py', 'other.py'),
+    RESUME_ID.replace('test_discovery_review_index_lifecycle.py', 'other.py'),
+    REBUILD_ID + '-x', RESUME_ID + '-x',
+])
+def test_accepted_exceptions_require_exact_full_id(test_id):
+    messages = []
+    assert near_limit('pytest --timeout=360', f'{HEADER}\n109s call {test_id}',
+                      emit=messages.append) == [(test_id, 109.0)]
+    assert messages == [f'NEAR TIMEOUT pytest: {test_id} took 109.00s of 360s (limit 0.30)']
 
 
 @pytest.mark.parametrize('command', ['python -m pytest --timeout=360',
@@ -102,6 +155,25 @@ def test_runner_rejects_real_application_command(tmp_path, monkeypatch, applicat
     assert runner.failed == 1
     assert runner.results['synthetic']['build']['result'] == 'failure'
     assert any(message.startswith('NEAR TIMEOUT ') and 'of 360s' in message for message in messages)
+
+    for case, seconds, failed, result, note in [
+        ('accepted', 120.41, 0, 'success', 'ACCEPTED EXCEPTION '),
+        ('over-ceiling', 125.01, 1, 'failure', 'NEAR TIMEOUT '),
+    ]:
+        def exception_shell(command, cwd, env, explicit_bash, timeout, log):
+            log.write_text(f'{HEADER}\n{seconds}s call {RESUME_ID}\n')
+            return 0, False
+
+        monkeypatch.setattr(ci_parity_runner, 'run_shell', exception_shell)
+        case_path = tmp_path / case
+        case_path.mkdir()
+        runner, messages, _ = run_repository(case_path, document([{'run': command}]))
+        assert runner.ran == 1 and runner.failed == failed
+        assert runner.results['synthetic']['build']['result'] == result
+        assert len([message for message in messages if message.startswith(note)]) == 1
+        assert any(RESUME_ID in message and 'ceiling 125s' in message for message in messages)
+        if not failed:
+            assert not any(message.startswith('NEAR TIMEOUT ') for message in messages)
 
 
 def test_timeout_without_section_is_explicitly_unchecked():

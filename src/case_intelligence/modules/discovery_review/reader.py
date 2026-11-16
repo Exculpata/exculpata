@@ -384,8 +384,6 @@ def forget(matter_id: str) -> None:
 def project_item(d, definition, assigned, match=None, stored=None):
     """Project one captured source and its already-read metadata without I/O."""
     stored = stored or {}
-    aliases = {normalize_header(header): f.key for f in definition.fields for header in f.headers}
-    wanted = {f.email_header: f.key for f in definition.fields if f.email_header}
     suffix = PurePosixPath(d.display_name).suffix.casefold()
     folder = PurePosixPath(d.relative_path).parent.as_posix()
     paged = d.media_type == "application/pdf" and d.page_count > 0  # other types record sections, not pages
@@ -404,12 +402,15 @@ def project_item(d, definition, assigned, match=None, stored=None):
         "load_file": f"{match.name}, line {match.line} (matched by {match.basis})" if match else "",
     }
     produced = match.values if match else {}
-    for header, value in produced.items():
-        key = aliases.get(normalize_header(header))
-        if key and value.strip() and not values.get(key):
-            values[key] = value
+    if produced:
+        aliases = {normalize_header(header): f.key for f in definition.fields for header in f.headers}
+        for header, value in produced.items():
+            key = aliases.get(normalize_header(header))
+            if key and value.strip() and not values.get(key):
+                values[key] = value
     is_email = d.media_type in definition.email_media_types or suffix in definition.email_suffixes
     if is_email:
+        wanted = {f.email_header: f.key for f in definition.fields if f.email_header}
         for name, value in stored.items():
             values.setdefault(wanted[name], value)
     if not is_email:

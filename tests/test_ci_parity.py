@@ -517,6 +517,23 @@ def test_repository_drift_and_hosted_discovery():
     assert files.count('tests/test_ci_parity.py') == 1
 
 
+def test_row_budget_serial_step_is_in_local_plan_after_shards():
+    found = plan.build(ROOT, workflows=['quality-gates'], jobs=['application'])
+    assert not found.unexpected
+    assert not found.stale
+    jobs = found.workflows[0].jobs
+    names = [job.name for job in jobs]
+    assert names.index('application-shards') < names.index('application-row-budget') < names.index('application')
+    serial = next(job for job in jobs if job.name == 'application-row-budget')
+    assert serial.cells == [{}]
+    assert serial.needs == ['change-scope', 'application-shards']
+    commands = [step for step in serial.steps if '-m pytest' in step.raw.get('run', '')]
+    assert len(commands) == 1
+    assert commands[0].name == 'Run isolated row budget test'
+    assert commands[0].unavailable is None
+    assert 'tests/test_discovery_review_index.py::test_rebuild_step_row_budget[10000]' in commands[0].raw['run']
+
+
 def real_scope_outputs(tmp_path, found, changed_path):
     import json
     import shutil
@@ -581,6 +598,8 @@ def test_golden_plan(tmp_path):
     for rows, expected in ((docs, 'SKIP'), (code, 'RUN')):
         application = [step['state'] for row in rows for step in row['steps'] if step['step'] == 'Run application suite']
         assert application == [expected, expected]
+        serial = [step['state'] for row in rows for step in row['steps'] if step['step'] == 'Run isolated row budget test']
+        assert serial == [expected]
     assert all('scope' not in step['step'].lower() or step['state'] != 'NOT RUN'
                for row in docs for step in row['steps'])
 

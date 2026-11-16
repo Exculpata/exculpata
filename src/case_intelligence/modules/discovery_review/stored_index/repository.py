@@ -42,17 +42,26 @@ class Transaction:
         self.budget.charge(len(rows) * constituents, credit=not rows)
         return rows
 
-    def write(self, statement, args=()):
+    def write(self, statement, args=(), *, many=False):
         if not self.active:
             raise RuntimeError('use an active bounded index transaction')
-        estimate = sum(len(value) if isinstance(value, bytes) else len(str(value).encode()) for value in args)
-        self.encoded_bytes += estimate * 4 + 4096
+        maximum = len(args) if many else 1
+        if not 1 <= maximum <= 32:
+            raise ValueError('index mutations require a row bound between 1 and 32')
+        rows = args if many else (args,)
+        estimate = sum(len(value) if isinstance(value, bytes) else len(str(value).encode()) for row in rows for value in row)
+        self.encoded_bytes += estimate * 4 + 4096 * maximum
         if self.encoded_bytes > self.capacity:
             raise CapacityPlan(max(self.encoded_bytes, 2 * self.capacity))
-        cursor = self.repository.db.connection.execute(self.repository.sql(statement), args)
-        affected = cursor.rowcount
-        if affected not in (0, 1):
-            raise RuntimeError('index mutations require a single primary key')
+        connection, sql = self.repository.db.connection, self.repository.sql(statement)
+        if many and self.repository.sqlite:
+            affected = connection.executemany(sql, args).rowcount
+        elif many:
+            affected = sum(connection.execute(sql, row).rowcount for row in args)
+        else:
+            affected = connection.execute(sql, args).rowcount
+        if not 0 <= affected <= maximum:
+            raise RuntimeError('index mutation exceeded its declared row bound')
         self.budget.charge(affected)
         return affected
 
@@ -240,16 +249,26 @@ class Repository:
                         (matter_id, document_id, bytes(prefix[0][0])), constituents=2)
         return found[0] if found else None
 
-    def value(self, tx, matter_id, item, chosen, descending, *, components=None, parent=None):
+    def value_args(self, tx, matter_id, item, chosen, descending, *, components=None, parent=None):
         parent = parent if components is not None and item.family.get('root') else None
         identity = (matter_id, item.document_id, item.version_id)
         row_keys = tx.row_keys.get(identity)
         if row_keys is None or row_keys.item is not item or row_keys.parent is not parent:
             row_keys = tx.row_keys[identity] = keys.RowKeys(item, parent)
         order = row_keys.order(chosen, descending, components)
+        return (matter_id, item.document_id, chosen.key, int(descending), order[:keys.PREFIX_BYTES], order,
+                item.value(chosen.key), int(item.has(chosen.key)))
+
+    def value(self, tx, matter_id, item, chosen, descending, *, components=None, parent=None):
         tx.write('INSERT INTO workbench_discovery_index_value VALUES (?,?,?,?,?,?,?,?)',
-                 (matter_id, item.document_id, chosen.key, int(descending), order[:keys.PREFIX_BYTES], order,
-                  item.value(chosen.key), int(item.has(chosen.key))))
+                 self.value_args(tx, matter_id, item, chosen, descending, components=components, parent=parent))
+
+    def values(self, tx, matter_id, item, selections, *, parent=None):
+        if not 1 <= len(selections) <= 20:
+            raise ValueError('index value batches require between 1 and 20 rows')
+        rows = [self.value_args(tx, matter_id, item, chosen, descending, components=components, parent=parent)
+                for chosen, descending, components in selections]
+        tx.write('INSERT INTO workbench_discovery_index_value VALUES (?,?,?,?,?,?,?,?)', rows, many=True)
 
     def publish(self, tx, matter_id, item, generation, fingerprint, cache):
         cache['display'] = asdict(item)

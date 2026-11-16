@@ -6372,6 +6372,14 @@ def _workspace_citation_href(
     return _query_url(f"/matters/{matter_slug}", conversation=conversation_id)
 
 
+class _MatterAuthorityDenied(HTTPException):
+    """Carry the actor through transaction rollback to the denial audit handler."""
+
+    def __init__(self, context: AuthContext):
+        super().__init__(404, "Matter is no longer available")
+        self.context = context
+
+
 class _MatterResponseSendLeaseMiddleware:
     """Release admitted downloads after the outer response send exits."""
 
@@ -6638,6 +6646,11 @@ def create_workbench_app(
             object_id=object_id,
             details=details,
         )
+
+    @app.exception_handler(_MatterAuthorityDenied)
+    def audit_matter_authority_denial(request: Request, exc: _MatterAuthorityDenied):
+        audit(request, "matter.access", "denied", context=exc.context)
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
     @app.middleware("http")
     async def identity_boundary(request: Request, call_next):
@@ -14197,9 +14210,7 @@ def create_workbench_app(
                 raise KeyError(original.principal_id)
             return bench.matter(slug, current.principal_id, administrator=administrator_override)
         except KeyError as exc:
-            if not bench.workspace.connection.in_transaction:
-                audit(request, "matter.access", "denied", context=original)
-            raise HTTPException(404, "Matter is no longer available") from exc
+            raise _MatterAuthorityDenied(original) from exc
     from .matter_purpose_routes import install_matter_purpose
     install_matter_purpose(app, workspace=bench.workspace, authorized_matter=authorized_matter,
         auth_context=auth_context, refresh_authority=refresh_context_authority, require_csrf=require_csrf,

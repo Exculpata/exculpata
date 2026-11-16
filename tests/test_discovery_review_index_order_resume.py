@@ -16,6 +16,17 @@ def test_full_value_checkpoint_reconstructs_and_finalizes_once(production, monke
     add_population(store, 28)
     service, job = pending_job(production, monkeypatch)
     _, _, limit = work_bound(**manifest(32))
+    primitive = Service.primitive
+
+    def yield_after_full_values(owner, tx, current_job, cursor, summaries, prepared):
+        result = primitive(owner, tx, current_job, cursor, summaries, prepared)
+        active = cursor['active']
+        value_count = 2 * (1 + len(current_job.definition.fields) + len(summaries['headers']))
+        if cursor['phase'] == 'order' and active and active['value_eof'] and active['value_position'] == value_count:
+            return False
+        return result
+
+    monkeypatch.setattr(Service, 'primitive', yield_after_full_values)
     for _ in range(limit):
         service.advance(job, 1)
         assert not job.error, getattr(service, 'failure', '')
@@ -30,6 +41,7 @@ def test_full_value_checkpoint_reconstructs_and_finalizes_once(production, monke
             pytest.fail('no durable full-value continuation was published')
     else:
         pytest.fail('full-value continuation exhausted the generated manifest')
+    monkeypatch.setattr(Service, 'primitive', primitive)
 
     document_id = active['document_id']
     value_query = ('SELECT field_key,direction,leading_key,sort_key,value,present '

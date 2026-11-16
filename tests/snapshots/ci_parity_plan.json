@@ -16,6 +16,20 @@
     "skips": [
       {
         "category": "install",
+        "job": "application-row-budget",
+        "reason": "The workflow installs editable dev extras; local parity checks and uses the existing venv.",
+        "step": "Install row budget test dependencies",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "github-only",
+        "job": "application-row-budget",
+        "reason": "Hosted artifact upload is unavailable offline; the serial test runs and its per-step log remains beside the local report.",
+        "step": "Retain row budget test report",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
         "job": "fast",
         "reason": "This unnamed step installs the editable dev extras; its complete command is its exact step name.",
         "step": "python -m pip install --disable-pip-version-check -e '.[dev]'",
@@ -776,6 +790,27 @@
               "if": "${{ always() }}",
               "needs": [
                 "change-scope",
+                "application-shards",
+                "application-row-budget"
+              ],
+              "runs-on": "ubuntu-24.04",
+              "steps": [
+                {
+                  "env": {
+                    "SCOPE_RESULT": "${{ needs.change-scope.result }}",
+                    "SERIAL_RESULT": "${{ needs.application-row-budget.result }}",
+                    "SHARD_RESULT": "${{ needs.application-shards.result }}"
+                  },
+                  "name": "Require successful classification, shards and serial row budget",
+                  "run": "7e2d6c67231164e9b92d3e9ffe29d60f6a3bc41440e774f69b9d5d3ad3ca71db"
+                }
+              ],
+              "timeout-minutes": 5
+            },
+            "application-row-budget": {
+              "if": "${{ always() }}",
+              "needs": [
+                "change-scope",
                 "application-shards"
               ],
               "runs-on": "ubuntu-24.04",
@@ -787,9 +822,68 @@
                   },
                   "name": "Require successful classification and both application shards",
                   "run": "cb99b82d688786d181d8ab61b5d6a913af9f3c0eec22eb756b5d0ab3b84ef2dc"
+                },
+                {
+                  "name": "Check out integration candidate",
+                  "uses": "actions/checkout",
+                  "with": {
+                    "persist-credentials": false
+                  }
+                },
+                {
+                  "env": {
+                    "EXPECTED_INTEGRATION_SHA": "${{ github.sha }}"
+                  },
+                  "name": "Verify integration checkout",
+                  "run": "b4d103939243e967f395288c5a43ba0190659e12a40e7cbd4d645c1bce120b41"
+                },
+                {
+                  "name": "Select Python 3.12",
+                  "uses": "actions/setup-python",
+                  "with": {
+                    "cache": "pip",
+                    "python-version": "3.12"
+                  }
+                },
+                {
+                  "if": "${{ needs.change-scope.outputs.docs_only != 'true' }}",
+                  "name": "Install row budget test dependencies",
+                  "run": "5d80c6bfdddb78dcf8750aebad3a3981fc2e6b281b6fc780b3203edde71aa6ae"
+                },
+                {
+                  "name": "Protect reviewed corpus inputs",
+                  "run": "458ead24b5f2b32bdfa79cf2165c1fdc08bec43768833810b28af0f23e37f1d9"
+                },
+                {
+                  "env": {
+                    "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB": "0",
+                    "CASE_INTELLIGENCE_TEST_MODE": "1",
+                    "OMP_NUM_THREADS": "1",
+                    "OMP_THREAD_LIMIT": "1",
+                    "OPENBLAS_NUM_THREADS": "1"
+                  },
+                  "if": "${{ needs.change-scope.outputs.docs_only != 'true' }}",
+                  "name": "Run isolated row budget test",
+                  "run": "b7ffef5efa92c1155b7e948702c7a86c178d64f20d326c1826da37fff373e41a"
+                },
+                {
+                  "if": "${{ always() }}",
+                  "name": "Verify reviewed corpus inputs are unchanged",
+                  "run": "a6ba23aea7c854940db83e866c66ed299ce5dc87ba5e8821564a8f55f3c24c97"
+                },
+                {
+                  "if": "${{ always() && needs.change-scope.outputs.docs_only != 'true' }}",
+                  "name": "Retain row budget test report",
+                  "uses": "actions/upload-artifact",
+                  "with": {
+                    "if-no-files-found": "warn",
+                    "name": "row-budget-results-${{ github.run_id }}-${{ github.run_attempt }}",
+                    "path": "${{ runner.temp }}/row-budget-results.xml",
+                    "retention-days": 5
+                  }
                 }
               ],
-              "timeout-minutes": 5
+              "timeout-minutes": 15
             },
             "application-shards": {
               "if": "${{ always() }}",
@@ -1668,6 +1762,81 @@
             "cells": [
               {}
             ],
+            "job": "application-row-budget",
+            "needs": [
+              "change-scope",
+              "application-shards"
+            ],
+            "steps": [
+              {
+                "expected": null,
+                "name": "Require successful classification and both application shards",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Check out integration candidate",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Verify integration checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Select Python 3.12",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "application-row-budget",
+                  "reason": "The workflow installs editable dev extras; local parity checks and uses the existing venv.",
+                  "step": "Install row budget test dependencies",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install row budget test dependencies",
+                "unavailable": [
+                  "install",
+                  "The workflow installs editable dev extras; local parity checks and uses the existing venv."
+                ]
+              },
+              {
+                "expected": null,
+                "name": "Protect reviewed corpus inputs",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Run isolated row budget test",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Verify reviewed corpus inputs are unchanged",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "github-only",
+                  "job": "application-row-budget",
+                  "reason": "Hosted artifact upload is unavailable offline; the serial test runs and its per-step log remains beside the local report.",
+                  "step": "Retain row budget test report",
+                  "workflow": "quality-gates"
+                },
+                "name": "Retain row budget test report",
+                "unavailable": [
+                  "github-only",
+                  "Hosted artifact upload is unavailable offline; the serial test runs and its per-step log remains beside the local report."
+                ]
+              }
+            ]
+          },
+          {
+            "cells": [
+              {}
+            ],
             "job": "postgres-integration",
             "needs": [
               "change-scope"
@@ -2046,12 +2215,13 @@
             "job": "application",
             "needs": [
               "change-scope",
-              "application-shards"
+              "application-shards",
+              "application-row-budget"
             ],
             "steps": [
               {
                 "expected": null,
-                "name": "Require successful classification and both application shards",
+                "name": "Require successful classification, shards and serial row budget",
                 "unavailable": null
               }
             ]
@@ -2458,6 +2628,51 @@
           "workflow": "quality-gates"
         },
         {
+          "job": "application-row-budget",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification and both application shards"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install row budget test dependencies"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "RUN",
+              "step": "Run isolated row budget test"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Retain row budget test report"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
           "job": "postgres-integration",
           "matrix": {},
           "outputs": {},
@@ -2658,7 +2873,7 @@
           "steps": [
             {
               "state": "RUN",
-              "step": "Require successful classification and both application shards"
+              "step": "Require successful classification, shards and serial row budget"
             }
           ],
           "workflow": "quality-gates"
@@ -3053,6 +3268,51 @@
           "workflow": "quality-gates"
         },
         {
+          "job": "application-row-budget",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification and both application shards"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install row budget test dependencies"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "RUN",
+              "step": "Run isolated row budget test"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Retain row budget test report"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
           "job": "postgres-integration",
           "matrix": {},
           "outputs": {},
@@ -3253,7 +3513,7 @@
           "steps": [
             {
               "state": "RUN",
-              "step": "Require successful classification and both application shards"
+              "step": "Require successful classification, shards and serial row budget"
             }
           ],
           "workflow": "quality-gates"
@@ -3648,6 +3908,51 @@
           "workflow": "quality-gates"
         },
         {
+          "job": "application-row-budget",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification and both application shards"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install row budget test dependencies"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "SKIP",
+              "step": "Run isolated row budget test"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            },
+            {
+              "state": "SKIP",
+              "step": "Retain row budget test report"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
           "job": "postgres-integration",
           "matrix": {},
           "outputs": {},
@@ -3848,7 +4153,7 @@
           "steps": [
             {
               "state": "RUN",
-              "step": "Require successful classification and both application shards"
+              "step": "Require successful classification, shards and serial row budget"
             }
           ],
           "workflow": "quality-gates"
