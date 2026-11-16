@@ -70,6 +70,10 @@ class IdentifierRepository:
             raise IdentifierConflict("unsupported Team ID")
         try:
             with self.db.authorized_write(self.authority, matter_id, actor_id):
+                from .production import ProductionRepository
+                if ProductionRepository(self.db).identifier_conflicts(matter_id, (row[2] for row in rows),
+                                                                     connection=self.db.connection):
+                    raise IdentifierConflict("identifier conflicts with supplied production metadata")
                 self.db.connection.executemany(
                     "INSERT INTO workbench_discovery_identifier VALUES (?,?,?,?,?)", rows)
         except sqlite3.IntegrityError as exc:

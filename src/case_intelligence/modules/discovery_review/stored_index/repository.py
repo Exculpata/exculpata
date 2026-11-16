@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import hashlib
 import json
 import sqlite3
@@ -31,6 +31,7 @@ class Transaction:
         self.repository, self.budget, self.capacity = repository, budget, capacity
         self.active = True
         self.encoded_bytes = 0
+        self.row_keys = {}
 
     def read(self, statement, args=(), *, maximum=1, constituents=1):
         if not self.active or not 1 <= maximum <= 32:
@@ -41,17 +42,26 @@ class Transaction:
         self.budget.charge(len(rows) * constituents, credit=not rows)
         return rows
 
-    def write(self, statement, args=()):
+    def write(self, statement, args=(), *, many=False):
         if not self.active:
             raise RuntimeError('use an active bounded index transaction')
-        estimate = sum(len(value) if isinstance(value, bytes) else len(str(value).encode()) for value in args)
-        self.encoded_bytes += estimate * 4 + 4096
+        maximum = len(args) if many else 1
+        if not 1 <= maximum <= 32:
+            raise ValueError('index mutations require a row bound between 1 and 32')
+        rows = args if many else (args,)
+        estimate = sum(len(value) if isinstance(value, bytes) else len(str(value).encode()) for row in rows for value in row)
+        self.encoded_bytes += estimate * 4 + 4096 * maximum
         if self.encoded_bytes > self.capacity:
             raise CapacityPlan(max(self.encoded_bytes, 2 * self.capacity))
-        cursor = self.repository.db.connection.execute(self.repository.sql(statement), args)
-        affected = cursor.rowcount
-        if affected not in (0, 1):
-            raise RuntimeError('index mutations require a single primary key')
+        connection, sql = self.repository.db.connection, self.repository.sql(statement)
+        if many and self.repository.sqlite:
+            affected = connection.executemany(sql, args).rowcount
+        elif many:
+            affected = sum(connection.execute(sql, row).rowcount for row in args)
+        else:
+            affected = connection.execute(sql, args).rowcount
+        if not 0 <= affected <= maximum:
+            raise RuntimeError('index mutation exceeded its declared row bound')
         self.budget.charge(affected)
         return affected
 
@@ -65,19 +75,61 @@ class Repository:
         return statement if self.sqlite else statement.replace('?', '%s')
 
     @contextmanager
-    def transaction(self, budget, capacity):
+    def transaction(self, budget, capacity, checkpoint_bytes=0):
         with self.db.lock:
             tx = Transaction(self, budget, capacity)
             try:
                 if self.sqlite:
-                    with self.db.connection:
-                        self.db.connection.execute('BEGIN IMMEDIATE')
-                        yield tx
+                    with self.checkpoint_window(budget, checkpoint_bytes):
+                        with self.db.connection:
+                            self.db.connection.execute('BEGIN IMMEDIATE')
+                            yield tx
                 else:
                     with self.db.connection.transaction():
                         yield tx
             finally:
                 tx.active = False
+
+    def checkpoint_metadata(self, budget, statement):
+        in_control = budget.in_control
+        budget.in_control = True
+        try:
+            rows = self.rows(statement)
+            budget.charge(len(rows))
+            return rows
+        finally:
+            budget.in_control = in_control
+
+    @contextmanager
+    def checkpoint_window(self, budget, byte_limit):
+        if not byte_limit:
+            yield
+            return
+        mode = self.checkpoint_metadata(budget, 'PRAGMA journal_mode')[0][0]
+        if mode != 'wal':
+            yield
+            return
+        prior = self.checkpoint_metadata(budget, 'PRAGMA wal_autocheckpoint')[0][0]
+        if prior <= 0:
+            yield
+            return
+        page_size = self.checkpoint_metadata(budget, 'PRAGMA page_size')[0][0]
+        target = byte_limit // (page_size + 24)
+        if target <= prior:
+            yield
+            return
+        in_control = budget.in_control
+        budget.in_control = True
+        try:
+            restore_rows = 1
+            budget.charge(restore_rows)
+        finally:
+            budget.in_control = in_control
+        try:
+            self.checkpoint_metadata(budget, f'PRAGMA wal_autocheckpoint={target}')
+            yield
+        finally:
+            self.rows(f'PRAGMA wal_autocheckpoint={prior}')
 
     def rows(self, statement, args=()):
         with self.db.lock:
@@ -128,6 +180,10 @@ class Repository:
         found = self.rows('SELECT source_payload,payload,cache_payload,projection_fingerprint,readiness FROM workbench_discovery_index_item '
                           'WHERE matter_id=? AND document_id=?', (matter_id, document_id))
         return found[0] if found else None
+
+    def has_production_records(self, tx, matter_id, document_id):
+        return bool(tx.read('SELECT attempt_id FROM workbench_discovery_dat_record '
+                            'WHERE matter_id=? AND document_id=? LIMIT 1', (matter_id, document_id)))
 
     def documents(self, tx, matter_id, after, generation):
         return tx.read('SELECT document_id FROM workbench_discovery_index_item WHERE matter_id=? AND seen_generation=? '
@@ -193,16 +249,48 @@ class Repository:
                         (matter_id, document_id, bytes(prefix[0][0])), constituents=2)
         return found[0] if found else None
 
-    def value(self, tx, matter_id, item, chosen, descending):
-        order = keys.order_key(chosen, item, descending)
+    def value_args(self, tx, matter_id, item, chosen, descending, *, components=None, parent=None):
+        parent = parent if components is not None and item.family.get('root') else None
+        identity = (matter_id, item.document_id, item.version_id)
+        row_keys = tx.row_keys.get(identity)
+        if row_keys is None or row_keys.item is not item or row_keys.parent is not parent:
+            row_keys = tx.row_keys[identity] = keys.RowKeys(item, parent)
+        order = row_keys.order(chosen, descending, components)
+        return (matter_id, item.document_id, chosen.key, int(descending), order[:keys.PREFIX_BYTES], order,
+                item.value(chosen.key), int(item.has(chosen.key)))
+
+    def value(self, tx, matter_id, item, chosen, descending, *, components=None, parent=None):
         tx.write('INSERT INTO workbench_discovery_index_value VALUES (?,?,?,?,?,?,?,?)',
-                 (matter_id, item.document_id, chosen.key, int(descending), order[:keys.PREFIX_BYTES], order,
-                  item.value(chosen.key).casefold(), int(item.has(chosen.key))))
+                 self.value_args(tx, matter_id, item, chosen, descending, components=components, parent=parent))
+
+    def values(self, tx, matter_id, item, selections, *, parent=None):
+        if not 1 <= len(selections) <= 20:
+            raise ValueError('index value batches require between 1 and 20 rows')
+        rows = [self.value_args(tx, matter_id, item, chosen, descending, components=components, parent=parent)
+                for chosen, descending, components in selections]
+        tx.write('INSERT INTO workbench_discovery_index_value VALUES (?,?,?,?,?,?,?,?)', rows, many=True)
 
     def publish(self, tx, matter_id, item, generation, fingerprint, cache):
+        cache['display'] = asdict(item)
+        summary = replace(item, values={key: item.values[key] for key in item.details}, load_file={})
         tx.write('UPDATE workbench_discovery_index_item SET payload=?,cache_payload=?,projection_fingerprint=?,readiness=?,ready_generation=? '
-                 'WHERE matter_id=? AND document_id=?', (packed(asdict(item)), packed(cache), fingerprint, item.metadata_state,
+                 'WHERE matter_id=? AND document_id=?', (packed(asdict(summary)), packed(cache), fingerprint, 'pending',
                                                         generation, matter_id, item.document_id))
+    def full_item(self, matter_id, document_id):
+        found = self.rows('SELECT cache_payload FROM workbench_discovery_index_item WHERE matter_id=? AND document_id=?',
+                          (matter_id, document_id))
+        return json.loads(found[0][0])['display'] if found else None
+
+    def display_values(self, matter_id, document_id, fields):
+        if len(fields) > 500:
+            raise ValueError('field reads accept at most 500 keys')
+        if not fields:
+            return ()
+        marks = ','.join('?' for unused in fields)
+        return self.rows('SELECT field_key,value,present FROM workbench_discovery_index_value '
+                         f'WHERE matter_id=? AND document_id=? AND direction=0 AND field_key IN ({marks})',
+                         (matter_id, document_id, *fields))
+
     def read_items(self, matter_id, document_ids):
         if len(document_ids) > 500:
             raise ValueError('item read accepts at most 500 document ids')

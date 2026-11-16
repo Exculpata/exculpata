@@ -1,4 +1,4 @@
-<article class="dr-item" data-review-item data-token="{{ panel.item.token }}" data-view="{{ panel.active }}" aria-labelledby="dr-item-heading">
+<article class="dr-item{% if panel.records %} dr-item-records{% endif %}" data-review-item data-token="{{ panel.item.token }}" data-view="{{ panel.active }}" aria-labelledby="dr-item-heading">
   <header class="dr-item-header">
     <div class="dr-item-title">
       <h2 id="dr-item-heading" tabindex="-1"><span class="dr-bates{% if panel.heading.missing %} dr-muted{% endif %}">{{ panel.heading.label }}</span> <span class="dr-item-name">{{ panel.heading.title }}</span></h2>
@@ -9,6 +9,37 @@
       {% for label in panel.unavailable %}<span class="dr-view-off" title="{{ 'No extracted text is stored for this item' if label == 'Text' else 'This file type opens from the source page' }}">{{ label }}</span>{% endfor %}
     </nav>
   </header>
+  {% if panel.family and panel.family.context %}<p class="dr-family-context" data-family-context>
+    Family parent: <a href="{{ panel.family.context.url }}">{{ panel.family.context.name }}</a>.
+    {% if panel.family.context.continuation %}This family continues from another list page.{% endif %}
+    {% if panel.family.context.filtered %}Parent context is not included in the match count.{% endif %}
+  </p>{% endif %}
+  {% if panel.production.diagnostics %}<ul class="dr-production-findings" aria-label="Production findings">{% for finding in panel.production.diagnostics %}<li>{{ finding }}</li>{% endfor %}</ul>{% endif %}
+  {% if panel.record_sources %}<nav class="dr-production-findings" aria-label="Original load-file records">{% for source in panel.record_sources %}<p><a href="{{ source.url }}">Inspect original records: {{ source.name }}</a>{% if source.status %} · {{ source.status }}{% endif %}</p>{% endfor %}</nav>{% endif %}
+  {% macro production_records(records) %}
+  <section class="dr-production-records" data-production-records data-record-kind="{{ records.kind }}" data-attempt="{{ records.attempt.attempt_id }}" aria-label="{{ 'Document metadata records' if records.kind == 'dat' else 'Page records' }}">
+    <header class="dr-record-bar">
+      <p data-production-coverage>{{ records.attempt.source_name }} · {{ records.attempt.status }} · {{ records.total }} records{% for name, count in records.counts.items() %} · {{ name|replace('_', ' ') }}: {{ count }}{% endfor %}</p>
+      <nav class="dr-pager" aria-label="Production records">
+        {% if records.previous %}<a href="{{ records.previous.url }}" data-review-fragment="{{ records.previous.fragment }}" data-record-direction="previous">Previous records</a>{% endif %}
+        {% if records.next %}<a href="{{ records.next.url }}" data-review-fragment="{{ records.next.fragment }}" data-record-direction="next">Next records</a>{% endif %}
+      </nav>
+    </header>
+    {% if records.attempt.failure %}<p class="dr-notice-warning">{{ records.attempt.failure }}</p>{% endif %}
+    {% for record in records.rows %}
+    <article class="dr-production-record" data-record-ordinal="{{ record.ordinal }}" data-record-line="{{ record.line }}">
+      <h3>{{ record.source_format }} record {{ record.ordinal }}{% if record.kind == 'rejected' %} · Rejected{% endif %}</h3>
+      <p class="dr-provenance">{{ record.source_name }} · source {{ record.source_document_id }} · version {{ record.source_version_id }} · line {{ record.line }}</p>
+      {% if record.association_status %}<p class="dr-muted">Association: {{ record.association_status }}</p>{% endif %}
+      {% if record.diagnostics %}<ul class="dr-production-findings">{% for finding in record.diagnostics %}<li>{{ finding }}</li>{% endfor %}</ul>{% endif %}
+      {% if record.recoverable %}<dl>
+        {% for cell in record.display_cells %}<div data-record-cell="{{ cell.position }}"><dt><span class="dr-muted">Position {{ cell.position }}</span>{% if cell.has_header %}<pre>{{ cell.label }}</pre>{% endif %}</dt><dd>{% if cell.has_value %}<pre>{{ cell.value }}</pre>{% else %}<span class="dr-muted">No recoverable cell</span>{% endif %}</dd></div>{% endfor %}
+      </dl>{% else %}<p class="dr-muted">The original cells could not be recovered. The record location and diagnostics are preserved.</p>{% endif %}
+      {% if record.optional_values %}<dl>{% for label, value in record.optional_values %}<div><dt>{{ label }}</dt><dd><pre>{{ value }}</pre></dd></div>{% endfor %}</dl>{% endif %}
+    </article>
+    {% else %}<p class="dr-muted">No stored record is available in this attempt yet.</p>{% endfor %}
+  </section>
+  {% endmacro %}
   <div class="dr-codes" aria-label="Review codes">
     {% for code in panel.codes %}
     <form method="post" action="{{ panel.fragment }}/codes/{{ code.id }}" data-code-form>
@@ -20,10 +51,17 @@
     {% else %}<p class="dr-muted">No review codes defined. Add labels under Review codes.</p>{% endfor %}
   </div>
   {% if panel.active == 'document' %}
+  {% if panel.records %}
+  {{ production_records(panel.records) }}
+  {% if not panel.embed %}<p class="dr-state" data-page-image-unavailable>The page image is unavailable. The supplied label and image path remain visible as metadata. TIFF previews are not available yet.</p>{% endif %}
+  {% endif %}
+  {% if panel.embed %}
   <div class="dr-document">
     {% if panel.embed.kind == 'image' %}<img src="{{ panel.embed.url }}" alt="{{ panel.heading.title }}">
     {% else %}<iframe src="{{ panel.embed.url }}#view=FitH&amp;navpanes=0" title="{{ panel.heading.title }}"></iframe>{% endif %}
   </div>
+  {% endif %}
+  {% if panel.native_embed %}<details class="dr-native-document"><summary>Native document, separate from page records</summary><p class="dr-muted">Page-record ordinals do not establish correspondence with positions in the native document.</p><div class="dr-document">{% if panel.native_embed.kind == 'image' %}<img src="{{ panel.native_embed.url }}" alt="{{ panel.heading.title }}">{% else %}<iframe src="{{ panel.native_embed.url }}#view=FitH&amp;navpanes=0" title="{{ panel.heading.title }}"></iframe>{% endif %}</div></details>{% endif %}
   {% elif panel.active == 'text' %}
   <div class="dr-text-bar">
     <span class="dr-provenance">Text extracted by {{ product_name }} from the stored file</span>
@@ -37,14 +75,16 @@
   {% else %}<p class="dr-state">The extracted text could not be read. Open the source page to check this item.</p>{% endif %}
   {% else %}
   <div class="dr-fields" data-review-fields>
+    {% if panel.fields.metadata_state != 'complete' %}<p class="dr-state" data-production-pending>{{ 'Production metadata could not be prepared. Inspect the retained load-file records for details.' if panel.fields.metadata_state == 'error' else 'Production metadata is still being prepared. Supplied values may not yet be available.' }}</p>{% endif %}
+    {% if panel.records %}{{ production_records(panel.records) }}{% endif %}
     <label class="dr-field-filter"><span class="visually-hidden">Filter this item's fields</span><input type="search" placeholder="Filter fields" autocomplete="off" data-field-filter></label>
     {% macro field_groups(groups) %}{% for group in groups %}
     <section class="dr-field-group"><h3>{{ group.label }}</h3>
       <dl>{% for row in group.rows %}<div data-field-row><dt>{{ row.label }}</dt><dd>{% if row.details %}{% for detail in row.details %}<div>{{ detail.value }} <small>Applied by {{ detail.created_by }} at <time datetime="{{ detail.created_at }}" data-review-time>{{ detail.created_at }}</time></small></div>{% endfor %}{% else %}{{ row.value }}{% endif %}</dd></div>{% endfor %}</dl>
-      {% if group.empty %}<p class="dr-muted dr-empty-fields" data-field-row>No value: {{ group.empty|join(', ') }}</p>{% endif %}
+      {% if group.empty and panel.fields.metadata_state == 'complete' %}<p class="dr-muted dr-empty-fields" data-field-row>No value: {{ group.empty|join(', ') }}</p>{% endif %}
     </section>{% endfor %}{% endmacro %}
     {{ field_groups(panel.fields.primary) }}
-    {% if panel.fields.picked %}<section class="dr-field-group"><h3>Chosen load-file fields</h3><dl>{% for row in panel.fields.picked %}<div data-field-row><dt>{{ row.label }}</dt><dd{% if row.absent %} class="dr-muted"{% endif %}>{{ '(absent)' if row.absent else row.value }}</dd></div>{% endfor %}</dl></section>{% endif %}
+    {% if panel.fields.picked %}<section class="dr-field-group"><h3>Chosen load-file fields</h3><dl>{% for row in panel.fields.picked %}<div data-field-row><dt>{{ row.label }}</dt><dd{% if row.absent or row.pending %} class="dr-muted"{% endif %}>{{ 'Metadata is not currently available' if row.pending else '(absent)' if row.absent else row.value }}</dd></div>{% endfor %}</dl></section>{% endif %}
     <details class="dr-field-more"{% if panel.fields.load_file_open %} open{% endif %}>
       <summary>Load file{% if panel.fields.load_file %} ({{ panel.fields.load_file|length }} fields, as produced; duplicate headings have display ordinals){% endif %}</summary>
       {% if panel.fields.load_file %}

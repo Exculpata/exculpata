@@ -475,6 +475,11 @@ class Runner:
                     if paths:
                         env['PATH'] = os.pathsep.join([*reversed(paths), env['PATH']])
                     self.emit(f'{"FAIL" if code else "PASS"} {step_tag} exit={code} timeout={timed_out} continued={tolerated} seconds={time.monotonic() - started:.1f} log={log.name}')
+                    from scripts.ci_parity_durations import near_limit
+                    if near_limit(command, log.read_text(errors='replace'), step_tag=step_tag, emit=self.emit):
+                        self.failed += int(conclusion != 'failure')
+                        status = 'failure'
+                        step_state.update(outcome='failure', conclusion='failure')
                     if step_state['outputs']:
                         self.emit(f'OUTPUTS {step_tag}: {json.dumps(step_state["outputs"], sort_keys=True)}')
                     summary = files['GITHUB_STEP_SUMMARY'].read_text()

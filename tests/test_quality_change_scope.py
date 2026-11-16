@@ -157,7 +157,7 @@ def test_required_application_check_cannot_succeed_after_classification_or_publi
     application = workflow.split("\n  application:\n", 1)[1].split("\n  application-shards:\n", 1)[0]
     # Keep the required checks fail-closed while application and publication run
     # concurrently. The existing required deployment check now enforces publication.
-    assert "needs: [change-scope, application-shards]\n" in application
+    assert "needs: [change-scope, application-shards, application-row-budget]\n" in application
     assert "if: ${{ always() }}" in application
     assert 'SCOPE_RESULT: ${{ needs.change-scope.result }}' in application
     assert 'run: test "$SCOPE_RESULT" = success' in application

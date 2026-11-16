@@ -22,9 +22,12 @@ MAX_STEP_ROWS = 256
 MAX_REQUEST_STEPS = 128
 STEP_CONTROL_ROWS = 32
 MAX_PRIMITIVE_ROWS = 32
+PROJECTION_PRIMITIVE_ROWS = 24
+ORDER_VALUE_ROWS = PROJECTION_PRIMITIVE_ROWS - 4
 SERVICES = WeakSet()
-PHASES = ('inventory', 'delete_stale', 'load_sources', 'parse', 'match', 'reports', 'project')
+PHASES = ('inventory', 'delete_stale', 'load_sources', 'parse', 'match', 'reports', 'project', 'order')
 MIN_CAPACITY = 2 * 1024 * 1024
+ORDER_CHECKPOINT_BYTES = 1024 * 1024 * 1024
 
 
 def cancel(matter_root, matter_id):
@@ -41,7 +44,7 @@ def work_bound(*, R, F=0, L=0, A=0, C=0, I=0, V=0, Z=0, H=0, P=0, U=0, Q=0):
 
 
 def fresh_cursor(target, total):
-    return {'version': 2, 'generation': uuid4().hex, 'target': list(target), 'sequence': 0,
+    return {'version': 3, 'generation': uuid4().hex, 'target': list(target), 'sequence': 0,
             'phase': 'inventory', 'after_document': '', 'after_source': '', 'after_line': 0,
             'subphase': '', 'active': None, 'eof': dict.fromkeys(PHASES, False),
             'counts': {'total': total, 'indexed': 0, 'errors': 0},
@@ -63,7 +66,7 @@ def decode_cursor(state):
     try:
         cursor = json.loads(state['checkpoint'])
         prototype = fresh_cursor([], 0)
-        if set(cursor) != set(prototype) or type(cursor['version']) is not int or cursor['version'] != 2:
+        if set(cursor) != set(prototype) or type(cursor['version']) is not int or cursor['version'] != 3:
             return None
         for name in ('generation', 'phase', 'after_document', 'after_source', 'subphase'):
             if not isinstance(cursor[name], str):
@@ -72,8 +75,9 @@ def decode_cursor(state):
             if type(cursor[name]) is not int or cursor[name] < 0:
                 return None
         target = cursor['target']
-        if (not isinstance(target, list) or len(target) != 8 or not isinstance(target[0], str)
+        if (not isinstance(target, list) or len(target) != 9 or not isinstance(target[0], str)
                 or any(type(target[i]) is not int for i in (1, 2, 5, 6, 7))
+                or not isinstance(target[8], str)
                 or not isinstance(target[3], list) or len(target[3]) != 3
                 or any(type(value) is not int for value in target[3]) or not isinstance(target[4], str)):
             return None
@@ -105,7 +109,7 @@ def decode_cursor(state):
             if digest(active['source']) != active['fingerprint'] or len(active['qualifying']) > 2:
                 return None
             if active['subphase'] not in ('values_clear', 'load_clear', 'parse', 'refresh', 'match', 'report',
-                                         'prepare', 'coding', 'values', 'publish'):
+                                         'prepare', 'coding', 'values', 'publish', 'order'):
                 return None
             if (len(active['child']) != 2 or not isinstance(active['child'][0], str) or type(active['child'][1]) is not int
                     or active['tier'] not in range(3) or active['line'] < 0 or active['value_position'] < 0):
@@ -126,14 +130,14 @@ def decode_cursor(state):
             'match': ('inventory', 'delete_stale', 'load_sources', 'parse'),
             'reports': ('inventory', 'delete_stale', 'load_sources', 'parse', 'match'),
             'project': ('inventory', 'delete_stale', 'load_sources', 'parse', 'match', 'reports'),
-            'complete': PHASES,
+            'order': PHASES[:-1], 'complete': PHASES,
         }
         if {name for name, ended in cursor['eof'].items() if ended} != set(completed_before[phase]):
             return None
         permitted = {'inventory': (), 'delete_stale': ('values_clear', 'load_clear'),
                      'load_sources': ('load_clear', 'refresh'), 'parse': ('parse',),
                      'match': ('match',), 'reports': ('report',),
-                     'project': ('prepare', 'coding', 'values_clear', 'values', 'publish'), 'complete': ()}
+                     'project': ('prepare', 'coding', 'values_clear', 'values', 'publish'), 'order': ('values',), 'complete': ()}
         if cursor['subphase'] != (active['subphase'] if active else ''):
             return None
         if active and active['subphase'] not in permitted[phase]:
@@ -147,12 +151,13 @@ def decode_cursor(state):
 
 
 class Service:
-    def __init__(self, context, identifiers, codes):
+    def __init__(self, context, identifiers, codes, *, production=None):
         self.context, self.identifiers, self.codes = context, identifiers, codes
+        self.production = production
         self.repository = Repository(context.db)
         self.jobs = {}
         self.jobs_lock = threading.Lock()
-        self.step_lock = threading.Lock()
+        self.step_lock = production.step_lock if production is not None else threading.Lock()
         SERVICES.add(self)
 
     def cancel(self, matter_id):
@@ -163,6 +168,8 @@ class Service:
                 job.serial += 1
         if job is not None:
             job.store.source_changes.unsubscribe(job.subscription)
+        if self.production is not None:
+            self.production.cancel(matter_id)
 
     def invalidate(self, matter_id):
         with self.jobs_lock:
@@ -171,14 +178,16 @@ class Service:
                 job.serial += 1
                 job.error = ''
 
-    def signature(self, job, budget=None):
+    def signature(self, job, budget=None, *, production=True):
         token = self.codes.change_token(job.matter_id)
         if budget is not None:
-            budget.charge(2)
+            budget.charge(3)
         return (job.store.source_changes.epoch, job.store.revision, self.identifiers.mark(job.matter_id),
-                list(token), job.definition_digest, job.store.source_changes.failed_revision, keys.VERSION, job.serial)
+                list(token), job.definition_digest, job.store.source_changes.failed_revision, keys.VERSION, job.serial,
+                self.production.repository.stamp(job.matter_id) if self.production is not None and production
+                    and job.matter_id in self.production.bindings else '')
 
-    def current(self, matter_id, store, definition):
+    def current(self, matter_id, store, definition, *, matter=None):
         reader.retain(matter_id)
         definition_digest = digest(asdict(definition))
         with store.mutation_guard():
@@ -196,11 +205,18 @@ class Service:
                     store.source_changes.unsubscribe(candidate.subscription)
             with self.jobs_lock:
                 job.definition, job.definition_digest = definition, definition_digest
+            if self.production is not None and (matter is not None or matter_id in self.production.bindings):
+                matter = matter or self.production.binding(matter_id)['matter']
+                target = digest(self.signature(job, production=False))
+                self.production.bind(matter, store, definition, target=target,
+                    target_validator=lambda mid, captured: mid == job.matter_id and not job.cancelled
+                        and self.jobs.get(mid) is job and captured == digest(self.signature(job, self.production.repository.budget(), production=False)))
             with self.context.db.lock:
                 state = self.repository.state(matter_id)
                 cursor = decode_cursor(state)
                 complete = cursor is not None and cursor['target'] == list(self.signature(job)) and cursor['phase'] == 'complete'
-        if not complete:
+        if not complete or (self.production is not None and matter_id in self.production.bindings and (matter_id not in self.production.discovery_done
+                or self.production.repository.pending_work(matter_id, self.production.binding(matter_id)))):
             self.advance(job, MAX_REQUEST_STEPS)
         with store.mutation_guard(), self.context.db.lock:
             state = self.repository.state(matter_id) or {}
@@ -208,6 +224,7 @@ class Service:
             target = self.signature(job)
             valid = cursor is not None and cursor['target'] == list(target)
             complete = valid and cursor['phase'] == 'complete' and not cursor['counts']['errors']
+            complete = complete and (job.production is None or job.production['state'] != 'pending')
             generation = cursor['generation'] if valid else digest(target)
             return View(matter_id, store, definition, definition_digest, generation, target, job.error,
                         self.repository, lambda: self.signature(job), state, complete, store.source_changes.count(),
@@ -216,18 +233,48 @@ class Service:
     def advance(self, job, max_steps):
         if type(max_steps) is not int or not 0 <= max_steps <= MAX_REQUEST_STEPS:
             raise ValueError('request step budget must be between zero and 128')
+        production_steps = 0
+        if self.production is not None and job.matter_id in self.production.bindings and max_steps:
+            try:
+                job.production = self.production.advance(job.matter_id, max_steps=max(1, max_steps - 1))
+            except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError) as exc:
+                job.error = 'Metadata unavailable: indexing error'
+                self.failure = str(exc)
+                job.attempts = max_steps
+                return max_steps
+            production_steps = job.production['steps']
+            if job.plan is not None:
+                with job.store.mutation_guard(), self.context.db.lock:
+                    prior = decode_cursor(self.repository.state(job.matter_id))
+                    target = list(self.signature(job))
+                    if prior is not None and prior['target'][:-1] == target[:-1] and prior['target'] != target:
+                        with self.jobs_lock:
+                            job.plan = None
+        available = max_steps - production_steps
+        if job.production is not None and job.production['state'] == 'pending':
+            available = min(available, 1)
         attempts = 0
         raw = {}
-        for attempt in range(max_steps):
+        for attempt in range(available):
             attempts = attempt + 1
             with self.jobs_lock:
                 plan = job.plan
                 cancelled = job.cancelled
+                order_checkpoint_window = job.order_checkpoint_window
             if cancelled:
                 break
             capacity = max(MIN_CAPACITY, plan[2] if plan else 0)
+            checkpoint_bytes = 0
+            if self.repository.sqlite and order_checkpoint_window:
+                try:
+                    self.context.ensure_capacity(capacity + 2 * ORDER_CHECKPOINT_BYTES)
+                except (OSError, RuntimeError, ValueError):
+                    pass
+                else:
+                    checkpoint_bytes = ORDER_CHECKPOINT_BYTES
             try:
-                self.context.ensure_capacity(capacity)
+                if not checkpoint_bytes:
+                    self.context.ensure_capacity(capacity)
             except (OSError, RuntimeError, ValueError):
                 job.error = 'Metadata unavailable: indexing error'
                 break
@@ -235,6 +282,7 @@ class Service:
                 break
             budget = Budget(MAX_STEP_ROWS, MAX_STEP_ROWS - STEP_CONTROL_ROWS)
             job.last_budget = budget
+            job.reserved_checkpoint_bytes = checkpoint_bytes
             try:
                 done = self.step(job, budget, capacity, raw, plan)
                 if done:
@@ -253,9 +301,10 @@ class Service:
                 self.failure = str(exc)
                 break
             finally:
+                job.reserved_checkpoint_bytes = 0
                 self.step_lock.release()
-        job.attempts = attempts
-        return attempts
+        job.attempts = attempts + production_steps
+        return job.attempts
 
     def step(self, job, budget, capacity, raw, plan):
         budget.in_control = True
@@ -268,9 +317,18 @@ class Service:
                 return True
             initializing = cursor is None or cursor['target'] != list(target)
             if initializing:
+                previous = cursor
                 cursor = fresh_cursor(target, job.store.source_changes.count())
+                coding_resume = None
+                if previous is not None and previous['phase'] != 'complete' and previous['target'][:-1] == list(target[:-1]):
+                    cursor['sequence'] = previous['sequence']
+                    cursor['accumulators'] = dict(previous['accumulators'])
+                    coding_resume = json.loads(state['summaries']).get('coding_resume')
+                    if previous['phase'] == 'project' and previous['active'] and previous['active']['subphase'] == 'coding':
+                        coding_resume = {'generation': previous['generation'], 'active': previous['active']}
                 budget.charge(1)
-                summaries = {'headers': [], 'filled': [], 'reports': [], 'report_total': 0, 'matched': 0}
+                summaries = {'headers': [], 'filled': [], 'reports': [], 'report_total': 0, 'matched': 0,
+                             'production': job.production or {}, 'coding_resume': coding_resume}
             else:
                 summaries = json.loads(state['summaries'])
             expected = (state.get('generation'), state.get('checkpoint')) if state else None
@@ -283,10 +341,30 @@ class Service:
         prepared = {} if initializing else self.prepare(job, cursor, budget, raw)
         if initializing:
             budget.charge(0, credit=True)
-        with self.commit(job, target, expected, cursor, budget, capacity) as tx:
+        checkpoint_bytes = job.reserved_checkpoint_bytes if cursor['phase'] == 'order' else 0
+        with self.commit(job, target, expected, cursor, budget, capacity, checkpoint_bytes) as tx:
             if prepared.get('records') is not None:
                 self.parsed(tx, job, cursor, summaries, prepared)
-            while not initializing and budget.remaining >= MAX_PRIMITIVE_ROWS + 1 and cursor['phase'] != 'complete':
+            while not initializing and cursor['phase'] != 'complete':
+                primitive_rows = PROJECTION_PRIMITIVE_ROWS if cursor['phase'] in ('project', 'order') else MAX_PRIMITIVE_ROWS
+                active = cursor['active']
+                ordering = prepared.get('order_document')
+                writing_values = (cursor['phase'] == 'order' and active is not None and active['value_eof']
+                                  and active['value_position'] < 2 * (1 + len(job.definition.fields) + len(summaries['headers']))
+                                  and ordering is not None and ordering[0] == active['document_id'])
+                finishing_order_document = (cursor['phase'] == 'order' and active is not None and active['value_eof']
+                                            and active['value_position'] == 2 * (1 + len(job.definition.fields) + len(summaries['headers']))
+                                            and ordering is not None and ordering[0] == active['document_id'])
+                selecting_order_document = cursor['phase'] == 'order' and active is None
+                minimum_rows = primitive_rows + 1
+                if selecting_order_document:
+                    minimum_rows = 2
+                elif writing_values:
+                    minimum_rows = 3
+                elif finishing_order_document:
+                    minimum_rows = 4
+                if budget.remaining < minimum_rows:
+                    break
                 before = budget.work
                 before_phase = cursor['phase']
                 if not self.primitive(tx, job, cursor, summaries, prepared):
@@ -294,7 +372,7 @@ class Service:
                     break
                 if budget.work == before or cursor['phase'] != before_phase:
                     budget.charge(0, credit=True)
-                if budget.work - before > MAX_PRIMITIVE_ROWS:
+                if budget.work - before > primitive_rows:
                     raise RuntimeError('index primitive row budget exceeded')
             pending = prepared.get('pending_cache')
             if pending is not None:
@@ -310,13 +388,14 @@ class Service:
         with self.jobs_lock:
             job.plan = None
             job.error = ''
+            job.order_checkpoint_window = cursor['phase'] == 'order'
         return cursor['phase'] == 'complete'
 
     @contextmanager
-    def commit(self, job, target, expected, cursor, budget, capacity):
+    def commit(self, job, target, expected, cursor, budget, capacity, checkpoint_bytes=0):
         locked = False
         try:
-            with job.store.mutation_guard(), self.repository.transaction(budget, capacity) as tx:
+            with job.store.mutation_guard(), self.repository.transaction(budget, capacity, checkpoint_bytes) as tx:
                 budget.in_control = True
                 actual = self.repository.state(job.matter_id, tx)
                 observed = (actual.get('generation'), actual.get('checkpoint')) if actual else None
@@ -334,6 +413,31 @@ class Service:
         finally:
             if locked:
                 self.jobs_lock.release()
+
+    def prepare_requires_io(self, job, source):
+        suffix = PurePosixPath(source.display_name).suffix.casefold()
+        return (source.origin == 'upload' and source.state == 'ready'
+                and (source.media_type in job.definition.email_media_types or suffix in job.definition.email_suffixes))
+
+    def unassociated_projection(self, job, source, tx):
+        if self.production is None or job.matter_id not in self.production.bindings:
+            return {'state': 'complete'}
+        if load_files.source_format(source.display_name):
+            return None
+        production, mid = self.production.repository, job.matter_id
+        with production.counted(tx.budget):
+            current = production.catalog(mid, source.document_id)
+            if current is None or current['version_id'] != source.version_id:
+                raise KeyError(source.document_id)
+            if load_files.source_format(current['display_name']):
+                return None
+            if (production.current_attempt(mid, source.document_id) is not None
+                    or self.repository.has_production_records(tx, mid, source.document_id)
+                    or production.provenance(mid, source.document_id, source.version_id)):
+                return None
+        return {'state': 'complete' if mid in self.production.discovery_done else 'pending',
+                'values': {}, 'raw_fields': (), 'diagnostics': (), 'family': {},
+                'references': (), 'references_next': None}
 
     def prepare(self, job, cursor, budget, raw):
         active = cursor['active']
@@ -366,9 +470,11 @@ class Service:
                     break
             return {'records': records}
         if active['subphase'] == 'prepare':
-            suffix = PurePosixPath(source.display_name).suffix.casefold()
-            if (source.origin == 'upload' and source.state == 'ready'
-                    and (source.media_type in job.definition.email_media_types or suffix in job.definition.email_suffixes)):
+            production = {'state': 'complete'}
+            if self.production is not None and job.matter_id in self.production.bindings:
+                with self.production.repository.counted(budget):
+                    production = self.production.document_projection(job.matter_id, source.document_id, source.version_id)
+            if self.prepare_requires_io(job, source):
                 with job.store.mutation_guard(), self.context.db.lock:
                     found = self.repository.document_read(job.matter_id, source.document_id)
                     budget.charge(int(found is not None))
@@ -378,10 +484,10 @@ class Service:
                     try:
                         email = reader.email_headers(job.store.source_path(source.document_id, verify_digest=True),
                                                      tuple(f.email_header for f in job.definition.fields if f.email_header))
-                        return {'email': email, 'email_key': email_key}
+                        return {'email': email, 'email_key': email_key, 'production': production}
                     except (OSError, ValueError, KeyError, RuntimeError):
-                        return {'email': {}, 'email_key': email_key, 'email_error': True}
-            return {'prepared': source.document_id}
+                        return {'email': {}, 'email_key': email_key, 'email_error': True, 'production': production}
+            return {'prepared': source.document_id, 'production': production}
         return {}
 
     def transition(self, cursor, phase):
@@ -516,6 +622,8 @@ class Service:
             self.report(tx, job, cursor, summaries)
         elif phase == 'project':
             return self.project(tx, job, cursor, summaries, prepared)
+        elif phase == 'order':
+            self.order(tx, job, cursor, summaries, prepared)
         return True
 
     def match(self, tx, job, cursor):
@@ -598,20 +706,21 @@ class Service:
         if active is None:
             rows = repo.documents(tx, mid, cursor['after_document'], cursor['generation'])
             if not rows:
-                cursor['eof']['project'] = True
-                counts = cursor['counts']
-                if all(cursor['eof'].values()) and counts['indexed'] + counts['errors'] == counts['total']:
-                    cursor['phase'] = 'complete'
-                else:
-                    raise RuntimeError('inconsistent index completion markers')
+                self.transition(cursor, 'order')
                 return True
             row = repo.document(tx, mid, rows[0][0])
             active = active_document(rows[0][0], row, 'prepare')
             cursor['active'] = active
             source = SourceSnapshot(**active['source'])
-            suffix = PurePosixPath(source.display_name).suffix.casefold()
-            if source.media_type in job.definition.email_media_types or suffix in job.definition.email_suffixes:
+            if self.prepare_requires_io(job, source):
                 return False
+            production = self.unassociated_projection(job, source, tx)
+            if production is None:
+                return False
+            prepared.clear()
+            prepared.update(prepared=source.document_id, production=production,
+                            document=(source.document_id, row, json.loads(row[2])))
+            return True
         cached = prepared.get('document')
         if cached is None or cached[0] != active['document_id']:
             row = repo.document(tx, mid, active['document_id'])
@@ -637,9 +746,20 @@ class Service:
                 cache.pop('email_error', None)
                 if prepared.get('email_error'):
                     cache['email_error'] = True
-            cache['projection'] = {'generation': cursor['generation'], 'source': active['fingerprint'],
-                                   'attachment': attachment, 'item': None, 'codes': []}
+            production = prepared.get('production', {'state': 'complete'})
+            coding_resume = summaries.get('coding_resume')
+            codes, coding_after = [], None
+            if coding_resume and coding_resume['active']['document_id'] == source.document_id:
+                prior = coding_resume['active']
+                if prior['fingerprint'] != active['fingerprint']:
+                    raise Superseded('coding source changed')
+                codes = self.checked_projection(cache, coding_resume, prior)['codes']
+                coding_after = prior['coding_after']
+                summaries.pop('coding_resume')
+            cache['projection'] = {'production': production, 'generation': cursor['generation'], 'source': active['fingerprint'],
+                                   'attachment': attachment, 'item': None, 'codes': codes}
             active.update(subphase='coding', coding_after=None, coding_eof=False)
+            active['coding_after'] = coding_after
             prepared['pending_cache'] = (source.document_id, cache)
         elif subphase == 'coding':
             projection = cache['projection']
@@ -651,13 +771,14 @@ class Service:
             if page:
                 active['coding_after'] = [page[-1][6], page[-1][1], page[-1][0]]
             else:
-                active.update(coding_eof=True, subphase='values_clear')
+                active.update(coding_eof=True, subphase='publish', value_eof=True)
                 fingerprint = digest((active['source'], active['identifier'], projection['codes'], projection['attachment'],
                                       summaries['headers'], job.definition_digest, keys.VERSION,
-                                      cache.get('email', {}), cache.get('email_error'), cache.get('table_error')))
+                                      cache.get('email', {}), cache.get('email_error'), cache.get('table_error'),
+                                      projection['production'], cursor['target'][8]))
                 projection['fingerprint'] = fingerprint
                 if fingerprint == row[3] and row[1]:
-                    projection['item'] = json.loads(row[1])
+                    projection['item'] = cache['display']
                     active.update(subphase='publish', value_eof=True)
                 else:
                     attachment = projection['attachment']
@@ -665,6 +786,7 @@ class Service:
                                             json.loads(attachment[3])) if attachment else None
                     item = reader.project_item(source, job.definition, {source.document_id: active['identifier']},
                                                match, cache.get('email', {}))
+                    item = reader.project_production_item(job.definition, item, projection['production'])
                     projection['item'] = asdict(item)
                     for chosen in job.definition.fields:
                         if chosen.computed == 'review_codes':
@@ -696,6 +818,9 @@ class Service:
             if assigned.get(source.document_id, '') != active['identifier'] or not active['coding_eof'] or not active['value_eof']:
                 raise Superseded('human work changed before publish')
             item = reader.Item(**projection['item'])
+            for header in item.load_file:
+                if header not in summaries['headers'] and job.definition.field('lf:' + header) is not None:
+                    summaries['headers'].append(header)
             for key, value in item.values.items():
                 if value and key not in summaries['filled']:
                     summaries['filled'].append(key)
@@ -703,9 +828,86 @@ class Service:
             prepared['pending_cache'] = None
             prepared['document'] = None
             repo.publish(tx, mid, item, cursor['generation'], projection['fingerprint'], cache)
-            cursor['counts']['indexed' if item.metadata_state == 'complete' else 'errors'] += 1
             cursor.update(after_document=source.document_id, active=None)
         return True
+
+    def order(self, tx, job, cursor, summaries, prepared):
+        repo, mid, active = self.repository, job.matter_id, cursor['active']
+        row = None
+        if active is None:
+            rows = repo.documents(tx, mid, cursor['after_document'], cursor['generation'])
+            if not rows:
+                cursor['eof']['order'] = True
+                counts = cursor['counts']
+                if not all(cursor['eof'].values()) or counts['indexed'] + counts['errors'] != counts['total']:
+                    raise RuntimeError('inconsistent index completion markers')
+                cursor['phase'] = 'complete'
+                return
+            row = repo.document(tx, mid, rows[0][0])
+            active = active_document(rows[0][0], row, 'values')
+            cursor['active'] = active
+            prepared['order_row'] = (active['document_id'], row)
+            return
+        cached = prepared.get('order_document')
+        if cached is None or cached[0] != active['document_id']:
+            selected = prepared.pop('order_row', None)
+            if selected is not None and selected[0] == active['document_id']:
+                row = selected[1]
+            if row is None:
+                row = repo.document(tx, mid, active['document_id'])
+            cache = json.loads(row[2])
+            item = reader.Item(**cache['display'])
+            parent, parent_fingerprint = None, ''
+            root = item.family.get('root')
+            if root:
+                parent_row = repo.document(tx, mid, root)
+                if parent_row is None or not parent_row[1]:
+                    raise Superseded('family parent is unavailable')
+                parent = reader.Item(**json.loads(parent_row[2])['display'])
+                parent_fingerprint = parent_row[3]
+            fingerprint = digest((row[3], parent_fingerprint, summaries['headers'], job.definition_digest, keys.VERSION))
+            cached = (active['document_id'], cache, item, parent, fingerprint)
+            prepared['order_document'] = cached
+        document_id, cache, item, parent, fingerprint = cached
+        if not active['value_eof'] and active['child'] == ['', -1]:
+            if cache.get('order_fingerprint') == fingerprint:
+                self.finish_order(tx, job, cursor, prepared, cache, item, fingerprint)
+                return
+            if cache.pop('order_fingerprint', None) is not None:
+                repo.cache(tx, mid, document_id, cache)
+        if not active['value_eof']:
+            rows = repo.clear_values(tx, mid, active['document_id'], active['child'])
+            if rows:
+                active['child'] = list(rows[-1])
+            else:
+                active['value_eof'] = True
+            return
+        choices = [Field('', '', '', sort='natural'), *job.definition.fields,
+                   *(job.definition.field('lf:' + header) for header in summaries['headers'])]
+        start = active['value_position']
+        if start == 2 * len(choices):
+            self.finish_order(tx, job, cursor, prepared, cache, item, fingerprint)
+            return
+        value_rows = min(ORDER_VALUE_ROWS, tx.budget.remaining - 2)
+        stop = min(start + value_rows, 2 * len(choices))
+        selections = []
+        for position in range(start, stop):
+            chosen = choices[position // 2]
+            components = (reader.production_order_components(job.definition, item, parent, chosen.key)
+                          if item.family.get('root') else None)
+            selections.append((chosen, bool(position % 2), components))
+        repo.values(tx, mid, item, selections, parent=parent)
+        active['value_position'] = stop
+
+    def finish_order(self, tx, job, cursor, prepared, cache, item, fingerprint):
+        if cache.get('order_fingerprint') != fingerprint:
+            cache['order_fingerprint'] = fingerprint
+            self.repository.cache(tx, job.matter_id, item.document_id, cache)
+        tx.write('UPDATE workbench_discovery_index_item SET readiness=? WHERE matter_id=? AND document_id=?',
+                 (item.metadata_state, job.matter_id, item.document_id))
+        cursor['counts']['indexed' if item.metadata_state == 'complete' else 'errors'] += 1
+        cursor.update(after_document=item.document_id, active=None)
+        prepared.pop('order_document', None)
 
     def checked_projection(self, cache, cursor, active):
         projection = cache['projection']

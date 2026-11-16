@@ -26,7 +26,7 @@ views:
 
 | View | Shows | Offered when |
 | --- | --- | --- |
-| Document | The stored PDF or image, in the page | The item is a stored PDF, JPEG or PNG |
+| Document | A supported stored image or PDF, or explicit production page metadata | A native preview or production page record is available |
 | Text | Text extracted by the product, one page or section at a time | Extracted text exists |
 | Fields | The item's fields, grouped | Always |
 
@@ -57,10 +57,11 @@ Rows past the first for one item are counted and not used.
 
 Use **Choose files** or **Choose a folder** on the workbench's Add sources
 surface to add supported `.dat` and `.opt` files, including uppercase suffixes.
-DAT and OPT files are saved without a preview or searchable text; metadata import is not available yet.
-Original bytes and their digests are retained. These files have no Document or
-Text preview, and their contents cannot be opened through the source-content
-route. Authorized preservation archives retain the originals, and ordinary
+DAT and OPT originals are saved without searchable text. Production documents
+imports their supported metadata separately; metadata import does not make the
+load file searchable. Original bytes and their digests are retained. Raw load
+files have no byte preview or Text view, and their contents cannot be opened
+through the source-content route. Authorized preservation archives retain the originals, and ordinary
 matter deletion removes them.
 
 DAT support requires at least two nonempty, distinct column headers and one data record, U+0014 field separators, optional thorn (þ) quoting, and the same number of fields in every record. OPT support requires no header, exactly seven comma-separated fields per record, and at least one nonblank record; quoted commas are not supported. Supported encodings are UTF-8 with an optional BOM, UTF-16 LE or BE with a BOM, and Windows-1252 detected from the first 64 KiB; later decoding errors are rejected. Each record must fit the 1 MiB record limit.
@@ -93,6 +94,58 @@ Registered-folder ingestion still supports only PDF, DOCX, and TXT. The legacy
 pilot selector remains limited to PDF and TXT; its default extended scanning
 policy does not provide DAT/OPT admission without a scanner. Browser-selected
 folders do not expand ZIP archives, and ZIP files are not admitted.
+
+## DAT metadata, explicit page records and families
+
+DAT inspection preserves every supplied header and cell, including long values,
+unknown columns, repeated locators and recoverable rejected records. Select the
+DAT source and open Fields to inspect raw records and exact accepted, rejected,
+matched, unmatched and conflicted totals. Unmatched rows do not create source
+items. Pending or failed metadata remains visibly unknown until a complete,
+validated import is published.
+
+Associations require an unambiguous admitted production root and intake
+provenance. Matching checks supplied paths, produced Bates and control numbers
+together. A path cannot override a contradictory identifier, and a Team ID is
+never an import match key. Ambiguous or unproven matches remain inspectable and
+unassociated. Adding an admitted source can resolve a formerly unmatched row.
+
+Equivalent repeated DAT rows retain every locator. Unequal competing rows do
+not select a winner or merge complementary values: their whole DAT association
+is withheld with a cited conflict. Conflicting CSV or TSV metadata likewise
+withholds the DAT association. Imported identifiers and Team IDs remain separate;
+a transaction refuses a conflicting association or assignment without changing
+either supplied record.
+
+OPT Document inspection shows the literal supplied page label, volume, inert
+path, source version, starting line and record ordinal. Supplied page counts
+and observed record counts remain distinct. An ordinal is a record position,
+never a Bates number. Previous and Next traverse stored records without a
+million-record cutoff, including records visible only on the OPT source.
+Expired generation links require reloading rather than silently rebinding.
+
+Only explicit, valid OPT document groups can associate through an unambiguous
+accepted DAT class. Rejected records break group continuity. No OPT means no
+per-page Bates labels; labels are never expanded from a range or page count.
+A uniquely admitted JPEG or PNG can appear beside its explicit record. Missing
+images, TIFF images without rendering support, and ambiguous references show
+metadata with an explanation. A separately available PDF does not establish
+correspondence between its pages and OPT records. OPT page labels do not enter
+Text, ordinary Fields values or list columns.
+
+Families use conservative two-level declarations. The declaring parent and
+terminal member must be unique, both endpoints must be supplied, and members
+must actually declare the same valid pair. Merely falling numerically inside a
+range does not establish membership. Conflicts, overlaps, missing endpoints,
+unsupported comparisons and cycles remain visible without guessed ancestry.
+The stored index sorts groups by the parent's selected value and retains
+parent-first member order across bounded pages. Filtered child matches show
+parent context without counting it as another match or identifier target.
+
+Preservation includes original bytes, raw metadata and every rejected locator.
+Derived index state can be rebuilt. Matter deletion removes preserved production
+records through the existing lifecycle authority; frozen matters refuse new
+writes. A failed or incomplete import never certifies complete coverage.
 
 ## Team identifiers
 
@@ -166,6 +219,14 @@ parser records and mutations. Progress is persisted with a versioned phase
 cursor. There is no index background execution; use the pending notice's refresh
 link to continue the requested view. Progress survives interrupted requests.
 A new source-store epoch starts bounded reconciliation and reuses verified caches.
+DAT/OPT work and index publication share that request budget. Committed source
+notifications restart bounded validation of production dependencies; an unchanged
+production root retains its matching generation. Completed production generations
+participate in item fingerprints and both sorted and pending list cursors.
+The existing generic index columns retain field presence and separate group and
+member keys. List reads fetch displayed values; only the selected item loads its
+complete field payload, so undisplayed wide DAT cells do not fill a page-sized
+Python collection.
 
 Until every phase finishes, the list shows every source in document identity
 order, with exact indexed, pending and error coverage. The requested sort and

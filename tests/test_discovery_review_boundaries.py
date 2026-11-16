@@ -13,14 +13,15 @@ def test_package_contract_and_isolation():
     layers = json.loads(LAYER_SNAPSHOT.read_text())
     assert layers["case_intelligence.modules"] == "core.contracts"
     assert layers["case_intelligence.modules.registry"] == "app_shell"
-    paths = list((PACKAGE / "modules" / "discovery_review").glob("*.py"))
+    paths = list((PACKAGE / "modules" / "discovery_review").rglob("*.py"))
     assert len(paths) >= 3
     contract = PACKAGE / "modules" / "__init__.py"
     assert not _resolve_imports("case_intelligence.modules", contract, set(layers))
     for path in paths:
-        name = "case_intelligence.modules.discovery_review"
-        if path.stem != "__init__":
-            name += "." + path.stem
+        parts = list(path.relative_to(PACKAGE.parent).with_suffix('').parts)
+        if parts[-1] == '__init__':
+            parts.pop()
+        name = '.'.join(parts)
         assert layers[name] == "modules.discovery_review"
         imports = _resolve_imports(name, path, set(layers))
         assert not imports & {"case_intelligence.workbench", "case_intelligence.workspace_store"}

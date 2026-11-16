@@ -408,3 +408,160 @@ def test_empty_or_unsupported_dat_is_cited(tmp_path, payload, code):
     assert list(parse_dat(path, findings=findings)) == []
     assert _citations(findings) == [(code, 1)]
     _assert_files(findings, path)
+
+
+def test_record_events_preserve_all_rejected_locators(tmp_path):
+    from case_intelligence.source_load_files import RecordEvent
+
+    payload = _dat_bytes([("KEY", "NOTE"), ("FIRST", "retained")])
+    malformed = _dat_bytes([("wrong", "two\nphysical lines", "extra")])
+    path = _write(tmp_path, payload + malformed * 2501 + _dat_bytes([("LAST", "retained®")]))
+    events, findings = [], []
+    rows = list(parse_dat(path, findings=findings, on_event=events.append))
+    assert [row.values for row in rows] == [("FIRST", "retained"), ("LAST", "retained®")]
+    assert all(isinstance(event, RecordEvent) for event in events)
+    assert events[0].kind == "header" and events[0].ordinal == 0
+    assert events[0].headers == events[0].cells == ("KEY", "NOTE")
+    rejected = [event for event in events if event.kind == "rejected"]
+    assert len(rejected) == 2501
+    assert [event.line for event in rejected] == list(range(3, 5005, 2))
+    assert [event.ordinal for event in rejected] == list(range(2, 2503))
+    assert all(event.cells == ("wrong", "two\nphysical lines", "extra") for event in rejected)
+    assert all(event.headers == ("KEY", "NOTE") for event in rejected)
+    assert all(event.diagnostics == ("field_count_mismatch",) for event in rejected)
+    assert all(event.category == "document" and event.source_format == "dat" for event in events)
+    assert events[-1].ordinal == 2503 and events[-1].line == 5005
+    assert len([finding for finding in findings if finding.code == "field_count_mismatch"]) == 1000
+    assert next(finding for finding in findings if finding.truncated_code).count == 1501
+
+
+def test_event_callback_compatibility_and_failure(tmp_path):
+    from dataclasses import FrozenInstanceError
+
+    path = _write(tmp_path, b"A1,V,p,Y,,,1\nbad,row\nA2,V,p,,,,\n", "events.opt")
+    with pytest.raises(LoadFileError) as strict:
+        list(parse_opt(path))
+    assert strict.value.code == "field_count_mismatch" and strict.value.line == 2
+    events = []
+    rows = list(parse_opt(path, on_event=events.append))
+    assert [row.values[0] for row in rows] == ["A1", "A2"]
+    assert [(event.kind, event.ordinal, event.line) for event in events] == [
+        ("accepted", 1, 1), ("rejected", 2, 2), ("accepted", 3, 3)]
+    assert events[1].cells == ("bad", "row") and events[1].headers is None
+    with pytest.raises(FrozenInstanceError):
+        events[0].line = 7
+    observed = []
+    callback_failure = RuntimeError("Generated consumer failure")
+    def fail(event):
+        observed.append(event)
+        if event.kind == "rejected":
+            raise callback_failure
+    with pytest.raises(RuntimeError, match="Generated consumer failure"):
+        list(parse_opt(path, on_event=fail))
+    assert [event.ordinal for event in observed] == [1, 2]
+    duplicate = _write(tmp_path, _dat_bytes([("KEY", "KEY", ""), ("A1", "A2", "exact")]))
+    events = []
+    assert len(list(parse_dat(duplicate, on_event=events.append))) == 1
+    assert events[0].kind == "header"
+    assert events[0].diagnostics == ("duplicate_header", "empty_header")
+
+
+@pytest.mark.parametrize("encoding,ending", [("utf-8", "\n"), ("utf-8", "\r"),
+    ("utf-8-sig", "\r\n"), ("cp1252", "\r"), ("utf-16", "\r\n")])
+def test_event_cursor_resumes_at_logical_boundary_without_replay(tmp_path, encoding, ending):
+    from case_intelligence import source_load_files
+
+    path = _write(tmp_path, _dat_bytes([("KEY", "NOTE"), ("A1", "multi\nline®"),
+        ("A2", "exact"), ("A3", "tail")], encoding, ending))
+    events = []
+    iterator = parse_dat(path, on_event=events.append)
+    assert next(iterator).values == ("A1", "multi\nline®")
+    saved = json.loads(json.dumps(events[-1].next_cursor))
+    iterator.close()
+    old_encoding = source_load_files._encoding
+    def no_replay(_path):
+        raise AssertionError("Resume must use the persisted decoder and boundary")
+    source_load_files._encoding = no_replay
+    try:
+        resumed = []
+        rows = list(parse_dat(path, cursor=saved, on_event=resumed.append))
+    finally:
+        source_load_files._encoding = old_encoding
+    assert [row.values for row in rows] == [("A2", "exact"), ("A3", "tail")]
+    assert [event.ordinal for event in resumed] == [2, 3]
+    assert [event.line for event in resumed] == [4, 5]
+    assert all(event.headers == ("KEY", "NOTE") for event in resumed)
+    for key, value in (("cookie", 1), ("line", 0), ("source_format", "opt")):
+        damaged = dict(saved, **{key: value})
+        with pytest.raises(LoadFileError, match="invalid_cursor"):
+            list(parse_dat(path, cursor=damaged))
+    path.write_bytes(path.read_bytes() + _dat_bytes([("A4", "changed")], encoding, ending))
+    with pytest.raises(LoadFileError, match="source_changed"):
+        list(parse_dat(path, cursor=saved))
+
+
+def test_file_failure_events_do_not_invent_rejected_rows(tmp_path):
+    events = []
+    assert list(parse_opt(tmp_path / "missing.opt", on_event=events.append)) == []
+    assert len(events) == 1
+    assert events[0].kind == "file_failure" and events[0].ordinal == 1
+    assert events[0].cells is None and events[0].next_cursor is None
+    assert events[0].diagnostics == ("read_error",)
+
+
+@pytest.mark.parametrize("damage,code", [
+    (b"later invalid \xff bytes\n", "mixed_encoding"),
+    (b"x" * (1024 * 1024 + 1) + b"\n", "record_too_large"),
+], ids=["late-damaged-bytes", "oversized-physical-line"])
+def test_public_load_file_lines_keep_bounded_reads_and_late_failures(tmp_path, monkeypatch, damage, code):
+    from case_intelligence.source_load_files import iter_load_file_lines
+
+    literal = "Generated plain text,;\twith literal þ"
+    count = 3000
+    path = _write(tmp_path, (literal + "\r\n").encode() * count + damage, "lines.txt")
+    original_open = Path.open
+    reads = []
+
+    class BoundedReader:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            self.stream.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.stream.__exit__(*args)
+
+        def read(self, size=-1):
+            assert 0 <= size <= 65536, "The public text seam must not read an unbounded source"
+            reads.append(size)
+            return self.stream.read(size)
+
+        def readline(self, size=-1):
+            assert 0 <= size <= 8192, "Even an oversized physical line needs bounded reads"
+            reads.append(size)
+            return self.stream.readline(size)
+
+        def tell(self):
+            return self.stream.tell()
+
+        def seek(self, offset):
+            return self.stream.seek(offset)
+
+        def fileno(self):
+            return self.stream.fileno()
+
+    def bounded_open(selected, *args, **kwargs):
+        stream = original_open(selected, *args, **kwargs)
+        return BoundedReader(stream) if selected == path else stream
+
+    monkeypatch.setattr(Path, "open", bounded_open)
+    consumed = 0
+    with pytest.raises(LoadFileError) as failure:
+        for record in iter_load_file_lines(path):
+            consumed += 1
+            assert record.text == literal and record.line == consumed and record.file == str(path)
+    assert consumed == count
+    assert failure.value.code == code and failure.value.line == count + 1
+    assert reads and max(reads) <= 65536
