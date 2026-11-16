@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import pytest
 
 from case_intelligence.modules import ModuleDatabase
-from case_intelligence.modules.discovery_review.stored_index.models import Budget
-from case_intelligence.modules.discovery_review.stored_index.repository import Repository
+from case_intelligence.modules.discovery_review.stored_index.models import Budget, CapacityPlan
+from case_intelligence.modules.discovery_review.stored_index.repository import Repository, Transaction
 from tests.fixture_write import fixture_write
 
 
@@ -137,3 +137,57 @@ def test_checkpointed_transactions_reopen_with_only_committed_bytes(tmp_path):
         assert restored.rows('PRAGMA integrity_check') == (('ok',),)
     finally:
         reopened.close()
+
+
+@pytest.mark.parametrize('maximum', [0, 33])
+def test_write_rejects_invalid_row_bounds(standalone_repository, maximum):
+    with standalone_repository.transaction(Budget(256, 224), CAPACITY) as tx:
+        with pytest.raises(ValueError, match='row bound'):
+            tx.write('SELECT ?', [(1,)] * maximum, many=True)
+        assert tx.encoded_bytes == 0 and tx.budget.touches == 0
+
+
+def test_batched_writes_preserve_capacity_row_accounting_and_rollback(standalone_repository):
+    repository = standalone_repository
+    workspace = SimpleNamespace(connection=repository.db.connection, _lock=repository.db.lock)
+    with fixture_write(workspace) as connection:
+        connection.execute('CREATE TABLE synthetic_values (value INTEGER PRIMARY KEY)')
+    statement = 'INSERT INTO synthetic_values VALUES (?)'
+    with pytest.raises(CapacityPlan):
+        with repository.transaction(Budget(256, 224), 8192) as tx:
+            tx.write(statement, [(1,), (2,)], many=True)
+    assert repository.rows('SELECT value FROM synthetic_values') == ()
+    with pytest.raises(RuntimeError, match='declared row bound'):
+        with repository.transaction(Budget(256, 224), CAPACITY) as tx:
+            tx.write('INSERT INTO synthetic_values VALUES (?),(?)', (1, 2))
+    assert repository.rows('SELECT value FROM synthetic_values') == ()
+    budget = Budget(256, 224)
+    with repository.transaction(budget, CAPACITY) as tx:
+        assert tx.write(statement, [(1,), (2,)], many=True) == 2
+        assert tx.encoded_bytes == 8200
+    assert budget.work == budget.touches == 2 and budget.control == 0
+    with pytest.raises(RuntimeError, match='index work row budget exceeded'):
+        with repository.transaction(Budget(256, 224, work=223), CAPACITY) as tx:
+            tx.write(statement, [(3,), (4,)], many=True)
+    assert repository.rows('SELECT value FROM synthetic_values ORDER BY value') == ((1,), (2,))
+
+    with pytest.raises(sqlite3.IntegrityError):
+        with repository.transaction(Budget(256, 224), CAPACITY) as tx:
+            tx.write(statement, [(3,), (1,)], many=True)
+    assert repository.rows('SELECT value FROM synthetic_values ORDER BY value') == ((1,), (2,))
+
+
+def test_batched_writes_keep_the_borrowed_postgres_execute_protocol():
+    statements = []
+
+    def execute(statement, args):
+        statements.append((statement, args))
+        return SimpleNamespace(rowcount=1)
+
+    repository = Repository(ModuleDatabase(SimpleNamespace(execute=execute), RLock()))
+    budget = Budget(256, 224)
+    tx = Transaction(repository, budget, CAPACITY)
+    assert tx.write('INSERT INTO synthetic_values VALUES (?)', [(1,), (2,)], many=True) == 2
+    assert statements == [('INSERT INTO synthetic_values VALUES (%s)', (1,)),
+                          ('INSERT INTO synthetic_values VALUES (%s)', (2,))]
+    assert tx.encoded_bytes == 8200 and budget.work == budget.touches == 2

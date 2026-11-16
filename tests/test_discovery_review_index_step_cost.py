@@ -42,6 +42,38 @@ def sample_item(label='ABC02', document='synthetic-1'):
                        {'name': label, 'path': 'Folder/record-002', 'size': '1,234'}, {}, {})
 
 
+def test_population_registration_uses_one_atomic_batch():
+    batches = []
+
+    def register(*, source_location_id, sources):
+        batches.append((source_location_id, sources))
+        return [SimpleNamespace(document_id=f'synthetic-{source.stable_inode}') for source in sources]
+
+    identities = add_population(SimpleNamespace(register_linked_sources=register), 201, prefix='Synthetic')
+    assert identities == [f'synthetic-{number}' for number in range(201)]
+    assert len(batches) == 1
+    location, sources = batches[0]
+    assert location == 'synthetic-index'
+    assert [source.relative_path for source in sources] == [f'Synthetic/record-{number}.txt' for number in range(201)]
+    assert all(source.media_type == 'text/plain' and source.byte_size == 1 and source.stable_device == 0
+               and source.stable_mtime_ns == 0 for source in sources)
+
+
+def test_unmatched_projection_does_not_normalize_unused_header_aliases(monkeypatch):
+    def unused(header):
+        pytest.fail('unmatched projection normalized unused load-file aliases')
+
+    monkeypatch.setattr(reader, 'normalize_header', unused)
+    source = SimpleNamespace(document_id='synthetic-document', version_id='synthetic-version',
+                             display_name='record.txt', relative_path='Folder/record.txt',
+                             media_type='text/plain', page_count=0, size=1, has_text=False,
+                             state='queued', message='Queued for processing', origin='registered', digest='')
+    item = reader.project_item(source, fields.load_definition(), {})
+    assert item.value('name') == 'record.txt'
+    assert item.value('path') == 'Folder/record.txt'
+    assert item.load_file == {} and item.kind == 'document'
+
+
 @pytest.mark.parametrize('descending', [False, True])
 @pytest.mark.parametrize('label', ['ABC2', 'ABC02', '', ' ', 'Straße\x00\U0010ffff', '9' * 2000])
 def test_persisted_key_bytes_match_version_two(monkeypatch, descending, label):
@@ -113,6 +145,46 @@ def test_preparation_batches_documents_and_commits_each_step_once(production, mo
     assert len(steps) <= 90
 
 
+def test_order_inserts_bounded_value_batches_with_exact_row_charges(production, monkeypatch):
+    inserted = []
+    original = Transaction.write
+    original_components = reader.production_order_components
+
+    def family_components(definition, item, parent, sort):
+        assert item.family.get('root')
+        return original_components(definition, item, parent, sort)
+
+    def write(tx, statement, args=(), **kwargs):
+        before = tx.budget.touches
+        affected = original(tx, statement, args, **kwargs)
+        if statement.startswith('INSERT INTO workbench_discovery_index_value '):
+            assert tx.budget.touches - before == affected
+            if kwargs.get('many'):
+                assert len(args) == affected and all(len(row) == 8 for row in args)
+            else:
+                assert len(args) == 8 * affected
+            inserted.append(affected)
+        return affected
+
+    monkeypatch.setattr(Transaction, 'write', write)
+    monkeypatch.setattr(reader, 'production_order_components', family_components)
+    drive(production, manifest(4))
+    client, bench, matter = production
+    repo = service_for(bench).repository
+    assert repo.rows('SELECT COUNT(*) FROM workbench_discovery_index_value WHERE matter_id=?',
+                     (matter.matter_id,)) == ((312,),)
+    assert sum(inserted) == 312
+    assert max(inserted) <= 20
+    assert len(inserted) <= 24
+    definition = fields.load_definition()
+    for document, key, direction, actual in repo.rows(
+            'SELECT document_id,field_key,direction,sort_key FROM workbench_discovery_index_value WHERE matter_id=?',
+            (matter.matter_id,)):
+        item = reader.Item(**repo.full_item(matter.matter_id, document))
+        chosen = definition.field(key) if key else fields.Field('', '', '', sort='natural')
+        assert actual == old_order(chosen, item, bool(direction))
+
+
 def test_unassociated_projection_matches_full_preparation(production, monkeypatch):
     client, bench, matter = production
     store = bench.source_store(matter)
@@ -170,7 +242,8 @@ def test_order_finishes_a_full_value_batch_in_a_separate_primitive():
     definition = fields.load_definition()
     item = sample_item()
     stored, finished = [], []
-    repo = SimpleNamespace(value=lambda tx, matter, item, chosen, descending, **kwargs: stored.append(chosen.key))
+    repo = SimpleNamespace(values=lambda tx, matter, item, selections, **kwargs:
+                           stored.extend(chosen.key for chosen, descending, components in selections))
     service = SimpleNamespace(repository=repo, finish_order=lambda *args: finished.append(args))
     cursor = {'active': {'document_id': item.document_id, 'value_eof': True,
                          'value_position': 2 * (1 + len(definition.fields)) - 1}}
@@ -195,6 +268,10 @@ def test_order_checkpoints_always_retain_an_active_document(production, monkeypa
         persisted = json.loads(repository.state(matter_id)['checkpoint'])
         if persisted['phase'] == 'order':
             checkpoints.append(persisted['active'])
+            active = persisted['active']
+            value_count = 2 * (1 + len(fields.load_definition().fields) + len(summaries['headers']))
+            if active is not None and active['value_eof'] and active['value_position'] == value_count:
+                assert tx.budget.remaining < 4
 
     monkeypatch.setattr(Repository, 'save', observed_save)
     drive(production, manifest(100))

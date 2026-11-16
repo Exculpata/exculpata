@@ -352,8 +352,18 @@ class Service:
                 writing_values = (cursor['phase'] == 'order' and active is not None and active['value_eof']
                                   and active['value_position'] < 2 * (1 + len(job.definition.fields) + len(summaries['headers']))
                                   and ordering is not None and ordering[0] == active['document_id'])
+                finishing_order_document = (cursor['phase'] == 'order' and active is not None and active['value_eof']
+                                            and active['value_position'] == 2 * (1 + len(job.definition.fields) + len(summaries['headers']))
+                                            and ordering is not None and ordering[0] == active['document_id'])
                 selecting_order_document = cursor['phase'] == 'order' and active is None
-                if budget.remaining < (2 if selecting_order_document else 3 if writing_values else primitive_rows + 1):
+                minimum_rows = primitive_rows + 1
+                if selecting_order_document:
+                    minimum_rows = 2
+                elif writing_values:
+                    minimum_rows = 3
+                elif finishing_order_document:
+                    minimum_rows = 4
+                if budget.remaining < minimum_rows:
                     break
                 before = budget.work
                 before_phase = cursor['phase']
@@ -879,11 +889,15 @@ class Service:
             self.finish_order(tx, job, cursor, prepared, cache, item, fingerprint)
             return
         value_rows = min(ORDER_VALUE_ROWS, tx.budget.remaining - 2)
-        for position in range(start, min(start + value_rows, 2 * len(choices))):
+        stop = min(start + value_rows, 2 * len(choices))
+        selections = []
+        for position in range(start, stop):
             chosen = choices[position // 2]
-            components = reader.production_order_components(job.definition, item, parent, chosen.key)
-            repo.value(tx, mid, item, chosen, bool(position % 2), components=components, parent=parent)
-            active['value_position'] = position + 1
+            components = (reader.production_order_components(job.definition, item, parent, chosen.key)
+                          if item.family.get('root') else None)
+            selections.append((chosen, bool(position % 2), components))
+        repo.values(tx, mid, item, selections, parent=parent)
+        active['value_position'] = stop
 
     def finish_order(self, tx, job, cursor, prepared, cache, item, fingerprint):
         if cache.get('order_fingerprint') != fingerprint:

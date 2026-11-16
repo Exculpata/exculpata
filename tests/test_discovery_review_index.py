@@ -92,11 +92,12 @@ def test_sort_keys_preserve_original_values(descending):
 def add_population(store, count, *, prefix='Generated'):
     from types import SimpleNamespace
     identities = []
-    for start in range(0, count, 100):
+    batch_size = 10_000
+    for start in range(0, count, batch_size):
         documents = store.register_linked_sources(source_location_id='synthetic-index', sources=[
             SimpleNamespace(relative_path=f'{prefix}/record-{number}.txt', media_type='text/plain',
                             byte_size=1, stable_device=0, stable_inode=number, stable_mtime_ns=0)
-            for number in range(start, min(start + 100, count))])
+            for number in range(start, min(start + batch_size, count))])
         identities.extend(d.document_id for d in documents)
     return identities
 
