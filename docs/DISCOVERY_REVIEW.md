@@ -255,3 +255,6 @@ still loads the registry. Completion within one GET is guaranteed only when the
 stable target's work and preparation boundaries fit the documented 128-step
 work envelope. Large matters and heavily coded items may need further reads.
 The million-item 300 ms qualification is opt-in and separate from CI correctness.
+
+While production records are still indexing, the list answers with a visible “Indexing, reload shortly.” panel instead of a conflict.
+After three restarts without completion, further source changes pause that attempt with “Indexing paused: the sources keep changing. Reload to resume.”; only its Reload link resumes work and grants three more restarts.

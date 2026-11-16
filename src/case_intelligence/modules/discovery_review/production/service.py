@@ -26,6 +26,7 @@ from case_intelligence.source_load_file_qc import (
 )
 
 PARSER_REVISION = "production-record-events-1"
+MAX_RESTARTS = 3
 def source_identity(store):
     return store.source_changes.epoch
 
@@ -104,7 +105,21 @@ class ProductionService:
     def notified(self, matter_id, change):
         binding = self.bindings.get(matter_id)
         if binding is not None:
-            binding['revision'] = change.revision
+            inputs = binding['inputs']
+            relevant = any(identity in inputs for identity in change.removed_document_ids)
+            for item in change.upserted:
+                identity = self.input_identity(item)
+                if item.document_id in inputs:
+                    relevant |= inputs[item.document_id] != identity
+                    inputs[item.document_id] = identity
+                elif item.origin == 'upload' and self.repository.provenance(
+                        matter_id, item.document_id, item.version_id):
+                    inputs[item.document_id] = identity
+                    relevant = True
+            for identity in change.removed_document_ids:
+                inputs.pop(identity, None)
+            if relevant:
+                binding['revision'] = change.revision
             self.discovery[matter_id] = ''
             self.discovery_done.discard(matter_id)
             self.changed(matter_id)
@@ -122,7 +137,7 @@ class ProductionService:
             if prior is None:
                 subscription, identity, revision = store.source_changes.subscribe(
                     lambda change: self.notified(matter.matter_id, change))
-                prior = dict(subscription=subscription, source_identity=identity, revision=revision)
+                prior = dict(subscription=subscription, source_identity='production-v2-' + identity, revision=0, inputs={})
                 self.discovery[matter.matter_id] = ''
                 self.discovery_done.discard(matter.matter_id)
             if prior.get('digest') not in (None, digest):
@@ -131,6 +146,56 @@ class ProductionService:
             self.bindings[matter.matter_id] = {**prior,
                 'matter': matter, 'store': store, 'definition': definition, 'digest': digest,
                 'validator': target_validator, 'target': target, 'human': self.repository.identifier_stamp(matter.matter_id)}
+
+    @staticmethod
+    def input_identity(item):
+        return (item.version_id, item.digest, item.display_name, item.relative_path,
+                item.media_type, item.state, item.origin)
+
+    def restart_state(self, matter_id, attempt, state):
+        """Persist the lineage limit before allowing any replacement work."""
+        state = dict(state)
+        count = 0 if attempt['status'] == 'complete' else state.get('restarts', 0)
+        if count >= MAX_RESTARTS:
+            state.update(paused=True, restarts=MAX_RESTARTS, reload=uuid.uuid4().hex)
+            self.repository.update_attempt(matter_id, attempt['attempt_id'], status='building', phase='paused')
+        else:
+            state['restarts'] = count + 1
+        self.repository.save_dependencies(matter_id, attempt['attempt_id'], state, attempt['input_revision'])
+        return state
+
+    def resume(self, matter_id, attempt_id, token):
+        with self.binding(matter_id)['store'].mutation_guard(), self.repository.transaction():
+            attempt = self.repository.attempt(matter_id, attempt_id)
+            state = self.dependency_state(attempt) if attempt else {}
+            if not state.get('paused') or state.get('reload') != token:
+                return
+            state = dict(state, paused=False, restarts=0, reload='')
+            self.repository.save_dependencies(matter_id, attempt_id, state, attempt['input_revision'])
+            self.repository.update_attempt(matter_id, attempt_id, status='building', phase=state['resume_phase'])
+            self.discovery_done.discard(matter_id)
+            self.discovery[matter_id] = ''
+            self.changed(matter_id)
+
+    def begin_attempt(self, matter_id, source, **options):
+        with self.repository.transaction():
+            prior = self.repository.current_attempt(matter_id, source.document_id)
+            state = self.dependency_state(prior) if prior else {}
+            if state.get('paused'):
+                return prior['attempt_id']
+            if prior and (source_from_attempt(prior) != source
+                    or prior['parser_revision'] != options['parser_revision']
+                    or prior['definition_digest'] != options['definition_digest']):
+                state = self.restart_state(matter_id, prior, dict(state, resume_phase=prior['phase']))
+                if state.get('paused'):
+                    return prior['attempt_id']
+            elif prior and prior['target'] != options['target']:
+                self.repository.retarget(matter_id, prior['attempt_id'], options['target'])
+            attempt_id = self.repository.begin_attempt(matter_id, source, **options)
+            if prior and attempt_id != prior['attempt_id']:
+                self.repository.save_dependencies(matter_id, attempt_id,
+                    {'restarts': state.get('restarts', 0)}, options['input_revision'])
+            return attempt_id
 
     def input_revision(self, matter_id):
         binding = self.binding(matter_id)
@@ -149,7 +214,7 @@ class ProductionService:
 
     def attempt_current(self, matter_id, attempt):
         binding = self.binding(matter_id)
-        return ((attempt['status'] == 'failed' or self.dependencies_current(matter_id, attempt))
+        return (not self.dependency_state(attempt).get('paused') and (attempt['status'] == 'failed' or self.dependencies_current(matter_id, attempt))
             and attempt['parser_revision'] == PARSER_REVISION
             and attempt['definition_digest'] == binding['digest']
             and self.valid(matter_id, source_from_attempt(attempt), attempt['target'], binding['store'].revision,
@@ -159,19 +224,27 @@ class ProductionService:
         """Validate one bounded root window; only changed dependencies rematch."""
         binding = self.binding(matter_id)
         with binding['store'].mutation_guard(), self.repository.transaction():
+            state = self.dependency_state(attempt)
+            if state.get('paused'):
+                return attempt
             revision = binding['store'].revision
             source = source_from_attempt(attempt)
             target = binding['target'] or attempt['target']
             if not self.valid(matter_id, source, target, revision, check_path=False) or (
                     attempt['parser_revision'] != PARSER_REVISION or attempt['definition_digest'] != binding['digest']):
-                self.repository.update_attempt(matter_id, attempt['attempt_id'], status='stale', phase='stale')
+                self.repository.update_attempt(matter_id, attempt['attempt_id'], status='building', phase='replace')
                 self.discovery[matter_id] = ''
                 self.discovery_done.discard(matter_id)
             else:
                 state = self.dependency_state(attempt)
                 if (state.get('epoch') != binding['source_identity'] or state.get('revision') != binding['revision']
                         or state.get('human') != binding['human']):
-                    state = dict(epoch=binding['source_identity'], revision=binding['revision'], human=binding['human'], state='scan',
+                    if state.get('epoch'):
+                        state = self.restart_state(matter_id, attempt, dict(state, resume_phase=attempt['phase']))
+                        if state.get('paused'):
+                            self.changed(matter_id)
+                            return self.repository.attempt(matter_id, attempt['attempt_id'])
+                    state = dict(restarts=state.get('restarts', 0), epoch=binding['source_identity'], revision=binding['revision'], human=binding['human'], state='scan',
                                  hash='', after='', previous=state.get('previous', state.get('hash', '')),
                                  reopened=bool((attempt['status'] == 'complete' and not state) or state.get('epoch')
                                      and (state['epoch'] != binding['source_identity'] or state.get('human') != binding['human'])))
@@ -182,7 +255,9 @@ class ProductionService:
                         budget = self.repository.budget()
                         if budget is not None:
                             budget.charge(len(snapshot), credit=not snapshot)
-                        data = [asdict(item) for item in snapshot]
+                        for item in snapshot:
+                            binding['inputs'][item.document_id] = self.input_identity(item)
+                        data = [(item.document_id, self.input_identity(item)) for item in snapshot]
                         state['hash'] = hashlib.sha256((state.get('hash', '') + json.dumps(data, sort_keys=True)).encode()).hexdigest()
                         state['after'] = row['document_id']
                     if not rows:
@@ -255,7 +330,7 @@ class ProductionService:
             recognized = bool(load_files.record_category(detected))
             if recognized:
                 source = replace(source, source_format=detected)
-            attempt_id = self.repository.begin_attempt(matter_id, source,
+            attempt_id = self.begin_attempt(matter_id, source,
                 parser_revision=PARSER_REVISION, definition_digest=digest, target=target,
                 input_revision=self.input_revision(matter_id) + ":pending")
             if not recognized:
@@ -346,7 +421,7 @@ class ProductionService:
         self.context.ensure_capacity(MAX_BATCH_BYTES)
         with binding["store"].mutation_guard():
             revision = binding["store"].revision
-            attempt_id = self.repository.begin_attempt(matter_id, source,
+            attempt_id = self.begin_attempt(matter_id, source,
                 parser_revision=PARSER_REVISION, definition_digest=definition_digest(definition), target=target,
                 input_revision=self.input_revision(matter_id) + ":pending")
             attempt = self.repository.attempt(matter_id, attempt_id)
@@ -394,7 +469,7 @@ class ProductionService:
             revision = binding['store'].revision
             if not self.valid(matter_id, source, target, revision):
                 raise ProductionStale('The admitted source changed.')
-            attempt_id = self.repository.begin_attempt(matter_id, source, parser_revision=PARSER_REVISION,
+            attempt_id = self.begin_attempt(matter_id, source, parser_revision=PARSER_REVISION,
                 definition_digest=binding['digest'], target=target, input_revision=self.input_revision(matter_id) + ":pending")
             attempt = self.repository.attempt(matter_id, attempt_id)
             if attempt['status'] != 'building' or attempt['phase'] != 'parse':
@@ -747,6 +822,8 @@ class ProductionService:
         else:
             self.repository.update_attempt(matter_id, attempt["attempt_id"], status="complete", phase="complete",
                 cursor={"eof": True}, counts=self.repository.coverage(matter_id, attempt["attempt_id"]))
+            self.repository.save_dependencies(matter_id, attempt['attempt_id'],
+                dict(self.dependency_state(attempt), restarts=0), attempt['input_revision'])
 
     def discover_source(self, matter_id):
         binding = self.binding(matter_id)
@@ -767,6 +844,8 @@ class ProductionService:
                 document.display_name, document.relative_path or document.display_name, suffix,
                 self.repository.provenance(matter_id, document.document_id, document.version_id))
             prior = self.repository.current_attempt(matter_id, source.document_id)
+            if prior is not None and self.dependency_state(prior).get('paused'):
+                continue
             if (prior is not None and prior["version_id"] == source.version_id and prior["digest"] == source.digest
                     and prior["definition_digest"] == binding["digest"] and prior["parser_revision"] == PARSER_REVISION):
                 continue
@@ -802,7 +881,9 @@ class ProductionService:
                     if attempts:
                         selected = attempts[0]
                         self.positions[matter_id] = selected["attempt_id"]
-                        if not self.attempt_current(matter_id, selected) or not self.dependencies_current(matter_id, selected):
+                        if self.dependency_state(selected).get('paused'):
+                            selected = None
+                        elif not self.attempt_current(matter_id, selected) or not self.dependencies_current(matter_id, selected):
                             selected = self.reconcile_attempt(matter_id, selected)
                             selected = None
                     if selected is not None and selected["status"] == "building" and selected["phase"] != "parse":
@@ -831,7 +912,7 @@ class ProductionService:
                         selected = None
                 except ProductionStale:
                     if selected is not None:
-                        self.repository.update_attempt(matter_id, selected["attempt_id"], status="stale", phase="stale")
+                        self.repository.update_attempt(matter_id, selected["attempt_id"], status="building", phase="replace")
                         self.changed(matter_id)
                     selected = None
                 finally:
@@ -858,6 +939,9 @@ class ProductionService:
 
     def read_source(self, matter_id, source, target, *, verify_digest=False):
         binding = self.binding(matter_id)
+        prior = self.repository.current_attempt(matter_id, source.document_id)
+        if prior is not None and self.dependency_state(prior).get('paused'):
+            return
         try:
             path = binding["store"].source_path(source.document_id, verify_digest=verify_digest)
             if source.source_format in {"csv", "tsv"}:
@@ -871,7 +955,7 @@ class ProductionService:
                 revision = binding["store"].revision
                 if not self.valid(matter_id, source, target, revision, check_path=False):
                     return
-                attempt_id = self.repository.begin_attempt(matter_id, source, parser_revision=PARSER_REVISION,
+                attempt_id = self.begin_attempt(matter_id, source, parser_revision=PARSER_REVISION,
                     definition_digest=binding["digest"], target=target, input_revision=self.input_revision(matter_id) + ":pending")
                 with self.repository.step(matter_id, attempt_id, target=target,
                         validate=lambda: self.valid(matter_id, source, target, revision, check_path=False)):
@@ -881,7 +965,7 @@ class ProductionService:
         except ProductionStale:
             prior = self.repository.current_attempt(matter_id, source.document_id)
             if prior is not None:
-                self.repository.update_attempt(matter_id, prior["attempt_id"], status="stale", phase="stale")
+                self.repository.update_attempt(matter_id, prior["attempt_id"], status="building", phase="replace")
                 self.changed(matter_id)
             self.discovery[matter_id] = ""
             self.discovery_done.discard(matter_id)
@@ -908,6 +992,10 @@ class ProductionService:
                 result["diagnostics"] = (own["file_failure"],)
             if not self.attempt_current(matter_id, own):
                 result["state"] = "pending"
+            state = self.dependency_state(own)
+            result['restarts'] = state.get('restarts', 0)
+            if state.get('paused'):
+                result.update(state='paused', reload=state['reload'], attempt_id=own['attempt_id'])
             return result
         if matter_id not in self.discovery_done:
             result["state"] = "pending"

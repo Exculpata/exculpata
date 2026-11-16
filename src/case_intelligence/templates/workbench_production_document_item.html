@@ -14,6 +14,7 @@
     {% if panel.family.context.continuation %}This family continues from another list page.{% endif %}
     {% if panel.family.context.filtered %}Parent context is not included in the match count.{% endif %}
   </p>{% endif %}
+  {% if panel.production.state in ('pending', 'paused') %}<p class="dr-notice" role="status" data-production-state="{{ panel.production.state }}" data-production-restarts="{{ panel.production.restarts|default(0) }}">{% if panel.production.state == 'paused' %}Indexing paused: the sources keep changing. Reload to resume.{% else %}Indexing, reload shortly.{% endif %} <a href="{{ panel.production_reload }}">Reload</a></p>{% endif %}
   {% if panel.production.diagnostics %}<ul class="dr-production-findings" aria-label="Production findings">{% for finding in panel.production.diagnostics %}<li>{{ finding }}</li>{% endfor %}</ul>{% endif %}
   {% if panel.record_sources %}<nav class="dr-production-findings" aria-label="Original load-file records">{% for source in panel.record_sources %}<p><a href="{{ source.url }}">Inspect original records: {{ source.name }}</a>{% if source.status %} · {{ source.status }}{% endif %}</p>{% endfor %}</nav>{% endif %}
   {% macro production_records(records) %}

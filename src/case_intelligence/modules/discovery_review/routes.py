@@ -89,6 +89,8 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         try:
             projection = production.document_projection(
                 matter.matter_id, selected.document_id, selected.version_id)
+            if cursor is None and projection.get('state') in {'pending', 'paused'}:
+                return projection, None
             references = tuple(projection.get('references', ()))
             if cursor is not None:
                 attempt_id = cursor.attempt_id
@@ -116,6 +118,8 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
                 limit=1 if category == 'page' else 100)
             return projection, window
         except ProductionStale as exc:
+            if cursor is None:
+                return {'state': 'pending', 'values': {}, 'raw_fields': (), 'references': ()}, None
             raise HTTPException(409, 'These production records changed. Reload the list.') from exc
         except KeyError as exc:
             raise HTTPException(404, 'This production record is not available for this item.') from exc
@@ -144,6 +148,8 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         unit: int = Query(1, ge=1, le=MAX_POSITION),
         record: str = Query('', max_length=56),
         record_dir: str = Query('at', pattern='^(at|next|previous)$'),
+        reload_attempt: str = Query('', pattern=TOKEN.replace('^', '^(|').replace('$', ')$')),
+        reload_token: str = Query('', pattern=TOKEN.replace('^', '^(|').replace('$', ')$')),
         all_columns: str = Query("", pattern="^(|1)$"),
         notice: str = Query("", pattern="^(|saved|shared|reset|unavailable|assigned|cleared|conflict|nothing|invalid|confirm|range|retry)$"),
     ):
@@ -152,6 +158,13 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
             raise HTTPException(422, 'Select an item before opening a production record.')
         matter, actor, definition, store, index, choice = current(request, slug, show_all=bool(all_columns))
         base = f"/matters/{matter.slug}/production"
+        if reload_attempt and reload_token:
+            production.resume(matter.matter_id, reload_attempt, reload_token)
+            values = dict(request.query_params)
+            values.pop('reload_attempt', None)
+            values.pop('reload_token', None)
+            return RedirectResponse(base + '?' + urlencode(values), status_code=303,
+                                    headers={'Cache-Control': 'no-store'})
         listing = stored_query.list_page(
             definition, index, choice, base=base, q=q, sort=sort, descending=dir == "desc",
             page=page, doc=doc, edge=edge, show_all=bool(all_columns), cursor=cursor, selected_view=view, unit=unit)
