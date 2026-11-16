@@ -34,7 +34,8 @@ from .managed_storage import format_bytes
 from .malware_scan import MalwareScanner, scanner_status
 from .source_admission import (
     LOAD_FILE_COMPLETION_MESSAGE, LOAD_FILE_MEDIA_TYPE, LOAD_FILE_SUFFIXES,
-    LoadFileAdmissionError, is_stored_load_file, validate_load_file,
+    LoadFileAdmissionError, StagedUploadChanged, is_stored_load_file,
+    scan_verified_upload, validate_load_file,
 )
 
 MAX_FILES = 10
@@ -1059,7 +1060,7 @@ class PilotStore:
             self.malware_scan_mode == "extended" and suffix in EXTENDED_SOURCE_SUFFIXES
         )
 
-    def _scan_staged(self, path: Path, suffix: str) -> None:
+    def _scan_staged(self, path: Path, suffix: str, expected_digest: str) -> None:
         if not self._scan_required(suffix):
             return
         if self.malware_scanner is None:
@@ -1067,7 +1068,13 @@ class PilotStore:
                 "Security scanning is temporarily unavailable. This file was not added.",
                 503,
             )
-        result = self.malware_scanner.scan(path)
+        try:
+            result = scan_verified_upload(
+                path, expected_digest=expected_digest,
+                maximum_bytes=self.maximum_file_bytes(suffix), scan=self.malware_scanner.scan,
+            )
+        except StagedUploadChanged as exc:
+            raise UploadProblem("The uploaded file changed during security verification. Choose it again.", 409) from exc
         if result.state == "clean":
             return
         if result.state == "infected":
@@ -1514,7 +1521,7 @@ class PilotStore:
         if suffix not in _ALLOWED:
             raise UploadProblem(
                 "Supported sources are PDF, DOCX, UTF-8 TXT, JPEG, PNG, TIFF, "
-                "EML, CSV, TSV, XLSX, DAT, OPT, WAV, MP3, M4A, OGG, Opus, MP4, MOV, and WebM."
+                "EML, CSV, TSV, XLSX, DAT, OPT, LFP, DII, WAV, MP3, M4A, OGG, Opus, MP4, MOV, and WebM."
             )
         key = normalized.rstrip(" .").casefold()
         return normalized, suffix, key
@@ -1674,7 +1681,7 @@ class PilotStore:
                 if collision.digest == hexdigest:
                     return collision, request_used + size
                 raise UploadProblem("A different file already uses that name. Rename this file and upload it again.", 409)
-            self._scan_staged(stage, suffix)
+            self._scan_staged(stage, suffix, hexdigest)
             self._validate_file_signature(suffix, first)
             _validate_load_file(stage, suffix)
             duration_ms = 0
@@ -1944,7 +1951,7 @@ class PilotStore:
                     legacy.name_key = name_key
                     raise
                 return legacy
-            self._scan_staged(path, suffix)
+            self._scan_staged(path, suffix, hexdigest)
             self._validate_file_signature(suffix, first)
             _validate_load_file(path, suffix)
             duration_ms = 0

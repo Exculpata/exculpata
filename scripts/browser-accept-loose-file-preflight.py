@@ -11,7 +11,9 @@ from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import base64
+import hashlib
 import json
+import os
 import socket
 import sys
 import tempfile
@@ -30,6 +32,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
@@ -263,6 +267,183 @@ def _upload_plan_fingerprint(driver: webdriver.Chrome, input_element) -> str:
         "browser could not reproduce the deterministic upload-plan fingerprint",
     )
     return fingerprint
+
+
+class SyntheticImageIndexScanner:
+    """Explicit outcomes for the real load-file scan decision, never admission."""
+
+    def __init__(self):
+        self.ready = True
+        self.outcome = "clean"
+        self.scan_calls = 0
+
+    def status(self, *, force=False):
+        del force
+        return MalwareScannerStatus("ready" if self.ready else "unavailable", "synthetic-image-index")
+
+    def scan(self, path):
+        _require(path.is_file(), "scan input was not a staged regular file")
+        self.scan_calls += 1
+        return MalwareScanResult(self.outcome, "synthetic-image-index")
+
+
+def _image_index_selection(driver, input_element, fixtures, *, folder):
+    """Dispatch actual File bytes through the existing file/folder change handler."""
+    _name_collection(driver)
+    descriptors = [{"name": name, "path": f"Generated/{name}" if folder else "",
+                    "bytes": list(body)} for name, body in fixtures]
+    driver.execute_script(
+        """
+        const input = arguments[0];
+        const transfer = new DataTransfer();
+        for (const fixture of arguments[1]) {
+          const file = new File([new Uint8Array(fixture.bytes)], fixture.name, {
+            type: "text/plain", lastModified: 1700000000000,
+          });
+          Object.defineProperty(file, "webkitRelativePath", { value: fixture.path });
+          transfer.items.add(file);
+        }
+        input.value = "";
+        input.files = transfer.files;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        """, input_element, descriptors,
+    )
+
+
+def _image_index_intake_regression(driver, wait, bench, base_url, output):
+    """Both pickers reach real confirmation; every safety control remains active."""
+    from tests.fixtures.load_files.generate_image_indexes import minimal_image_index
+
+    scanner = SyntheticImageIndexScanner()
+    original_scanner = bench.malware_scanner
+    bench.malware_scanner = scanner
+    fixtures = [
+        ("generated_index.LFP", minimal_image_index(".lfp")),
+        ("generated_index.DII", minimal_image_index(".dii")),
+        ("control_file.DAT", "þAþ\x14þBþ\nþoneþ\x14þtwoþ\n".encode()),
+        ("control_file.OPT", b"SYN7,VOL,red.png,Y,,,1\n"),
+    ]
+    _require(all(0 < len(body) <= 128 for _, body in fixtures), "generated fixtures exceed the existing document limit")
+    completed = []
+
+    def opened(selector, label, *, ready=True, outcome="clean"):
+        scanner.ready, scanner.outcome = ready, outcome
+        matter = bench.create_matter(f"Synthetic image index {label}", "Generated intake acceptance", ACTOR)
+        navigate_to(driver, f"{base_url}/matters/{matter.slug}", diagnostics=output,
+                    page_load_timeout=20, readiness_timeout=20)
+        for input_id in ("source-files", "source-folder"):
+            element = wait.until(lambda current: current.find_element(By.ID, input_id))
+            accepted = set(element.get_attribute("accept").split(","))
+            _require({".dat", ".opt", ".lfp", ".dii"} <= accepted,
+                     f"{input_id} does not offer all supported load-file types")
+        return matter, driver.find_element(By.ID, selector)
+
+    def reviewed(count):
+        return wait.until(lambda current: (
+            rows if len(rows := current.find_elements(By.CSS_SELECTOR, "[data-upload-preflight-items] > li")) == count
+            and current.find_element(By.CSS_SELECTOR, "[data-upload-preflight]").get_attribute("aria-busy") is None
+            else False))
+
+    def confirmed(matter, expected):
+        confirm = driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]")
+        _require(confirm.is_enabled(), "eligible image-index selection cannot be confirmed")
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", confirm)
+        confirm.click()
+        _wait_until(lambda: bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR),
+                    "image-index confirmation did not create an upload session")
+        session = _wait_until(lambda: (
+            candidate if (candidate := bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR)[0]).state
+            in {"complete", "partial"} else None), "image-index upload did not finish", seconds=30)
+        _, items = bench.workspace.upload_session(matter.matter_id, ACTOR, session.upload_session_id)
+        _require(session.item_count == expected and len(items) == expected,
+                 "post-preflight validation lost an eligible file")
+        return items
+
+    original_reserve = os.environ.get("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB")
+    os.environ["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] = "0"
+    try:
+        driver.set_window_size(1536, 1024)
+        for selector in ("source-files", "source-folder"):
+            folder = selector == "source-folder"
+            matter, element = opened(selector, f"{selector} clean")
+            before_scans = scanner.scan_calls
+            _image_index_selection(driver, element, fixtures, folder=folder)
+            rows = reviewed(len(fixtures))
+            _require(all(row.get_attribute("data-state") == "valid" for row in rows),
+                     "a supported image index or DAT/OPT control was not eligible")
+            _require(all("Security scan required and not run yet" in row.text for row in rows),
+                     "preflight claimed completed scanning or lost the required policy")
+            _require(scanner.scan_calls == before_scans, "preflight scanned image-index contents")
+            _require(not bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR),
+                     "selection created an upload session before confirmation")
+            _require(not bench.source_store(matter).documents, "selection saved originals before confirmation")
+            driver.save_screenshot(str(output / f"lfp-dii-{selector}-preflight.png"))
+            items = confirmed(matter, len(fixtures))
+            _require(all(item.state != "failed" for item in items), "supported image-index admission failed")
+            store = bench.source_store(matter)
+            _wait_until(lambda: len(store.documents) == len(fixtures)
+                        and all(document.state == "ready" for document in store.documents.values()),
+                        "stored-only image indexes did not become ready", seconds=30)
+            expected = {f"Generated/{name}" if folder else name: body for name, body in fixtures}
+            _require({document.relative_path for document in store.documents.values()} == set(expected),
+                     "saved image-index paths differ from the selected file/folder descriptors")
+            for document in store.documents.values():
+                body = expected[document.relative_path]
+                _require(store.source_path(document.document_id, verify_digest=True).read_bytes() == body,
+                         "image-index original bytes changed")
+                _require(document.digest == hashlib.sha256(body).hexdigest(), "image-index digest changed")
+                _require(not tuple(document.iter_parsed_units()) and document.page_count == 0,
+                         "image-index admission invented searchable text or pages")
+            _require(scanner.scan_calls > before_scans, "confirmation bypassed the required content scan")
+            completed.append(f"{selector}:LFP,DII,DAT,OPT saved through real confirmation")
+
+            matter, element = opened(selector, f"{selector} blocked types")
+            rejected = [("blocked_type.unsupported", b"generated"), ("oversize_index.LFP", b"x" * 129),
+                        ("empty_index.DII", b""), fixtures[0], fixtures[0]]
+            _image_index_selection(driver, element, rejected, folder=folder)
+            rows = reviewed(len(rejected))
+            _require([row.get_attribute("data-state") for row in rows] ==
+                     ["unsupported", "over_limit", "failed", "valid", "duplicate_candidate"],
+                     "unsupported, size, empty or duplicate-path controls changed")
+            _require(not bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR),
+                     "blocked selection created an upload session")
+            maximum = int(driver.find_element(By.CSS_SELECTOR, "[data-upload-form]").get_attribute("data-max-upload-items"))
+            _image_index_selection(driver, element,
+                [(f"count-{number:05d}.LFP", fixtures[0][1]) for number in range(maximum + 1)], folder=folder)
+            wait.until(lambda current: "Choose no more than" in current.find_element(
+                By.CSS_SELECTOR, "[data-upload-preflight-status]").text)
+            _require(not driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]").is_enabled(),
+                     "excessive selection count became eligible")
+
+            matter, element = opened(selector, f"{selector} scanner unavailable", ready=False)
+            before_scans = scanner.scan_calls
+            _image_index_selection(driver, element, fixtures[:2], folder=folder)
+            rows = reviewed(2)
+            _require(all(row.get_attribute("data-state") == "needs_attention" for row in rows),
+                     "unavailable required scanner allowed image-index eligibility")
+            _require(not driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]").is_enabled()
+                     and scanner.scan_calls == before_scans,
+                     "scanner-unavailable preview was admitted or scanned")
+
+            for outcome in ("infected", "indeterminate"):
+                matter, element = opened(selector, f"{selector} {outcome}", outcome=outcome)
+                before_scans = scanner.scan_calls
+                _image_index_selection(driver, element, fixtures[:2], folder=folder)
+                _require(all(row.get_attribute("data-state") == "valid" for row in reviewed(2)),
+                         "ready scanner did not permit metadata-only selection")
+                _require(scanner.scan_calls == before_scans, "preflight falsely performed a content scan")
+                items = confirmed(matter, 2)
+                _require(all(item.state == "failed" for item in items), "non-clean scan admitted image-index bytes")
+                _require(not bench.source_store(matter).documents and scanner.scan_calls > before_scans,
+                         "non-clean image index escaped the real scan decision")
+            completed.append(f"{selector}:type,size,empty,count,duplicate and scanner controls retained")
+    finally:
+        bench.malware_scanner = original_scanner
+        if original_reserve is None:
+            os.environ.pop("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", None)
+        else:
+            os.environ["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] = original_reserve
+    return {"checks": completed, "scan_calls": scanner.scan_calls}
 
 
 def _parse_args() -> argparse.Namespace:
@@ -3155,6 +3336,8 @@ def main() -> int:
                 "changed plan did not release its live stale reservation before batch-zero recovery",
             )
 
+            report["image_index_intake"] = _image_index_intake_regression(
+                driver, wait, bench, base_url, output)
             javascript_errors = [
                 entry
                 for entry in driver.get_log("browser")
@@ -3199,6 +3382,8 @@ def main() -> int:
                 "v4 resume mismatch preserves its exact recovery checkpoint",
                 "desktop and 390px mobile views have no horizontal overflow",
                 "no severe browser JavaScript error",
+                "LFP/DII and DAT/OPT controls through both actual selectors, preflight and confirmation",
+                "image-index selection retains type, size, count, duplicate and real scanner refusals",
             ]
             report["matter_slug"] = slug
             report["selected_count"] = 5

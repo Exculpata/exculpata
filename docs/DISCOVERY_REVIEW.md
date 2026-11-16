@@ -53,12 +53,13 @@ A row that could name two items attaches to neither. The page reports how many
 rows matched, and each item shows the load file, line and how it matched.
 Rows past the first for one item are counted and not used.
 
-### Saved DAT and OPT load files
+### Saved load files
 
 Use **Choose files** or **Choose a folder** on the workbench's Add sources
-surface to add supported `.dat` and `.opt` files, including uppercase suffixes.
-DAT and OPT originals are saved without searchable text. Production documents
-imports their supported metadata separately; metadata import does not make the
+surface to add supported `.dat`, `.opt`, `.lfp`, and `.dii` files, including
+uppercase suffixes. Load-file originals are saved without searchable text.
+Production documents imports supported DAT/OPT metadata separately; admission
+of LFP/DII is available before their interpretation. Metadata import does not make the
 load file searchable. Original bytes and their digests are retained. Raw load
 files have no byte preview or Text view, and their contents cannot be opened
 through the source-content route. Authorized preservation archives retain the originals, and ordinary
@@ -77,7 +78,7 @@ fit a limit. References inside load files remain data and are never opened.
 Selection review checks names, declared sizes, and scanner availability; it
 does not attest file readability or a completed malware scan. Full content
 validation and any required scanning occur after transfer. The extended policy
-requires scans for DAT/OPT, as does the all-files policy. Missing, unavailable,
+requires scans for DAT/OPT/LFP/DII, as does the all-files policy. Missing, unavailable,
 failed, or inconclusive required scanning blocks admission. With scanning
 disabled, files are not scanned for malware. Neither valid structure nor a
 clean scan makes arbitrary text safe to preview or execute.
@@ -92,8 +93,68 @@ selected-file receipt.
 
 Registered-folder ingestion still supports only PDF, DOCX, and TXT. The legacy
 pilot selector remains limited to PDF and TXT; its default extended scanning
-policy does not provide DAT/OPT admission without a scanner. Browser-selected
+policy does not provide DAT/OPT/LFP/DII admission without a scanner. Browser-selected
 folders do not expand ZIP archives, and ZIP files are not admitted.
+
+### Proposed LFP and DII admission subset
+
+**PROPOSED subset, approved by the owner 2026-11-14T12:08.** These deliberately narrow, generated dialects
+are supported for protected intake; they do not establish compatibility with all
+LFP or DII producers. A format suffix makes a source eligible for validation.
+Recognition examines content and complete validation rejects a malformed or
+binary tail after a valid prefix. Selecting a file, passing preflight, or receiving
+a clean scan does not certify metadata associations or rendering.
+
+LFP accepts one `IM,key,boundary,0,location` command per physical line, optionally
+followed by `,rotation`. The literal key is nonempty and at most 70 characters.
+Boundary is exactly `D`, empty, or one ASCII space; `D` declares a document start.
+Offset is exactly `0`; nonzero offsets and project-specific boundary letters are
+unsupported. Location is either `filename;type` or
+`@volume;relative-directory;filename;type`, with type exactly `2` or `4`. Rotation
+is omitted or exactly `0`, `1`, `2`, or `3`; retaining it does not apply a rotation
+to an image. There is no quoting or escaping. Commas/semicolons cannot be escaped
+inside components. Other commands and blank/comment lines are outside this subset.
+
+DII begins with exactly `@FULLTEXT DOC`. Each block starts with `@T ` and a literal
+identifier, then requires one explicit `@BATESBEG ` value. The block ends before
+the next valid `@T ` start or at EOF; no `@END` or `<<DOC>>` boundary is accepted.
+Optional singleton metadata is `@DOCID`, `@PARENTID`, and either `@PGCOUNT` or
+`@C PGCOUNT`. A supplied count is 1–19 ASCII digits with value 1 through
+9,223,372,036,854,775,807; its spelling, including leading zeroes, is preserved.
+Both count spellings in one block are a duplicate even if they agree. Repeated
+metadata, unknown tags, multiline values, and metadata after image entries are
+rejected. Metadata is followed by exactly one `@D @I\relative\directory\`
+declaration (or `@D @I\` for the production root) and at least one bare safe image
+filename per line with suffix `.tif`, `.tiff`, `.png`, `.jpg`, or `.jpeg` (ASCII
+case-insensitive). This image-suffix restriction is the proposed local subset,
+not a claim that every DII producer uses it. The image entries are counted incrementally. A supplied count
+does not expand into entries, pages, or Bates labels.
+
+These inputs use the same supported encodings and 1 MiB source-byte physical-record
+limit as the other load files, with an additional 1 MiB decoded UTF-8 record limit.
+DII scalar values and retained block metadata are separately
+bounded at 1 MiB, while a document can contain many individually valid streamed
+image entries. A valid prefix never permits decoding errors, unsupported controls,
+executable/archive signatures, malformed later blocks, or oversized values to be
+accepted. Complete admission rejects any unsupported record; diagnostic recovery
+in a later interpretation step is not permission to admit a damaged upload.
+
+Every supplied image/volume/directory reference remains inert data. Absolute,
+drive, UNC, URI, traversal and expansion forms are refused; no path is opened,
+resolved, joined to a filesystem root, or fetched over a network. `@I\` is part
+of the proposed DII notation, not filesystem authority. Admitted originals keep
+their exact bytes and hashes and remain protected from GET, HEAD and Range byte
+previews. LFP/DII admission creates no text units, searchable coverage, family,
+page-label, image-decoding or association claim. DAT remains the family authority;
+DII interpretation, when supplied, is document metadata only and never invents
+per-page Bates from `@T`, a filename, or a declared count.
+
+The proposed subset follows the public LFP overview,
+its Import a New Page command reference, and the supported-format
+reference for document-oriented DII records. The accepted syntax and
+compatibility limits are documented in the grammar proposal.
+The mandatory DII document mode/Bates tag, exact location forms, and excluded
+offsets, commands, quoting and multiline values are explicit compatibility limits.
 
 ## DAT metadata, explicit page records and families
 
