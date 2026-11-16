@@ -147,7 +147,7 @@ class ProductionService:
                 subscription, identity, revision = store.source_changes.subscribe(
                     lambda change: self.notified(matter.matter_id, change))
                 prior = dict(subscription=subscription, source_identity='production-v2-' + identity, revision=0,
-                             inputs={}, roots={}, scan_start=revision, attempt_roots={}, dirty=set())
+                             inputs={}, roots={}, scan_start=revision, attempt_roots={}, dirty=set(), validated={})
                 self.discovery[matter.matter_id] = ''
                 self.discovery_done.discard(matter.matter_id)
             if prior.get('digest') not in (None, digest):
@@ -212,6 +212,7 @@ class ProductionService:
                 binding = self.binding(matter_id)
                 binding['dirty'].discard(prior['attempt_id'])
                 binding['attempt_roots'].pop(prior['attempt_id'], None)
+                binding['validated'].pop(prior['attempt_id'], None)
                 self.repository.save_dependencies(matter_id, attempt_id,
                     {'restarts': state.get('restarts', 0)}, options['input_revision'])
             return attempt_id
@@ -229,13 +230,19 @@ class ProductionService:
         state = attempt.get('dependencies', {})
         return state if isinstance(state, dict) else {}
 
+    @staticmethod
+    def dependency_stamp(state):
+        return tuple(state.get(key) for key in ('epoch', 'revision', 'human', 'hash'))
+
     def dependencies_current(self, matter_id, attempt):
         binding = self.binding(matter_id)
         state = self.dependency_state(attempt)
         return (attempt['input_revision'] == self.input_revision(matter_id)
                 and state.get('epoch') == binding['source_identity']
                 and state.get('revision') == self.root_revision(matter_id, attempt)
-                and state.get('owner') == self.epoch and state.get('state') == 'complete')
+                and state.get('state') == 'complete'
+                and (state.get('owner') == self.epoch
+                     or binding['validated'].get(attempt['attempt_id']) == self.dependency_stamp(state)))
 
     def attempt_current(self, matter_id, attempt):
         binding = self.binding(matter_id)
@@ -265,6 +272,7 @@ class ProductionService:
                     self.repository.update_attempt(matter_id, attempt['attempt_id'], status='stale', phase='stale')
                     binding['dirty'].discard(attempt['attempt_id'])
                     binding['attempt_roots'].pop(attempt['attempt_id'], None)
+                    binding['validated'].pop(attempt['attempt_id'], None)
                 self.discovery[matter_id] = ''
                 self.discovery_done.discard(matter_id)
             else:
@@ -316,6 +324,7 @@ class ProductionService:
                             self.repository.update_attempt(matter_id, attempt['attempt_id'], status='complete', phase='complete')
                             state['restarts'] = 0
                         binding['dirty'].discard(attempt['attempt_id'])
+                        binding['validated'][attempt['attempt_id']] = self.dependency_stamp(state)
                     self.repository.save_dependencies(matter_id, attempt['attempt_id'], state,
                         self.input_revision(matter_id) if state['state'] == 'complete' else self.input_revision(matter_id) + ':pending')
                 if attempt['target'] != target:

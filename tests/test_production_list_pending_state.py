@@ -40,6 +40,35 @@ def test_building_attempt_list_is_pending_then_converges(tmp_path, monkeypatch):
         assert 'data-production-records ' in page.text
 
 
+def test_completed_dependencies_remain_current_across_service_validation(tmp_path):
+    from case_intelligence.modules.discovery_review.production import ProductionService
+    from tests.test_discovery_review_dat_opt_storage import finish_import
+
+    with app_case(tmp_path, count=3) as case:
+        finish_import(case)
+        matter_id = case.matter.matter_id
+        document = case.store.get('00000000000000000000000000000002')
+        original = case.service.document_projection(matter_id, document.document_id, document.version_id)
+        assert original['values']['begin_bates'] == 'GEN00000001'
+        attempt = converge(case)
+        production = service_for(case.bench).production
+        assert attempt['dependencies']['owner'] != case.service.epoch
+        assert case.service.attempt_current(matter_id, attempt)
+        assert case.service.document_projection(matter_id, document.document_id, document.version_id) == original
+
+        fresh = ProductionService(case.context, repository=case.repository)
+        fresh.bind(case.matter, case.store, case.definition)
+        assert not fresh.attempt_current(matter_id, attempt)
+        fresh.cancel(matter_id)
+        change_input(case, 1)
+        for service in (case.service, production):
+            assert not service.attempt_current(matter_id, attempt)
+            pending = service.document_projection(matter_id, document.document_id, document.version_id)
+            assert pending['state'] == 'pending'
+            assert not pending['values']
+        converge(case)
+
+
 def request_list(case, **extra):
     source = case.store.documents['00000000000000000000000000000001']
     page = case.client.get(f'/matters/{case.matter.slug}/production', params={
