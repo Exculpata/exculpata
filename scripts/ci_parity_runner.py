@@ -363,7 +363,7 @@ class Runner:
             replay_env['CI_PARITY_REPLAY_REPORT'] = str(report_path)
             log = self.log_directory / f'{self.log_prefix}-{self.serial:04d}-replay.log'
             rendered = expr.render(command, run_context)
-            code, timed_out = run_shell(rendered, cwd, replay_env, step.raw.get('shell', defaults.get('shell')) == 'bash', deadline - time.monotonic(), log, self.cancelled)
+            code, timed_out = run_shell(rendered, cwd, replay_env, step.raw.get('shell', defaults.get('shell')) == 'bash', deadline - time.monotonic(), log, cancelled=self.cancelled)
             self.emit(f'REPLAY PYTEST exit={code} timeout={timed_out} log={log.name}')
             try:
                 report = json.loads(report_path.read_text())
@@ -460,7 +460,7 @@ class Runner:
                     budget = min(deadline - time.monotonic(), step.raw.get('timeout-minutes', 360) * 60)
                     started = time.monotonic()
                     self.emit(f'RUN {step_tag} log={log.name}')
-                    code, timed_out = run_shell(command, cwd, step_env, step.raw.get('shell', defaults.get('shell')) == 'bash', budget, log, self.cancelled)
+                    code, timed_out = run_shell(command, cwd, step_env, step.raw.get('shell', defaults.get('shell')) == 'bash', budget, log, cancelled=self.cancelled)
                     self.ran += 1
                     outcome = 'failure' if code else 'success'
                     tolerated = step.raw.get('continue-on-error', False)
