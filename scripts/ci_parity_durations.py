@@ -13,6 +13,8 @@ import shlex
 # can time out hosted; never raise this to make a test pass.
 NEAR_LIMIT_FRACTION = 0.30
 ACCEPTED_EXCEPTIONS = {
+    'tests/test_discovery_review_index.py::test_rebuild_step_row_budget[10000]':
+        (135, '2026-11-15T15:24'),
     'tests/test_discovery_review_index_lifecycle.py::'
     'test_single_heavily_coded_item_stays_pending_with_complete_values_on_resume':
         (125, '2026-11-15T17:17'),

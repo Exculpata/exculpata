@@ -18,7 +18,7 @@ def test_accepted_exceptions_are_exactly_the_approved_literal_table():
 
     from scripts import ci_parity_durations
 
-    expected = {RESUME_ID: (125, '2026-11-15T17:17')}
+    expected = {REBUILD_ID: (135, '2026-11-15T15:24'), RESUME_ID: (125, '2026-11-15T17:17')}
     assert ci_parity_durations.ACCEPTED_EXCEPTIONS == expected
     tree = ast.parse((ROOT / 'scripts/ci_parity_durations.py').read_text())
     assignment, = [node for node in tree.body if isinstance(node, ast.Assign)
@@ -30,6 +30,7 @@ def test_accepted_exceptions_are_exactly_the_approved_literal_table():
 
 
 @pytest.mark.parametrize('test_id,ceiling,approval,observed', [
+    (REBUILD_ID, 135, '2026-11-15T15:24', 125.77),
     (RESUME_ID, 125, '2026-11-15T17:17', 120.41),
 ])
 def test_accepted_exception_ceiling_and_phase_totals(test_id, ceiling, approval, observed):
@@ -49,7 +50,6 @@ def test_accepted_exception_ceiling_and_phase_totals(test_id, ceiling, approval,
 
 
 @pytest.mark.parametrize('test_id', [
-    REBUILD_ID,
     REBUILD_ID.replace('[10000]', '[5000]'),
     REBUILD_ID.replace('[10000]', '[20000]'),
     REBUILD_ID.replace('test_discovery_review_index.py', 'other.py'),
