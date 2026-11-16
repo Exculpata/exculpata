@@ -102,6 +102,73 @@ def test_needs_waits_for_all_matrix_cells_and_carries_outputs(tmp_path, monkeypa
         'BEGIN 0', 'END 0', 'BEGIN 1', 'END 1']
 
 
+@pytest.mark.parametrize('independent_first', [False, True])
+def test_row_budget_waits_for_shards_and_runs_alone(tmp_path, monkeypatch, independent_first):
+    monkeypatch.delenv('CI_PARITY_SERIAL', raising=False)
+    monkeypatch.setattr(execution, 'cpu_budget', lambda: 8)
+    data = document()
+    shards = {'strategy': {'fail-fast': False, 'matrix': {'shard': [0, 1]}},
+              'steps': [{'run': 'true'}]}
+    isolated = {'needs': 'application-shards', 'steps': [{'run': 'true'}]}
+    independent = {'steps': [{'run': 'true'}]}
+    data['jobs'] = {'application-shards': shards}
+    if independent_first:
+        data['jobs']['independent'] = independent
+    data['jobs']['application-row-budget'] = isolated
+    if not independent_first:
+        data['jobs']['independent'] = {**independent, 'needs': 'application-shards'}
+    lock = threading.Lock()
+    independent_started = threading.Event()
+    shards_finished = threading.Event()
+    row_started = threading.Event()
+    finished, intervals = set(), {}
+
+    def cell(self, workflow, job, matrix, context, ancestor_failure=False):
+        key = (job.name, matrix.get('shard'))
+        start = time.monotonic()
+        if job.name == 'application-shards':
+            if independent_first:
+                assert independent_started.wait(2)
+            with lock:
+                finished.add(matrix['shard'])
+                if len(finished) == 2:
+                    shards_finished.set()
+        elif job.name == 'independent':
+            independent_started.set()
+            assert shards_finished.wait(2)
+            if independent_first:
+                row_started.wait(0.1)
+            time.sleep(0.03)
+        else:
+            assert finished == {0, 1}
+            row_started.set()
+            time.sleep(0.03)
+        with lock:
+            intervals[key] = (start, time.monotonic())
+        return 'success', {}
+
+    monkeypatch.setattr(execution.Runner, 'cell', cell)
+    _, messages, _ = run_repository(tmp_path, data)
+    row_start, row_end = intervals.pop(('application-row-budget', None))
+    for (name, _), (start, end) in intervals.items():
+        if name == 'application-shards':
+            assert end <= row_start
+        assert end <= row_start or start >= row_end, f'{name} overlapped row budget'
+
+    schedule = [line for line in messages if line.startswith('SCHEDULE ')]
+    assert len(schedule) == 8
+    for key, (start, end) in {**intervals, ('application-row-budget', None): (row_start, row_end)}.items():
+        name, shard = key
+        matrix = '{}' if shard is None else f'{{"shard": {shard}}}'
+        tag = f'synthetic:{name} {matrix}'
+        boundaries = [line for line in schedule if tag in line]
+        assert len(boundaries) == 2
+        assert boundaries[0].startswith('SCHEDULE START ')
+        assert boundaries[1].startswith('SCHEDULE END ')
+        assert float(boundaries[0].split('monotonic=')[1]) <= start
+        assert float(boundaries[1].split('monotonic=')[1]) >= end
+
+
 @pytest.mark.parametrize('serial', ['0', '1'])
 def test_matrix_fail_fast_retains_serial_cancellation(tmp_path, monkeypatch, serial):
     monkeypatch.setenv('CI_PARITY_SERIAL', serial)

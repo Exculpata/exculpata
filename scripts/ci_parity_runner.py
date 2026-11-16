@@ -159,7 +159,7 @@ def cpu_budget():
 
 
 def cell_workers(workflow, job, budget):
-    """Reserve bounded worker declarations; reject opaque worker expressions."""
+    """Reserve workers, or the entire budget for the isolated row-budget job."""
     workers = 1
     for step in job.steps:
         if step.unavailable and not (step.expected and step.expected.get('replay')):
@@ -181,7 +181,7 @@ def cell_workers(workflow, job, budget):
             workers = max(workers, count)
     if workers > budget:
         raise Refused(f'{workflow.name}:{job.name}: {workers} workers exceed CPU budget {budget}')
-    return workers
+    return budget if job.name == 'application-row-budget' else workers
 
 
 class Runner:
@@ -249,6 +249,8 @@ class Runner:
                         children.append(child)
                         messages = state['logs'][index] = []
                         child.emit = messages.append
+                        tag = f'{workflow.name}:{job.name} {json.dumps(job.cells[index], sort_keys=True)}'
+                        messages.append(f'SCHEDULE START {tag} time_unix={time.time():.6f} monotonic={time.monotonic()}')
                         future = pool.submit(child.cell, workflow, job, job.cells[index], state['context'], state['ancestor'])
                         running[future] = (state, index, child)
                         state['next'] += 1
@@ -268,6 +270,8 @@ class Runner:
                     for future in completed:
                         state, index, child = running.pop(future)
                         state['cells'][index] = future.result()
+                        tag = f'{state["workflow"].name}:{state["job"].name} {json.dumps(state["job"].cells[index], sort_keys=True)}'
+                        state['logs'][index].append(f'SCHEDULE END {tag} time_unix={time.time():.6f} monotonic={time.monotonic()}')
                         state['running'] -= 1
                         used -= state['workers']
         except BaseException:
