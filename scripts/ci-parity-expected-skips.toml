@@ -1,6 +1,20 @@
 # Exact unavailable workflow steps. Every omission is reported, never a passing check.
 
 [[skip]]
+workflow = "quality-gates"
+job = "application-row-budget"
+step = "Install row budget test dependencies"
+category = "install"
+reason = "The workflow installs editable dev extras; local parity checks and uses the existing venv."
+
+[[skip]]
+workflow = "quality-gates"
+job = "application-row-budget"
+step = "Retain row budget test report"
+category = "github-only"
+reason = "Hosted artifact upload is unavailable offline; the serial test runs and its per-step log remains beside the local report."
+
+[[skip]]
 workflow = "corpus"
 job = "fast"
 step = "python -m pip install --disable-pip-version-check -e '.[dev]'"

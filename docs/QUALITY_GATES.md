@@ -88,6 +88,15 @@ up to 125 s (approval 2026-11-15T17:17). Accepted totals emit `ACCEPTED EXCEPTIO
 totals above either ceiling still fail. All other tests retain the 30% limit.
 Remove these exceptions when the tests are fixed.
 
+The 10,000-row rebuild test is deselected by the application shard argument
+files and runs once in `application-row-budget`, after both shards finish.
+Its `Run isolated row budget test` step invokes only that exact node with
+`-n 0`, the existing pytest timeout and all phase durations. Local parity reads
+this same job and dependency graph; the serial runner waits for each preceding
+cell, so no other pytest work overlaps the isolated step. Hosted CI gives the
+post-shard job its own runner. The other parameters and tests in the file remain
+in the shards; the two approved duration ceilings are unchanged.
+
 Exact unavailable steps and evidence are recorded in
 [`ci-parity-expected-skips.toml`](../scripts/ci-parity-expected-skips.toml) and printed
 in every report. HEAD differs from the hosted integration candidate; runner images,
@@ -163,7 +172,8 @@ The application suite runs in two parallel `application-shards` matrix jobs.
 `scripts/application-test-shard.py` sorts the application test files and assigns
 alternating files to each shard; new files are included automatically. Each shard
 keeps the existing worker limits and diagnostics, with a separate artifact name.
-The existing `application` required check aggregates both shards and classification;
+The existing `application` required check aggregates both shards, the post-shard
+row budget job and classification;
 failed, cancelled or skipped dependencies cannot produce a successful aggregate.
 Documentation-only changes run the lightweight contracts in both shards.
 This split is a prototype: keep it only if hosted wall-clock measurements show a
