@@ -271,17 +271,22 @@ class ProductionService:
                 state = self.dependency_state(attempt)
                 if (state.get('epoch') != binding['source_identity'] or state.get('revision') != root_revision
                         or state.get('human') != binding['human'] or state.get('owner') != self.epoch):
-                    counted = bool(state.get('epoch') and state.get('owner') == self.epoch)
+                    was_complete = attempt['status'] == 'complete' or state.get('was_complete', False)
+                    counted = bool(state.get('epoch') and state.get('owner') == self.epoch
+                                   and attempt['status'] != 'failed')
                     if counted:
                         state = self.restart_state(matter_id, attempt, dict(state, resume_phase=attempt['phase']))
                         if state.get('paused'):
                             self.changed(matter_id)
                             return self.repository.attempt(matter_id, attempt['attempt_id'])
-                    state = dict(restarts=state.get('restarts', 0), owner=self.epoch, counted=counted,
+                    state = dict(restarts=state.get('restarts', 0), owner=self.epoch, counted=counted, was_complete=was_complete,
                                  epoch=binding['source_identity'], revision=root_revision, human=binding['human'], state='scan',
                                  hash='', after='', previous=state.get('previous', state.get('hash', '')),
                                  reopened=bool((attempt['status'] == 'complete' and not state) or state.get('epoch')
                                      and (state['epoch'] != binding['source_identity'] or state.get('human') != binding['human'])))
+                    if attempt['status'] == 'complete':
+                        self.repository.update_attempt(matter_id, attempt['attempt_id'], status='building', phase='complete')
+                        attempt = self.repository.attempt(matter_id, attempt['attempt_id'])
                 if state.get('state') != 'complete':
                     rows = self.repository.candidates(matter_id, source.root_key, after=state.get('after', ''), limit=8)
                     for row in rows:
@@ -307,7 +312,8 @@ class ProductionService:
                             attempt = self.repository.attempt(matter_id, attempt['attempt_id'])
                         state.pop('previous', None)
                         state.pop('reopened', None)
-                        if attempt['status'] == 'complete':
+                        if state.get('was_complete') and attempt['phase'] == 'complete':
+                            self.repository.update_attempt(matter_id, attempt['attempt_id'], status='complete', phase='complete')
                             state['restarts'] = 0
                         binding['dirty'].discard(attempt['attempt_id'])
                     self.repository.save_dependencies(matter_id, attempt['attempt_id'], state,

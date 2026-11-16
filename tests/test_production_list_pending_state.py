@@ -46,7 +46,7 @@ def request_list(case, **extra):
         'doc': case.store.action_token(source), 'view': 'fields', **extra})
     assert page.status_code == 200
     attempt = current_attempt(case)
-    if attempt and attempt['status'] != 'complete':
+    if attempt and attempt['status'] == 'building':
         assert 'data-production-records ' not in page.text
     return page
 
@@ -73,6 +73,7 @@ def observe_work(case, monkeypatch):
     advance = production.advance
     restart = production.repository.restart_matching
     begin = production.repository.begin_attempt
+    seen = {}
 
     def advancing(*args, **kwargs):
         result = advance(*args, **kwargs)
@@ -86,8 +87,11 @@ def observe_work(case, monkeypatch):
     def beginning(matter_id, source, **kwargs):
         prior = production.repository.current_attempt(matter_id, source.document_id)
         result = begin(matter_id, source, **kwargs)
-        if prior is not None and result != prior['attempt_id']:
+        key = (matter_id, source.document_id)
+        previous = seen.get(key, prior['attempt_id'] if prior else result)
+        if result != previous:
             observed['restarts'] += 1
+        seen[key] = result
         return result
 
     monkeypatch.setattr(production, 'advance', advancing)
@@ -289,3 +293,50 @@ def test_other_production_root_does_not_consume_restarts(tmp_path, monkeypatch):
         completed = converge(case)
         assert completed['generation'] == original['generation']
         assert observed['restarts'] == 0
+
+
+def test_failed_source_keeps_its_failure_during_input_changes(tmp_path):
+    with app_case(tmp_path, count=3) as case:
+        attempt = converge(case)
+        service_for(case.bench).production.repository.update_attempt(case.matter.matter_id, attempt['attempt_id'],
+            status='failed', phase='error', failure='Generated incomplete source')
+        failed = current_attempt(case)
+        assert failed['status'] == 'failed'
+        assert failed['file_failure']
+        for number in range(6):
+            change_input(case, number)
+            page = request_list(case)
+            assert PAUSED not in page.text
+            assert current_attempt(case)['status'] == 'failed'
+            assert current_attempt(case)['file_failure'] == failed['file_failure']
+
+
+def test_changes_interrupting_revalidation_of_complete_attempt_are_bounded(tmp_path, monkeypatch):
+    with app_case(tmp_path, count=20) as case:
+        converge(case)
+        production = service_for(case.bench).production
+        reconcile = production.reconcile_attempt
+        interruptions, scans = [], []
+        armed = False
+
+        def interrupted(matter_id, attempt):
+            nonlocal armed
+            result = reconcile(matter_id, attempt)
+            before, after = attempt['dependencies'], result['dependencies']
+            if after.get('state') == 'scan' and after.get('revision') != before.get('revision'):
+                scans.append(result['attempt_id'])
+            if armed and after.get('state') == 'scan' and not after.get('paused'):
+                armed = False
+                interruptions.append(result['attempt_id'])
+                change_input(case, len(interruptions))
+            return result
+
+        monkeypatch.setattr(production, 'reconcile_attempt', interrupted)
+        change_input(case, 0)
+        for _ in range(10):
+            armed = True
+            page = request_list(case)
+            assert len(scans) <= 3
+        assert len(scans) == 3
+        assert PAUSED in page.text
+        assert 'data-production-restarts="3"' in page.text
