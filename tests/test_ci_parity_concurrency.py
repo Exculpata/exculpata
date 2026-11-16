@@ -16,39 +16,65 @@ from tests.test_ci_parity import document, repository, run_repository
 from tests.test_application_shards import ROOT, SCRIPT, SERIAL_TESTS, workflow_jobs
 
 
-def test_independent_cells_overlap_with_bounded_workers(tmp_path, monkeypatch):
+@pytest.mark.parametrize('host_cpus', [1, 2, 4, 8])
+def test_independent_cells_overlap_with_bounded_workers(tmp_path, monkeypatch, host_cpus):
     monkeypatch.delenv('CI_PARITY_SERIAL', raising=False)
-    monkeypatch.setattr(execution.os, 'cpu_count', lambda: 8)
+    monkeypatch.setattr(execution.os, 'cpu_count', lambda: host_cpus)
+    monkeypatch.setattr(execution.os, 'sched_getaffinity', lambda pid: set(range(host_cpus)), raising=False)
+    monkeypatch.setattr(execution, 'cpu_budget', lambda: 8)
     data = document([{'run': 'python -m pytest -n 4'}],
                     strategy={'fail-fast': False, 'matrix': {'cell': [0, 1, 2, 3]}})
-    lock, paired = threading.Lock(), threading.Event()
+    lock = threading.Lock()
+    started = [threading.Event() for _ in range(4)]
+    released = [threading.Event() for _ in range(2)]
     active = peak = 0
-    intervals = []
+    batches = 0
+    real_wait = execution.wait
 
     def cell(self, workflow, job, matrix, context, ancestor_failure=False):
         nonlocal active, peak
         with lock:
             active += 4
             peak = max(peak, active)
-            if active == 8:
-                paired.set()
-            start = time.monotonic()
-        assert paired.wait(2), 'independent cells must overlap'
-        time.sleep(0.03)
+            assert active <= 8
+        index = matrix['cell']
+        started[index].set()
+        released[index // 2].wait()
         with lock:
-            intervals.append((start, time.monotonic()))
             active -= 4
         self.ran += 1
         return 'success', {}
 
+    def observe_overlap(futures, return_when):
+        nonlocal batches
+        try:
+            assert len(futures) == 2, 'the budget must admit exactly two independent cells'
+            for event in started[batches * 2:batches * 2 + 2]:
+                event.wait()
+            with lock:
+                assert active == 8, 'both cells must be active before either is released'
+        except BaseException:
+            for event in released:
+                event.set()
+            raise
+        released[batches].set()
+        batches += 1
+        return real_wait(futures)
+
     monkeypatch.setattr(execution.Runner, 'cell', cell)
+    monkeypatch.setattr(execution, 'wait', observe_overlap)
     runner, _, _ = run_repository(tmp_path, data)
     assert runner.ran == 4 and peak == 8
-    events = sorted([(a, 4) for a, _ in intervals] + [(b, -4) for _, b in intervals])
-    workers = 0
-    for _, delta in events:
-        workers += delta
-        assert workers <= 8
+    assert active == 0 and batches == 2
+
+
+@pytest.mark.parametrize(('count', 'affinity', 'expected'), [
+    (8, 4, 4), (8, 2, 2), (8, 1, 1), (2, 8, 2), (None, 4, 1),
+])
+def test_cpu_budget_respects_count_and_affinity(monkeypatch, count, affinity, expected):
+    monkeypatch.setattr(execution.os, 'cpu_count', lambda: count)
+    monkeypatch.setattr(execution.os, 'sched_getaffinity', lambda pid: set(range(affinity)), raising=False)
+    assert execution.cpu_budget() == expected
 
 
 def normalized(messages):
@@ -201,7 +227,7 @@ def test_matrix_fail_fast_retains_serial_cancellation(tmp_path, monkeypatch, ser
 
 def test_max_parallel_and_light_cell_budget(tmp_path, monkeypatch):
     monkeypatch.delenv('CI_PARITY_SERIAL', raising=False)
-    monkeypatch.setattr(execution.os, 'cpu_count', lambda: 2)
+    monkeypatch.setattr(execution, 'cpu_budget', lambda: 2)
     data = document([{'run': 'true'}], strategy={
         'fail-fast': False, 'max-parallel': 1, 'matrix': {'cell': [0, 1, 2]}})
     data['jobs']['other'] = {'steps': [{'run': 'true'}]}
@@ -246,13 +272,14 @@ def test_worker_reservation(tmp_path, command, env, expected):
 
 def test_oversized_worker_demand_fails_before_any_cell(tmp_path, monkeypatch):
     monkeypatch.delenv('CI_PARITY_SERIAL', raising=False)
-    monkeypatch.setattr(execution.os, 'cpu_count', lambda: 2)
+    monkeypatch.setattr(execution, 'cpu_budget', lambda: 2)
     with pytest.raises(execution.Refused, match='workers exceed CPU budget'):
         run_repository(tmp_path, document([{'run': 'python -m pytest -n 4'}]))
 
 
 def test_real_cells_own_paths_caches_and_environment(tmp_path, monkeypatch):
     monkeypatch.delenv('CI_PARITY_SERIAL', raising=False)
+    monkeypatch.setattr(execution, 'cpu_budget', lambda: 2)
     monkeypatch.setenv('PYTEST_ADDOPTS', 'inherited-unwanted-option')
     data = document([
         {'name': 'first', 'run': 'first'}, {'name': 'second', 'run': 'second'},
@@ -360,6 +387,7 @@ def test_unknown_worker_expression_fails_closed(tmp_path):
 
 def test_interrupt_drains_cells_and_terminates_descendants(tmp_path, monkeypatch):
     monkeypatch.delenv('CI_PARITY_SERIAL', raising=False)
+    monkeypatch.setattr(execution, 'cpu_budget', lambda: 2)
     data = document([{'run': 'sleep 3 & echo $!; wait'}],
                     strategy={'fail-fast': False, 'matrix': {'cell': [0, 1]}})
     pids = []

@@ -566,6 +566,9 @@ def real_scope_outputs(tmp_path, found, changed_path):
                     continue
                 assert step.unavailable is None, 'A scenario cannot invent outputs from an unavailable step'
                 identity = ':'.join((workflow.name, job.name, step.raw['id']))
+                if step.raw.get('uses', '').split('@')[0] == 'actions/checkout':
+                    outputs[identity] = {}
+                    continue
                 output_path = tmp_path / (identity.replace(':', '-') + '.output')
                 output_path.touch()
                 step_env = {**env, 'GITHUB_OUTPUT': str(output_path)}

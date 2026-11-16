@@ -109,7 +109,23 @@ def test_serial_tests_run_alone_after_shards():
     assert guard == ["bash scripts/corpus-write-guard.sh prepare", "bash scripts/corpus-write-guard.sh check"]
     prepare, check = [entry for entry in steps if entry.get("run") in guard]
     assert steps.index(prepare) < steps.index(step) < steps.index(check)
-    assert check["if"] == "${{ always() }}"
+    assert check["if"] == "${{ always() && steps.checkout.outcome == 'success' }}"
+
+
+@pytest.mark.parametrize("job_name", ["application-shards", "application-row-budget"])
+def test_failed_application_gate_does_not_run_guard_without_checkout(tmp_path, job_name):
+    from tests.test_ci_parity import document, run_repository
+
+    steps = workflow_jobs()[job_name]["steps"]
+    gate = {**steps[0], "env": {key: "failure" for key in steps[0]["env"]}}
+    checkout = next(step for step in steps if step.get("uses", "").startswith("actions/checkout@"))
+    check = next(step for step in steps
+                 if step.get("run") == "bash scripts/corpus-write-guard.sh check")
+    summaries = [step for step in steps if step.get("name") == "Summarize interrupted application tests"]
+    runner, messages, _ = run_repository(tmp_path, document([gate, checkout, *summaries, check]))
+    assert runner.failed == runner.ran == 1, messages
+    for step in [*summaries, check]:
+        assert any(line.startswith("SKIP (condition)") and step["name"] in line for line in messages)
 
 
 def test_shard_collection_excludes_only_serial_tests(tmp_path):
