@@ -261,11 +261,11 @@ def test_invalid_input_never_publishes_associations(tmp_path, damage):
         elif damage == "changed-bytes":
             source = review.document(lfp_name)
             review.store.source_path(source.document_id).write_bytes(files[lfp_name].replace(b"TAIL0099", b"SWAP0099"))
-            # The source store owns stored-byte integrity; its committed change
-            # notification, not a per-bind reread, withdraws the derived records.
             with pytest.raises(UploadProblem):
                 review.store.process(source.document_id)
             assert review.document(lfp_name).state == "changed"
+            assert review.store.source_changes.read([source.document_id])[0].state == "changed"
+            assert review.repository.catalog(review.matter.matter_id, source.document_id)["source_state"] == "changed"
             fresh = ProductionService(review.service.context, repository=review.repository)
             fresh.bind(review.matter, review.store, review.definition)
             for _ in range(100):
@@ -288,6 +288,42 @@ def test_invalid_input_never_publishes_associations(tmp_path, damage):
                 response = record_request(review, "Generated/z-parent.png", attempts[lfp_name], 2, endpoint=endpoint)
                 assert response.status_code == 409 and "reload" in response.text.casefold()
             assert old["version_id"] == review.document(lfp_name).version_id
+
+
+@pytest.mark.parametrize("late_subscriber", [False, True], ids=["existing-subscriber", "late-subscriber"])
+@pytest.mark.parametrize("source_format", ["dat", "lfp", "dii"])
+def test_committed_source_change_withdraws_attempt_before_completion(tmp_path, source_format, late_subscriber):
+    with opened_review(tmp_path / "runtime") as review:
+        files, lfp_name, dii_name = production_bytes()
+        upload_image_production(review, files)
+        paths = {"dat": "Generated/families.dat", "lfp": lfp_name, "dii": dii_name}
+        attempts = import_paths(review, list(paths.values()))
+        source = review.document(paths[source_format])
+        before = review.repository.attempt(review.matter.matter_id, attempts[paths[source_format]])
+        revision = review.store.revision
+        review.store.source_path(source.document_id).write_bytes(files[paths[source_format]] + b"\n")
+        with pytest.raises(UploadProblem):
+            review.store.process(source.document_id)
+        assert review.store.revision > revision
+        assert review.store.source_changes.read([source.document_id])[0].state == "changed"
+        assert review.repository.catalog(review.matter.matter_id, source.document_id)["source_state"] == "changed"
+        service = ProductionService(review.service.context, repository=review.repository) if late_subscriber else review.service
+        service.bind(review.matter, review.store, review.definition)
+        withdrawn = service.reconcile_attempt(review.matter.matter_id, before)
+        assert withdrawn["status"] == "stale"
+        assert withdrawn["counts"] == before["counts"]
+        assert withdrawn["digest"] == before["digest"]
+        assert review.repository.current_attempt(review.matter.matter_id, source.document_id) is None
+        assert source_format not in review.repository.attempt_counts(review.matter.matter_id)
+        with pytest.raises(ProductionStale):
+            service.record_window(review.matter.matter_id, before["attempt_id"],
+                category="page" if source_format == "lfp" else "document", ordinal=1,
+                document_id=source.document_id)
+        for _ in range(100):
+            state = service.advance(review.matter.matter_id, max_steps=128)
+            if state["state"] != "pending":
+                break
+        assert state["state"] == "complete" and source_format not in state["counts"]
 
 
 @pytest.mark.parametrize("source_format", ["lfp", "dii"])
