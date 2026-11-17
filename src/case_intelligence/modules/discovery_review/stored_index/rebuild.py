@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import json
 import math
 import sqlite3
@@ -13,6 +13,7 @@ from weakref import WeakSet
 
 from case_intelligence.modules.discovery_review import load_files, reader
 from case_intelligence.modules.discovery_review.fields import Field
+from case_intelligence.modules.discovery_review.production.repository import ProjectionWindowFull
 from case_intelligence.modules.discovery_review.stored_index import keys
 from case_intelligence.modules.discovery_review.stored_index.models import Budget, CapacityPlan, Job, Superseded, View
 from case_intelligence.modules.discovery_review.stored_index.repository import Repository, digest
@@ -24,6 +25,7 @@ STEP_CONTROL_ROWS = 32
 MAX_PRIMITIVE_ROWS = 32
 PROJECTION_PRIMITIVE_ROWS = 24
 ORDER_VALUE_ROWS = PROJECTION_PRIMITIVE_ROWS - 4
+PUBLISH_WINDOW = 12
 SERVICES = WeakSet()
 PHASES = ('inventory', 'delete_stale', 'load_sources', 'parse', 'match', 'reports', 'project', 'order')
 MIN_CAPACITY = 2 * 1024 * 1024
@@ -338,7 +340,7 @@ class Service:
                 job.plan = None
             raise Superseded('capacity plan changed')
         budget.in_control = False
-        prepared = {} if initializing else self.prepare(job, cursor, budget, raw)
+        prepared = {} if initializing else self.prepare(job, cursor, budget, raw, summaries)
         if initializing:
             budget.charge(0, credit=True)
         checkpoint_bytes = job.reserved_checkpoint_bytes if cursor['phase'] == 'order' else 0
@@ -363,6 +365,8 @@ class Service:
                     minimum_rows = 3
                 elif finishing_order_document:
                     minimum_rows = 4
+                if prepared.get('window_minimum') is not None:
+                    minimum_rows = prepared['window_minimum']
                 if budget.remaining < minimum_rows:
                     break
                 before = budget.work
@@ -439,8 +443,12 @@ class Service:
                 'values': {}, 'raw_fields': (), 'diagnostics': (), 'family': {},
                 'references': (), 'references_next': None}
 
-    def prepare(self, job, cursor, budget, raw):
+    def prepare(self, job, cursor, budget, raw, summaries=None):
         active = cursor['active']
+        if cursor['phase'] == 'project' and active is None:
+            if (summaries or {}).get('coding_resume'):
+                return {'window_checked': True}
+            return self.prepare_window(job, cursor, budget)
         if active is None:
             return {}
         source = SourceSnapshot(**active['source'])
@@ -489,6 +497,119 @@ class Service:
                         return {'email': {}, 'email_key': email_key, 'email_error': True, 'production': production}
             return {'prepared': source.document_id, 'production': production}
         return {}
+
+    def prepare_window(self, job, cursor, budget):
+        rows = self.repository.project_candidates(job.matter_id, cursor['after_document'], cursor['generation'], PUBLISH_WINDOW)
+        budget.charge(len(rows), credit=not rows)
+        selected = []
+        for row in rows:
+            source = SourceSnapshot(**json.loads(row[1]))
+            if self.prepare_requires_io(job, source) or load_files.source_format(source.display_name):
+                break
+            selected.append((source, row[1:]))
+        if len(selected) < 2:
+            return {'window_checked': True}
+        pairs = [(source.document_id, source.version_id) for source, row in selected]
+        production = tuple({'state': 'complete'} for _ in pairs)
+        if self.production is not None and job.matter_id in self.production.bindings:
+            try:
+                with self.production.repository.counted(budget):
+                    try:
+                        production = self.production.document_projections(job.matter_id, pairs)
+                    except KeyError as error:
+                        stop = next((i for i, pair in enumerate(pairs) if pair[0] == error.args[0]), 0)
+                        selected, pairs = selected[:stop], pairs[:stop]
+                        production = self.production.document_projections(job.matter_id, pairs) if pairs else ()
+            except ProjectionWindowFull:
+                selected = []
+        count = min(len(selected), budget.remaining // 8, max(0, (budget.remaining - 24) // 4))
+        if count < 2:
+            cursor['active'] = active_document(rows[0][0], rows[0][1:], 'prepare')
+            return {'window_deferred': True}
+        return {'window_sources': selected[:count], 'window_production': production[:count], 'window_minimum': count}
+
+    def project_window(self, tx, job, cursor, summaries, prepared):
+        selected = prepared['window_sources']
+        mid, repo = job.matter_id, self.repository
+        ids = [source.document_id for source, row in selected]
+        rows = repo.documents_many(tx, mid, ids)
+        prepared['window_minimum'] = len(ids)
+        yield
+        captures = job.store.source_changes.read(ids)
+        tx.budget.charge(len(captures))
+        captured = {source.document_id: source for source in captures}
+        for source, prior in selected:
+            row = rows.get(source.document_id)
+            if (row is None or row[0] != prior[0] or source.document_id not in captured
+                    or digest(asdict(captured[source.document_id])) != digest(asdict(source))):
+                raise Superseded('source metadata changed')
+        prepared['window_minimum'] = len(ids)
+        yield
+        if self.production is not None and mid in self.production.bindings:
+            classifications = self.production.repository.document_classifications(mid, ids, read=tx.read)
+            for source, prior in selected:
+                classification = classifications.get(source.document_id)
+                if (classification is None or classification[0] != source.version_id
+                        or load_files.source_format(classification[1])):
+                    raise Superseded('production source classification changed')
+        prepared['window_minimum'] = len(ids)
+        yield
+        assigned = self.identifiers.read_documents(mid, ids)
+        tx.budget.charge(len(assigned))
+        prepared['window_minimum'] = 24
+        yield
+        coding = self.codes.current_documents(mid, ids, read=tx.read)
+        if len(coding) == 12:
+            selected = [(source, row) for source, row in selected if source.document_id < coding[-1][0]]
+        selected = selected[:tx.budget.remaining // 3]
+        ids = [source.document_id for source, row in selected]
+        if not ids:
+            first, row = prepared['window_sources'][0]
+            cursor['active'] = active_document(first.document_id, row, 'prepare')
+            prepared['window_minimum'] = 1
+            return
+        prepared['window_minimum'] = 2 * len(ids)
+        yield
+        attachments = repo.attachments_many(tx, mid, ids)
+        prepared['window_minimum'] = len(ids)
+        yield
+        publications = []
+        for (source, prior), production in zip(selected, prepared['window_production']):
+            row = rows[source.document_id]
+            cache = json.loads(row[2])
+            codes = [{'value': label if enabled else f'{label} (retired)', 'active': bool(enabled),
+                      'created_by': actor, 'created_at': created}
+                     for document, code, label, enabled, actor, created, position in coding if document == source.document_id]
+            attachment = attachments.get(source.document_id)
+            fingerprint = digest((asdict(source), assigned.get(source.document_id, ''), codes, attachment,
+                                  summaries['headers'], job.definition_digest, keys.VERSION,
+                                  cache.get('email', {}), cache.get('email_error'), cache.get('table_error'),
+                                  production, cursor['target'][8]))
+            if fingerprint == row[3] and row[1]:
+                item = reader.Item(**cache['display'])
+            else:
+                match = load_files.Match(json.loads(attachment[4])['display_name'], attachment[1], attachment[2],
+                                        json.loads(attachment[3])) if attachment else None
+                item = reader.project_item(source, job.definition, assigned, match, cache.get('email', {}),
+                                           definition_digest=job.definition_digest)
+                item = reader.project_production_item(job.definition, item, production)
+                for chosen in job.definition.fields:
+                    if chosen.computed == 'review_codes':
+                        item.values[chosen.key] = ', '.join(entry['value'] for entry in codes)
+                        item.details[chosen.key] = codes
+                item = replace(item, metadata_state='error' if cache.get('email_error') or cache.get('table_error') else 'complete')
+            for header in item.load_file:
+                if header not in summaries['headers'] and job.definition.field('lf:' + header) is not None:
+                    summaries['headers'].append(header)
+            for key, value in item.values.items():
+                if value and key not in summaries['filled']:
+                    summaries['filled'].append(key)
+            cache.pop('projection', None)
+            publications.append((item, fingerprint, cache))
+        repo.publish_many(tx, mid, publications, cursor['generation'])
+        cursor.update(after_document=ids[-1], active=None)
+        prepared['window_minimum'] = 1
+        yield
 
     def transition(self, cursor, phase):
         cursor['eof'][cursor['phase']] = True
@@ -702,6 +823,16 @@ class Service:
         cursor['active'] = None
 
     def project(self, tx, job, cursor, summaries, prepared):
+        if prepared.get('window_deferred'):
+            return False
+        if 'window_sources' in prepared:
+            if 'window_work' not in prepared:
+                prepared['window_work'] = self.project_window(tx, job, cursor, summaries, prepared)
+            try:
+                next(prepared['window_work'])
+                return True
+            except StopIteration:
+                return False
         repo, mid, active = self.repository, job.matter_id, cursor['active']
         if active is None:
             rows = repo.documents(tx, mid, cursor['after_document'], cursor['generation'])
@@ -709,6 +840,14 @@ class Service:
                 self.transition(cursor, 'order')
                 return True
             row = repo.document(tx, mid, rows[0][0])
+            source = SourceSnapshot(**json.loads(row[0]))
+            if (not prepared.get('window_checked') and not summaries.get('coding_resume')
+                    and not self.prepare_requires_io(job, source) and not load_files.source_format(source.display_name)):
+                following = repo.documents(tx, mid, rows[0][0], cursor['generation'])
+                if following:
+                    neighbor = SourceSnapshot(**json.loads(repo.document(tx, mid, following[0][0])[0]))
+                    if not self.prepare_requires_io(job, neighbor) and not load_files.source_format(neighbor.display_name):
+                        return False
             active = active_document(rows[0][0], row, 'prepare')
             cursor['active'] = active
             source = SourceSnapshot(**active['source'])
@@ -785,7 +924,7 @@ class Service:
                     match = load_files.Match(json.loads(attachment[4])['display_name'], attachment[1], attachment[2],
                                             json.loads(attachment[3])) if attachment else None
                     item = reader.project_item(source, job.definition, {source.document_id: active['identifier']},
-                                               match, cache.get('email', {}))
+                                               match, cache.get('email', {}), definition_digest=job.definition_digest)
                     item = reader.project_production_item(job.definition, item, projection['production'])
                     projection['item'] = asdict(item)
                     for chosen in job.definition.fields:

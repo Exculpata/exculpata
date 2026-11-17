@@ -158,6 +158,20 @@ class CodeRepository:
                 "WHERE n.matter_id=e.matter_id AND n.document_id=e.document_id AND n.code_id=e.code_id)" + boundary +
                 " ORDER BY c.position,c.code_id,e.document_id LIMIT ?", (*args, limit)))
 
+    def current_documents(self, matter_id, document_ids, *, read):
+        """Read a complete document prefix; a full final document remains ambiguous."""
+        if not 1 <= len(document_ids) <= 12:
+            raise ValueError('publication coding reads accept at most 12 documents')
+        marks = ','.join('?' for _ in document_ids)
+        return read('SELECT e.document_id,e.code_id,c.label,c.active,e.created_by,e.created_at,c.position '
+                    'FROM workbench_discovery_code_event e JOIN workbench_discovery_code c '
+                    'ON c.matter_id=e.matter_id AND c.code_id=e.code_id '
+                    f"WHERE e.matter_id=? AND e.document_id IN ({marks}) AND e.action='apply' "
+                    'AND e.event_id=(SELECT MAX(n.event_id) FROM workbench_discovery_code_event n '
+                    'WHERE n.matter_id=e.matter_id AND n.document_id=e.document_id AND n.code_id=e.code_id) '
+                    'ORDER BY e.document_id,c.position,c.code_id LIMIT 12',
+                    (matter_id, *document_ids), maximum=12, constituents=2)
+
     def change_token(self, matter_id: str):
         """Read the event watermark and definition state without materializing events."""
         with self.db.lock:

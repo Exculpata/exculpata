@@ -1140,3 +1140,195 @@ class ProductionRepository:
                     if found is not None:
                         return True
         return False
+
+    def document_classifications(self, matter_id, document_ids, *, read):
+        if not 1 <= len(document_ids) <= 12:
+            raise ValueError('publication classification accepts at most 12 documents')
+        marks = ','.join('?' for _ in document_ids)
+        return {row[0]: row[1:] for row in read(
+            'SELECT document_id,version_id,display_name FROM workbench_source_catalog '
+            f'WHERE matter_id=? AND document_id IN ({marks})',
+            (matter_id, *document_ids), maximum=len(document_ids))}
+
+    def projection_rows(self, statement, parameters, *, maximum, constituents=1):
+        """Read one bounded preparation primitive, reserving room to yield safely."""
+        if not 1 <= maximum * constituents <= 24:
+            raise ValueError('production projection reads require at most 24 touched rows')
+        budget = self.budget()
+        if budget is not None and budget.remaining < maximum * constituents + 32:
+            raise ProjectionWindowFull('production preparation needs a smaller window')
+        with self.db.lock, self.counted(None):
+            rows = result_rows(self.execute(statement, parameters))
+        if len(rows) > maximum:
+            raise ProductionUnavailable('production projection read exceeded its bound')
+        if budget is not None:
+            budget.charge(len(rows) * constituents, credit=not rows)
+        return rows
+
+    def projection_reader(self, matter_id, pairs, preferred_formats):
+        """Capture the bounded read model used by document_projection, without writes."""
+        if len(pairs) > 12:
+            raise ValueError('production projections accept at most 12 document pairs')
+        view = ProjectionReader(matter_id, preferred_formats)
+        ids = tuple(dict.fromkeys(document for document, version in pairs))
+        if not ids:
+            return view
+        marks = ','.join('?' for _ in ids)
+        priority = 'CASE p.source_format ' + ' '.join('WHEN ? THEN ' + str(i) for i, _ in enumerate(preferred_formats))
+        priority += ' ELSE ' + str(len(preferred_formats)) + ' END,'
+        for category, order, predicate in (
+                ('document', priority + 'r.attempt_id,r.ordinal', ''),
+                ('page', 'r.attempt_id,r.ordinal', " AND r.association_status='matched'")):
+            select = self.joined_select(category).replace('SELECT r.*,',
+                'SELECT ROW_NUMBER() OVER (PARTITION BY r.document_id ORDER BY ' + order + ') AS projection_rank,r.*,', 1)
+            arguments = (*preferred_formats, matter_id, *ids) if category == 'document' else (matter_id, *ids)
+            rows = self.projection_rows('SELECT * FROM (' + select
+                + f"WHERE r.matter_id=? AND r.document_id IN ({marks}) AND p.status='complete' "
+                + 'AND r.generation=p.generation' + predicate + ') ranked WHERE projection_rank=1',
+                arguments, maximum=len(ids), constituents=2)
+            selected = {row['document_id']: decode_record(row, category) for row in rows}
+            if category == 'document':
+                view.records = selected
+            else:
+                view.pages = selected
+        attempts = sorted({row['attempt_id'] for row in (*view.records.values(), *view.pages.values())})
+        attempt_clause = (' OR attempt_id IN (' + ','.join('?' for _ in attempts) + ')') if attempts else ''
+        after = ''
+        while True:
+            rows = self.projection_rows('SELECT * FROM workbench_discovery_production '
+                f"WHERE matter_id=? AND ((document_id IN ({marks}) AND status<>'stale')"
+                + attempt_clause + ') AND attempt_id>? ORDER BY attempt_id LIMIT 24',
+                (matter_id, *ids, *attempts, after), maximum=24)
+            for row in rows:
+                attempt = decode_attempt(row)
+                view.attempts[row['attempt_id']] = attempt
+                if row['document_id'] in ids and row['status'] != 'stale':
+                    view.own[row['document_id']] = attempt
+            if len(rows) < 24:
+                break
+            after = rows[-1]['attempt_id']
+        catalog_ids = sorted(set(ids) | {row['document_id'] for row in view.attempts.values()}
+            | {row['family']['root'] for row in view.records.values() if row['family']['root']})
+        for start in range(0, len(catalog_ids), 24):
+            part = catalog_ids[start:start + 24]
+            slots = ','.join('?' for _ in part)
+            view.catalogs.update(dict.fromkeys(part))
+            rows = self.projection_rows('SELECT * FROM workbench_source_catalog '
+                f'WHERE matter_id=? AND document_id IN ({slots})', (matter_id, *part), maximum=len(part))
+            view.catalogs.update((row['document_id'], row) for row in rows)
+        for document, version in pairs:
+            if view.catalogs[document] is None or view.catalogs[document]['version_id'] != version:
+                raise KeyError(document)
+        proven = tuple(dict.fromkeys((*ids, *(row['document_id'] for row in view.attempts.values()))))
+        for start in range(0, len(proven), 3):
+            part = proven[start:start + 3]
+            slots = ','.join('?' for _ in part)
+            rows = self.projection_rows(
+                'WITH proofs AS (SELECT DISTINCT u.document_id,c.version_id,t.receipt_id,i.relative_path '
+                'FROM workbench_intake_transfer t '
+                'JOIN workbench_upload_item u ON u.upload_item_id=t.upload_item_id AND u.matter_id=t.matter_id '
+                'JOIN workbench_intake_item i ON i.receipt_id=t.receipt_id AND i.matter_id=t.matter_id AND i.ordinal=t.ordinal '
+                'JOIN workbench_source_catalog c ON c.matter_id=u.matter_id AND c.document_id=u.document_id '
+                f'WHERE t.matter_id=? AND u.document_id IN ({slots}) AND t.source_version_id=c.version_id '
+                "AND u.state='queued' AND c.origin='upload' AND i.relative_path=u.relative_path "
+                'AND c.relative_path=u.relative_path), ranked AS (SELECT *,ROW_NUMBER() OVER '
+                '(PARTITION BY document_id ORDER BY receipt_id,relative_path) AS proof_rank FROM proofs) '
+                'SELECT * FROM ranked WHERE proof_rank<=2 ORDER BY document_id,proof_rank',
+                (matter_id, *part), maximum=2 * len(part), constituents=4)
+            for document in part:
+                proofs = [row for row in rows if row['document_id'] == document]
+                root = ''
+                if len(proofs) == 1:
+                    path = PurePosixPath(proofs[0]['relative_path'])
+                    if not path.is_absolute() and path.parts and not any(p in {'.', '..'} for p in path.parts):
+                        root = encoded([proofs[0]['receipt_id'], path.parts[0] if len(path.parts) > 1 else ''])
+                current = view.catalogs[document]
+                if current is not None:
+                    view.proofs[(document, current['version_id'])] = root
+        requested = ','.join('(?,?)' for _ in ids)
+        args = tuple(value for document in ids for value in
+            (document, view.proofs.get((document, view.catalogs[document]['version_id']), '')))
+        rows = self.projection_rows(
+            'WITH requested(document_id,root_key) AS (VALUES ' + requested + ') '
+            'SELECT q.document_id,'
+            "EXISTS(SELECT 1 FROM workbench_discovery_production p WHERE p.matter_id=? AND p.root_key=q.root_key "
+            "AND q.root_key<>'' AND p.status='building') AS root_pending,"
+            'EXISTS(SELECT 1 FROM workbench_discovery_dat_record r JOIN workbench_discovery_production p '
+            "ON p.matter_id=r.matter_id AND p.attempt_id=r.attempt_id WHERE r.matter_id=? AND r.document_id=q.document_id "
+            "AND p.status='building') AS document_pending,"
+            'EXISTS(SELECT 1 FROM workbench_discovery_production p WHERE p.matter_id=? AND p.root_key=q.root_key '
+            "AND q.root_key<>'' AND p.source_format IN ('csv','tsv') AND p.status='failed') AS root_failed,"
+            '(SELECT r.association_status FROM workbench_discovery_dat_record r JOIN workbench_discovery_production p '
+            'ON p.matter_id=r.matter_id AND p.attempt_id=r.attempt_id WHERE r.matter_id=? AND r.document_id=q.document_id '
+            "AND p.status IN ('building','complete') AND r.generation=p.generation "
+            "AND r.association_status NOT IN ('matched','unmatched','pending') "
+            "ORDER BY CASE r.association_status WHEN 'conflicting_load_file_metadata' THEN 0 "
+            "WHEN 'team_identifier_conflict' THEN 1 WHEN 'conflicting_match' THEN 2 "
+            "WHEN 'conflicting_dat_rows' THEN 3 ELSE 4 END,r.association_status LIMIT 1) AS problem FROM requested q",
+            (*args, matter_id, matter_id, matter_id, matter_id), maximum=len(ids))
+        for row in rows:
+            problem = 'conflicting_load_file_metadata' if row['root_failed'] else row['problem'] or ''
+            status = ('pending' if row['root_pending'] or row['document_pending']
+                      else 'conflicted' if problem else 'complete')
+            view.statuses[row['document_id']] = status
+            view.problems[row['document_id']] = problem
+        if view.attempts:
+            view.identifier = self.identifier_stamp(matter_id)
+        return view
+
+
+class ProjectionWindowFull(RuntimeError):
+    """Yield before a speculative read would consume the publication reserve."""
+
+
+class ProjectionReader:
+    """Read-only, matter-scoped snapshot of a bounded document projection window."""
+
+    def __init__(self, matter_id, preferred_formats):
+        self.matter_id, self.preferred_formats = matter_id, preferred_formats
+        self.catalogs, self.own, self.attempts, self.records = {}, {}, {}, {}
+        self.pages, self.proofs, self.statuses, self.problems = {}, {}, {}, {}
+        self.identifier = ''
+
+    def check(self, matter_id):
+        if matter_id != self.matter_id:
+            raise KeyError(matter_id)
+
+    def catalog(self, matter_id, document_id):
+        self.check(matter_id)
+        return self.catalogs[document_id]
+
+    def current_attempt(self, matter_id, document_id):
+        self.check(matter_id)
+        return self.own.get(document_id)
+
+    def attempt(self, matter_id, attempt_id):
+        self.check(matter_id)
+        return self.attempts[attempt_id]
+
+    def document_status(self, matter_id, document_id):
+        self.check(matter_id)
+        return self.statuses[document_id]
+
+    def document_problem(self, matter_id, document_id):
+        self.check(matter_id)
+        return self.problems[document_id]
+
+    def document_records(self, matter_id, document_id, *, limit, preferred_formats):
+        self.check(matter_id)
+        if limit != 1 or preferred_formats != self.preferred_formats:
+            raise ValueError('projection snapshot supports only the preferred first record')
+        row = self.records.get(document_id)
+        return (row,) if row else ()
+
+    def associated_page(self, matter_id, document_id):
+        self.check(matter_id)
+        return self.pages.get(document_id) if self.statuses[document_id] == 'complete' else None
+
+    def provenance(self, matter_id, document_id, version_id):
+        self.check(matter_id)
+        return self.proofs.get((document_id, version_id), '')
+
+    def identifier_stamp(self, matter_id):
+        self.check(matter_id)
+        return self.identifier

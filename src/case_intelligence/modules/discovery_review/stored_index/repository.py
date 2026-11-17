@@ -189,6 +189,47 @@ class Repository:
         return tx.read('SELECT document_id FROM workbench_discovery_index_item WHERE matter_id=? AND seen_generation=? '
                        'AND document_id>? ORDER BY document_id LIMIT 1', (matter_id, generation, after))
 
+    def project_candidates(self, matter_id, after, generation, limit):
+        if not 1 <= limit <= 12:
+            raise ValueError('project selection requires at most 12 records')
+        return self.rows('SELECT document_id,source_payload,payload,cache_payload,projection_fingerprint,readiness '
+                         'FROM workbench_discovery_index_item WHERE matter_id=? AND seen_generation=? '
+                         'AND document_id>? ORDER BY document_id LIMIT ?', (matter_id, generation, after, limit))
+
+    def documents_many(self, tx, matter_id, ids):
+        if not 1 <= len(ids) <= 12:
+            raise ValueError('project reads require at most 12 documents')
+        marks = ','.join('?' for _ in ids)
+        return {row[0]: row[1:] for row in tx.read(
+            'SELECT document_id,source_payload,payload,cache_payload,projection_fingerprint,readiness '
+            f'FROM workbench_discovery_index_item WHERE matter_id=? AND document_id IN ({marks})',
+            (matter_id, *ids), maximum=len(ids))}
+
+    def attachments_many(self, tx, matter_id, ids):
+        if not 1 <= len(ids) <= 12:
+            raise ValueError('project attachments require at most 12 documents')
+        marks = ','.join('?' for _ in ids)
+        rows = tx.read('SELECT attached_document,source_id,line,basis,values_json,source_payload FROM ('
+            'SELECT r.attached_document,r.source_id,r.line,r.basis,r.values_json,i.source_payload,'
+            'ROW_NUMBER() OVER (PARTITION BY r.attached_document ORDER BY r.order_prefix,r.source_order,r.line) AS choice '
+            'FROM workbench_discovery_index_load_row r JOIN workbench_discovery_index_item i '
+            'ON i.matter_id=r.matter_id AND i.document_id=r.source_id '
+            f'WHERE r.matter_id=? AND r.attached_document IN ({marks})) selected WHERE choice=1',
+            (matter_id, *ids), maximum=len(ids), constituents=2)
+        return {row[0]: row[1:] for row in rows}
+
+    def publish_many(self, tx, matter_id, publications, generation):
+        if not 1 <= len(publications) <= 12:
+            raise ValueError('project publication requires at most 12 documents')
+        rows = []
+        for item, fingerprint, cache in publications:
+            cache['display'] = asdict(item)
+            summary = replace(item, values={key: item.values[key] for key in item.details}, load_file={})
+            rows.append((packed(asdict(summary)), packed(cache), fingerprint, 'pending',
+                         generation, matter_id, item.document_id))
+        tx.write('UPDATE workbench_discovery_index_item SET payload=?,cache_payload=?,projection_fingerprint=?,readiness=?,ready_generation=? '
+                 'WHERE matter_id=? AND document_id=?', rows, many=True)
+
     def cache(self, tx, matter_id, document_id, cache, *, is_loadfile=None):
         if is_loadfile is None:
             tx.write('UPDATE workbench_discovery_index_item SET cache_payload=? WHERE matter_id=? AND document_id=?',
