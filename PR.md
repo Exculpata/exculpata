@@ -252,3 +252,22 @@ The supplied r2 launcher result was PASS with `ran=45 failed=0 not_run_unexpecte
 - Verified that the nine branch-only paths match the original #528 path set. All eight non-document branch paths are byte-for-byte unchanged from r2; all fourteen main-only paths are byte-for-byte identical to the merged main revision. The existing branch PR.md is retained in full.
 - Required added-lines private-term scan, PR-body validation, whitespace check and generic working-tree publication scan passed. The working-tree scan used `--skip-history`; full committed-history validation remains part of launcher parity.
 - No push, rebase, force-push, main-branch change or hook bypass. `last.md` is locally excluded and is not staged.
+
+## Kickoff: r5 merge-forward rerun
+
+- Goal: preserve the accepted #528 merge and add a real documentation commit so the launcher reaches the isolated parity rerun, retaining the same discovery publication behavior.
+- Expected files: PR.md only. The existing local exclusion for last.md remains in effect.
+- Acceptance check: retain the required merge ancestry and branch-only diff; pass focused documentation checks and the added-lines private-term scan; commit this note, then let the launcher run full parity on that committed revision alone. Require zero unexpected unrun steps, no NEAR TIMEOUT and unchanged 108/125/135-second ceilings.
+- Issue: https://github.com/Exculpata/exculpata/issues/503; PR: https://github.com/Exculpata/exculpata/pull/528. Rechecked issue and PR comments, assignees and related #524. No competing assignment or hold was found. The supplied r5 instruction authorizes this documentation-only rerun and matches the outcome and checks above.
+
+## r5 merge-forward rerun
+
+Preserved merge commit `daa37eb6dde5c40e0e0493d520c93c2ea7c9c5a6`, whose parents are `52c36f0627dd8e1dde8bf778614e628a47fa8d0d` and `af3ee519c6c0797b0e1b9f97e5bbe4de7de04522`. After fetching, current origin/main remains `af3ee519c6c0797b0e1b9f97e5bbe4de7de04522`, so no additional merge is needed. The three-dot diff contains only the same nine #528 paths; #524's speedup files are unchanged from main.
+
+Per the supplied r3 result, no test assertion failed. Shard 1 failed only NEAR TIMEOUT under the concurrent #554 job: `tests/test_documentation.py::test_rename_contract_is_checked_on_documentation_only_changes` took **136.93 s**, and `tests/test_discovery_review_dat_opt_storage.py::test_memory_contract_detects_materializing_controls[wide-8-32-262144-count_only]` took **134.21 s**, both above the unchanged **108 s** ceiling. r4 stopped with "no commit produced" before parity because the existing merge was already present.
+
+r5 is scheduled to rerun parity alone after this new PR.md-only commit. Under the final launcher instruction, execution begins after this attempt finishes; the r5 result and measured lifecycle-resume/row_budget[10000] seconds are therefore pending, not claimed as a pass here. Full parity must report `not_run_unexpected=0` and no NEAR TIMEOUT. The serial post-shard ceilings remain **125 s** for lifecycle resume and **135 s** for row_budget[10000]; all other tests must stay at or below **108 s**. A further NEAR TIMEOUT while running alone fails this attempt; no test changes or retry are authorized.
+
+No product, test, workflow or script changes are included in this rerun commit. No skip, xfail, timeout increase or assertion weakening is introduced. last.md remains excluded and must not be committed.
+
+Focused r5 validation: **90 passed, 0 failed** in tests/test_pr_body.py. PR-body validation, whitespace validation and the required added-lines private-term scan passed. The retained product and publication-test paths are byte-for-byte unchanged from r2. Full parity remains pending with the launcher on the new committed revision.
