@@ -853,10 +853,14 @@ def test_load_file_format_and_record_semantic_seams():
     assert load_files.source_format("Generated/input.OPT") == "opt"
     assert load_files.source_format("Generated/input.CSV") == "csv"
     assert load_files.source_format("Generated/input.TSV") == "tsv"
-    for name in ("unknown.xyz", "future.lfp", "future.dii", "input.dat.exe"):
+    assert load_files.source_format("Generated/input.LFP") == "lfp"
+    assert load_files.source_format("Generated/input.DII") == "dii"
+    for name in ("unknown.xyz", "future.lfp.exe", "future.dii.bak", "input.dat.exe"):
         assert load_files.source_format(name) == ""
     assert load_files.record_category("dat") == "document"
     assert load_files.record_category("opt") == "page"
+    assert load_files.record_category("lfp") == "page"
+    assert load_files.record_category("dii") == "document"
     assert load_files.record_category("unknown") == ""
     cells = ("PAGE®-X07", "VOL", "Generated/images/literal.tif", "Y", "raw fifth", "raw sixth", "3")
     event = RecordEvent(kind="accepted", category="page", source_format="opt", ordinal=7,
@@ -880,14 +884,17 @@ def test_load_file_format_and_record_semantic_seams():
 def test_document_comparison_policy_and_priority():
     assert load_files.comparison_policy("dat", "dat") == "exact"
     for left, right in (("dat", "csv"), ("csv", "dat"), ("dat", "tsv"),
-                        ("csv", "tsv"), ("csv", "csv")):
+                        ("csv", "tsv"), ("csv", "csv"), ("dii", "dat"), ("dat", "dii"), ("dii", "dii")):
         assert load_files.comparison_policy(left, right) == "compatible"
-    for left, right in (("dat", "unknown"), ("dii", "dat"), ("opt", "dat"), ("opt", "opt")):
+    for left, right in (("dat", "unknown"), ("dii", "unknown"), ("opt", "dat"), ("opt", "opt"),
+                        ("lfp", "dat"), ("lfp", "dii"), ("lfp", "lfp"), ("lfp", "opt")):
         assert load_files.comparison_policy(left, right) == ""
+    assert load_files.projection_priority("dat") < load_files.projection_priority("dii")
+    assert load_files.projection_priority("dii") < load_files.projection_priority("csv")
     assert load_files.projection_priority("dat") < load_files.projection_priority("csv")
     assert load_files.projection_priority("dat") < load_files.projection_priority("tsv")
     assert load_files.projection_priority("unknown") > max(
-        load_files.projection_priority(name) for name in ("dat", "opt", "csv", "tsv"))
+        load_files.projection_priority(name) for name in ("dat", "opt", "csv", "tsv", "lfp", "dii"))
 
 
 def test_candidate_limits_apply_after_source_and_ready_filters(tmp_path):
