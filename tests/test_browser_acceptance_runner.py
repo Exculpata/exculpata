@@ -422,6 +422,42 @@ def test_environment_excludes_deployment_and_proxy_settings(runner, tmp_path, mo
     assert Path(env['TMPDIR']).is_dir()
 
 
+@pytest.mark.parametrize('launch', ['runner', 'standalone'])
+def test_reports_browser_timezone_survives_loss_of_cdp_session(runner, tmp_path, monkeypatch, launch):
+    monkeypatch.setenv('TZ', 'UTC')
+    if launch == 'runner':
+        scratch = tmp_path / 'runner'
+        scratch.mkdir()
+        for key, value in runner.child_environment(scratch).items():
+            monkeypatch.setenv(key, value)
+    monkeypatch.syspath_prepend(str(ROOT / 'scripts'))
+    spec = importlib.util.spec_from_file_location(
+        'reports_timezone', ROOT / 'scripts/browser-accept-reports-bundle.py')
+    reports = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reports)
+    monkeypatch.setattr(reports, 'create_workbench_app', Mock())
+    listener = Mock()
+    listener.getsockname.return_value = ('127.0.0.1', 12345)
+    monkeypatch.setattr(reports.socket, 'socket', Mock(return_value=listener))
+    monkeypatch.setattr(reports.uvicorn, 'Server', Mock())
+    monkeypatch.setattr(reports.threading, 'Thread', Mock())
+    monkeypatch.setattr(sys, 'argv', [
+        'reports', '--chrome-binary', '/synthetic/chrome',
+        '--chromedriver', '/synthetic/chromedriver', '--output', str(tmp_path / 'output')])
+    environments = []
+
+    def capture_launch(*, service, options):
+        environments.append(dict(service.env))
+        raise RuntimeError('Synthetic stop before browser launch')
+
+    monkeypatch.setattr(reports.webdriver, 'Chrome', capture_launch)
+    with pytest.raises(RuntimeError, match='Synthetic stop before browser launch'):
+        reports.main()
+    assert len(environments) == 1
+    assert environments[0]['TZ'] == 'America/New_York'
+    assert os.environ['TZ'] == 'UTC'
+
+
 def test_existing_output_is_preserved_and_no_journey_runs(runner, tmp_path, monkeypatch):
     output = tmp_path / 'old'
     output.mkdir()

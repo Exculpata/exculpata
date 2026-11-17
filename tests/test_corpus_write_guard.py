@@ -92,3 +92,23 @@ def test_workflows_bracket_tests_with_the_shared_guard(workflow, job, test_comma
     test = next(i for i, step in enumerate(steps) if test_command in step.get("run", ""))
     assert prepare < test < check
     assert "always()" in steps[check]["if"]
+
+
+@pytest.mark.parametrize("job", ["application-shards", "application-row-budget"])
+@pytest.mark.parametrize("checkout", ["success", "failure", "cancelled", "skipped"])
+@pytest.mark.parametrize("status", ["success", "failure", "cancelled"])
+def test_application_guard_requires_checkout_but_survives_later_failure(job, checkout, status):
+    from scripts.ci_parity_expr import condition
+
+    data = yaml.safe_load((ROOT / ".github/workflows/quality-gates.yml").read_text())
+    steps = data["jobs"][job]["steps"]
+    checkout_step = next(step for step in steps if step.get("uses", "").startswith("actions/checkout@"))
+    assert checkout_step["id"] == "checkout"
+    check = next(step for step in steps
+                 if step.get("run") == "bash scripts/corpus-write-guard.sh check")
+    context = {"steps": {"checkout": {"outcome": checkout}}}
+    assert condition(check["if"], context, status) is (checkout == "success")
+    for summary in (step for step in steps if step.get("name") == "Summarize interrupted application tests"):
+        context["needs"] = {"change-scope": {"outputs": {"docs_only": "false"}}}
+        assert condition(summary["if"], context, status) is (
+            checkout == "success" and status in ("failure", "cancelled"))

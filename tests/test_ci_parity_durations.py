@@ -144,7 +144,7 @@ def test_zero_timeout_disables_limit():
 def test_runner_rejects_real_application_command(tmp_path, monkeypatch, application_command):
     from scripts import ci_parity_runner
 
-    def fake_shell(command, cwd, env, explicit_bash, timeout, log):
+    def fake_shell(command, cwd, env, explicit_bash, timeout, log, cancelled=None):
         log.write_text(f'{HEADER}\n120s call tests/x.py::t\n')
         return 0, False
 
@@ -160,7 +160,7 @@ def test_runner_rejects_real_application_command(tmp_path, monkeypatch, applicat
         ('accepted', 120.41, 0, 'success', 'ACCEPTED EXCEPTION '),
         ('over-ceiling', 125.01, 1, 'failure', 'NEAR TIMEOUT '),
     ]:
-        def exception_shell(command, cwd, env, explicit_bash, timeout, log):
+        def exception_shell(command, cwd, env, explicit_bash, timeout, log, cancelled=None):
             log.write_text(f'{HEADER}\n{seconds}s call {RESUME_ID}\n')
             return 0, False
 
@@ -204,7 +204,7 @@ def test_fraction_cannot_be_overridden():
 def test_runner_counts_offending_step_once_and_propagates_failure(tmp_path, monkeypatch, exit_code, continued):
     from scripts import ci_parity_runner
 
-    def fake_shell(command, cwd, env, explicit_bash, timeout, log):
+    def fake_shell(command, cwd, env, explicit_bash, timeout, log, cancelled=None):
         log.write_text(f'{HEADER}\n109s call tests/x.py::one\n110s call tests/x.py::two\n')
         return (exit_code if '--timeout' in command else 0), False
 
@@ -222,7 +222,7 @@ def test_runner_counts_offending_step_once_and_propagates_failure(tmp_path, monk
 def test_runner_unchecked_step_does_not_fail(tmp_path, monkeypatch):
     from scripts import ci_parity_runner
 
-    def fake_shell(command, cwd, env, explicit_bash, timeout, log):
+    def fake_shell(command, cwd, env, explicit_bash, timeout, log, cancelled=None):
         log.write_text('1 passed\n')
         return 0, False
 
