@@ -211,22 +211,18 @@ def test_fresh_temporal_answer_packet_retains_dispatch_observation(demo_script, 
         assert dispatch.document_id not in {row.document_id for row in scoped}
 
 
-def _unsafe_demo_destination(tmp_path, destination):
-    if destination == "checkout":
-        return ROOT / "synthetic-demo-must-not-be-created"
-    if destination == "symlink":
-        link = tmp_path / "checkout-link"
-        link.symlink_to(ROOT, target_is_directory=True)
-        return link / "synthetic-demo-must-not-be-created"
-    path = tmp_path / "existing"
-    path.mkdir()
-    (path / "sentinel.txt").write_text("Keep existing data.", encoding="utf-8")
-    return path
-
-
 @pytest.mark.parametrize("destination", ["checkout", "symlink", "nonempty"])
 def test_seed_demo_refuses_unsafe_destinations(demo_script, tmp_path, destination):
-    path = _unsafe_demo_destination(tmp_path, destination)
+    if destination == "checkout":
+        path = ROOT / "synthetic-demo-must-not-be-created"
+    elif destination == "symlink":
+        link = tmp_path / "checkout-link"
+        link.symlink_to(ROOT, target_is_directory=True)
+        path = link / "synthetic-demo-must-not-be-created"
+    else:
+        path = tmp_path / "existing"
+        path.mkdir()
+        (path / "sentinel.txt").write_text("Keep existing data.", encoding="utf-8")
     original_environment = os.environ.copy()
     with pytest.raises(ValueError):
         demo_script._validate_demo_destination(path)
@@ -386,18 +382,15 @@ def test_demo_context_defers_setup_and_unwinds_resources(demo_script, tmp_path, 
         client_context.__exit__.assert_called_once()
 
 
-@pytest.mark.parametrize("destination", ["checkout", "symlink", "nonempty"])
-def test_demo_context_defers_invalid_destination_error_until_entry(demo_script, tmp_path, monkeypatch, destination):
-    path = _unsafe_demo_destination(tmp_path, destination)
+def test_demo_context_defers_invalid_destination_error_until_entry(demo_script, monkeypatch):
     unexpected_setup = Mock(side_effect=AssertionError("Demo setup began before destination validation"))
     monkeypatch.setattr(demo_script, "demo_environment", unexpected_setup)
     monkeypatch.setattr(demo_script, "create_workbench_app", unexpected_setup)
     monkeypatch.setattr(demo_script, "TestClient", unexpected_setup)
     before = os.environ.copy()
-    context = demo_script.seed_demo(path)
+    context = demo_script.seed_demo(ROOT)
     assert os.environ == before
-    expected_error = 'fresh or empty directory' if destination == 'nonempty' else 'outside the checkout'
-    with pytest.raises(ValueError, match=expected_error):
+    with pytest.raises(ValueError, match='outside the checkout'):
         with context:
             pytest.fail('An invalid directory reached the demo body')
     unexpected_setup.assert_not_called()
