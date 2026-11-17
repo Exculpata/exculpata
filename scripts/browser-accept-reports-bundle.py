@@ -13,6 +13,7 @@ import argparse
 from datetime import datetime, timedelta
 import io
 import json
+import os
 import socket
 import sys
 import tempfile
@@ -102,7 +103,8 @@ def main():
         })
         driver = None
         try:
-            driver = webdriver.Chrome(service=Service(str(args.chromedriver)), options=options)
+            driver = webdriver.Chrome(service=Service(
+                str(args.chromedriver), env={**os.environ, "TZ": "America/New_York"}), options=options)
             driver.set_page_load_timeout(30)
             driver.set_script_timeout(30)
             driver.execute_cdp_cmd("Emulation.setTimezoneOverride", {"timezoneId": "America/New_York"})
@@ -522,6 +524,8 @@ def main():
             assert policy.mode == "ongoing" and policy.selected_by == ACTOR
             assert datetime.fromisoformat(policy.next_check_in_at.replace("Z", "+00:00")) >= bench.workspace.current_time() + timedelta(days=89)
             check_in_time = driver.find_element(By.CSS_SELECTOR, ".check-in-time")
+            browser_zone = driver.execute_script("return Intl.DateTimeFormat().resolvedOptions().timeZone")
+            assert browser_zone == "America/New_York", f"Reports browser timezone: {browser_zone}"
             assert "UTC" in check_in_time.text and "Your time:" in check_in_time.text
             assert "America/New_York" in check_in_time.text
             assert check_in_time.find_element(By.TAG_NAME, "time").get_attribute("datetime") == policy.next_check_in_at

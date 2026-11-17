@@ -1,11 +1,15 @@
-"""Print a file shard with the post-shard serial test deselected."""
+"""Print a file shard with the post-shard serial tests deselected."""
 
 import argparse
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SERIAL_TEST = "tests/test_discovery_review_index.py::test_rebuild_step_row_budget[10000]"
+SERIAL_TESTS = (
+    "tests/test_discovery_review_index.py::test_rebuild_step_row_budget[10000]",
+    "tests/test_discovery_review_index_lifecycle.py::"
+    "test_single_heavily_coded_item_stays_pending_with_complete_values_on_resume",
+)
 
 
 def application_files(root: Path) -> list[str]:
@@ -24,7 +28,7 @@ def main() -> None:
     files = application_files(ROOT)[args.shard::2]
     if not files or any("\n" in path or "\r" in path for path in files):
         parser.error("shard requires nonempty test paths representable in a pytest argument file")
-    print("\n".join([f"--deselect={SERIAL_TEST}", *files]))
+    print("\n".join([*(f"--deselect={node}" for node in SERIAL_TESTS), *files]))
 
 
 if __name__ == "__main__":

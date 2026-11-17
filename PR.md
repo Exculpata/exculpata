@@ -227,3 +227,28 @@ The merged xdist failure is the same full-item cancellation comparison; every pe
 - Ruff with caching disabled, whitespace validation, PR-body validation, working-tree publication scanning (`--skip-history`) and the required added-lines private-term scan pass. A locally generated Ruff cache was moved outside the worktree before the publication scan. The two requested existing test files are byte-for-byte unchanged from the merged baseline. Synthetic data only; no push, main-branch change, force-push, hook bypass, skip, xfail, retry plugin or assertion weakening.
 
 Full CI parity on the final committed revision is assigned to the launcher by the task's final instruction. The r1 parity result is historical and does not establish r2 readiness. The launcher must enforce zero unexpected unrun steps, no NEAR TIMEOUT and the unchanged 108/125/135-second duration ceilings.
+
+
+## Kickoff: merge-forward r3
+
+- Goal: integrate origin/main including #524 into #528, preserving the discovery publication behavior and all accepted r2 fixes. This is the authorized merge-forward, outside the counted retry cap.
+- Expected files: retain the branch version of PR.md and append this record; accept main's changes unchanged. No product, test, workflow or script edits beyond the merge.
+- Acceptance check: normal two-parent merge from `52c36f0627dd8e1dde8bf778614e628a47fa8d0d` and fetched main; only PR.md may conflict; the three-dot diff retains only #528 changes; focused tests and publication checks pass; launcher full parity enforces zero unexpected unrun steps, no NEAR TIMEOUT and unchanged 108/125/135-second ceilings.
+- Issue: https://github.com/Exculpata/exculpata/issues/503; PR: https://github.com/Exculpata/exculpata/pull/528. Live issue and PR comments, assignees and related #524 were checked. No competing assignment or hold was found. The supplied merge-forward scope matches this outcome. Recorded before conflict resolution; included in this attempt's first commit.
+
+## Merge-forward r3
+
+Starting branch revision: `52c36f0627dd8e1dde8bf778614e628a47fa8d0d`.
+Merged revision and fetched origin/main: `af3ee519c6c0797b0e1b9f97e5bbe4de7de04522` (#524).
+The resulting commit has these revisions as its first and second parents, respectively.
+
+Only PR.md conflicted (add/add). Its complete branch-side contents are retained above, with this merge-forward record appended. Main's #524 changes are accepted unchanged. No product logic, tests, workflow, scripts, timeout, skip, xfail or assertions were changed by conflict resolution.
+
+The supplied r2 launcher result was PASS with `ran=45 failed=0 not_run_unexpected=0`; it is historical evidence. Under the task's final launcher instruction, full CI parity on this final committed merge is assigned to the launcher after this attempt finishes. Merge-revision full parity and its lifecycle/row-budget seconds are pending; r2 timings do not establish acceptance of this merge.
+
+### Merge-forward validation
+
+- Focused synthetic validation: **282 passed, 0 failed, 0 skipped** across publication windows, production projections, CI parity contracts/concurrency/durations and application shard selection. The slowest JUnit total was **70.759 s** for the shard-collection contract, below 108 s. Lifecycle resume and row_budget[10000] were not part of this focused run; their required final parity timings remain pending with the launcher.
+- Verified that the nine branch-only paths match the original #528 path set. All eight non-document branch paths are byte-for-byte unchanged from r2; all fourteen main-only paths are byte-for-byte identical to the merged main revision. The existing branch PR.md is retained in full.
+- Required added-lines private-term scan, PR-body validation, whitespace check and generic working-tree publication scan passed. The working-tree scan used `--skip-history`; full committed-history validation remains part of launcher parity.
+- No push, rebase, force-push, main-branch change or hook bypass. `last.md` is locally excluded and is not staged.
