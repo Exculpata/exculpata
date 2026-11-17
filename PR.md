@@ -29,3 +29,34 @@ Reproduction commands, repeat helper, revision/blob record, before/after logs, f
 ## Readiness
 
 Scope and parent-contract blockers are resolved; the correction and local validation are complete. Ready for launcher validation and review. Nothing was pushed; maintainer authorization is still required for a merge to main.
+
+## Merge-forward r3 Kickoff
+
+- Goal and user-visible outcome: merge origin/main including #524 into #554 while preserving the accepted LFP/DII production metadata behavior and source-withdrawal correction. No new product logic is authorized.
+- Expected files: main's merge contents and PR.md only for conflict resolution and validation evidence; preserve this branch's PR.md.
+- Acceptance check: a normal two-parent merge of b43f4c8da909ffabe2a4072ae284ca0bac0143b0 and fetched origin/main; only PR.md may conflict; unchanged PR-only three-dot diff; private-terms scan exits 0; full local parity green with zero unexpected omissions or NEAR TIMEOUT, retaining 108 s general, 125 s lifecycle-resume and 135 s row-budget ceilings.
+- Issue: https://github.com/Exculpata/exculpata/issues/503; PR: https://github.com/Exculpata/exculpata/pull/554; merged dependency: https://github.com/Exculpata/exculpata/pull/524.
+
+Recorded before the merge. The fetched issue is unassigned, fetched issue comments are empty, and PR comments confirm r2 passed at the prescribed baseline. The r3 scope matches the supplied merge-forward authorization; later slices remain excluded. No remote publication is authorized.
+
+## Merge-forward r3 record
+
+Merged origin/main including #524 (af3ee519): `af3ee519c6c0797b0e1b9f97e5bbe4de7de04522`. This is also the current fetched main SHA. The first parent is `b43f4c8da909ffabe2a4072ae284ca0bac0143b0`. Only PR.md conflicted; resolution preserves the branch record above. Main's speedup files are accepted unchanged. No product, test, workflow or script conflict occurred and no new logic was introduced.
+
+Validated merge SHA: `b3c503ba415294474c1a652df32d5dc37ad0855a`. Both parents are recorded above. The final local amendment changes this validation record only and retains those exact parents; all other blobs remain identical to the tested merge.
+
+### Validation
+
+- Three-dot diff against origin/main: the same 17 PR paths as r2. Every PR code/test blob equals r2; every incoming #524 blob outside PR.md equals origin/main. No speedup file appears in the PR-only diff.
+- Required three focused files: **101 passed**, 68.41 s. Original changed-bytes probe: **20 independent instances passed**, 10.64 s with four workers; the unchanged r2 helper creates fixtures, not retries.
+- Full local parity recheck: **45 ran, 0 failed, 30 expected NOT RUN, 0 not_run_unexpected; GREEN OVERALL**. No NEAR TIMEOUT entries. Application shards: **9,684 and 14,704 passed**; fast corpus: **526 passed**; transcription: **330 passed**.
+- The unchanged 30% gate passed. Highest reported application phase total: **102.75 s / 108 s**. Serial post-shard totals: lifecycle resume **94.56 s / 125 s**; row_budget[10000] **86.89 s / 135 s**. Both serial nodes ran together with `-n 0`, after both shards, using the unmodified workflow.
+- No new skip, xfail, assertion weakening, timeout change, scanner/allowlist change, or product logic. Existing service-dependent omissions and inherited xfails remain explicit in the reports.
+
+The first full run is retained as failed evidence: 43 ran, 4 failed, 29 expected NOT RUN, 0 unexpected. One network-checker subprocess hit its existing 45 s timeout. Four reported phase totals exceeded 108 s: operational-name registration 154.63 s, documentation rename contract 139.84 s, wide count-only memory control 121.79 s, and shard collection 116.04 s. Dependent serial tests did not run in that failed attempt. Another full parity process overlapped it. After that process exited, all five affected tests passed unchanged in isolation (call times 9.18, 73.64, 72.21, 51.56 and 55.21 s respectively), then the identical full parity command passed on the same merge SHA. No failure was retried inside a test and no code was changed to obtain the pass.
+
+Evidence is retained in `r3-evidence/` beside the worktree: `revisions.json`, focused and repetition logs, `parity.txt` and its logs for the first run, the timing diagnostic command/log, and `recheck/parity.txt` with its logs for the passing full run. `recheck-result.json` summarizes the passing evidence. The earlier r2 evidence above remains historical.
+
+### R3 disposition
+
+Merge-forward and local validation are complete. Only the validation record is amended after the tested merge; the launcher will validate the final record-bearing commit. The added-lines private-terms scan and diff checks pass before committing. `last.md` is excluded and untracked. Nothing was pushed; no other branch, launcher, configuration, scanner or allowlist was edited.

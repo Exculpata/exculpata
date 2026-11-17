@@ -517,7 +517,10 @@ def test_repository_drift_and_hosted_discovery():
     assert files.count('tests/test_ci_parity.py') == 1
 
 
-def test_row_budget_serial_step_is_in_local_plan_after_shards():
+def test_serial_tests_are_in_local_plan_after_shards():
+    import shlex
+    from tests.test_application_shards import SERIAL_TESTS
+
     found = plan.build(ROOT, workflows=['quality-gates'], jobs=['application'])
     assert not found.unexpected
     assert not found.stale
@@ -529,9 +532,10 @@ def test_row_budget_serial_step_is_in_local_plan_after_shards():
     assert serial.needs == ['change-scope', 'application-shards']
     commands = [step for step in serial.steps if '-m pytest' in step.raw.get('run', '')]
     assert len(commands) == 1
-    assert commands[0].name == 'Run isolated row budget test'
+    assert commands[0].name == 'Run isolated row budget and lifecycle resume tests'
     assert commands[0].unavailable is None
-    assert 'tests/test_discovery_review_index.py::test_rebuild_step_row_budget[10000]' in commands[0].raw['run']
+    assert [token for token in shlex.split(commands[0].raw['run'])
+            if token.startswith('tests/')] == SERIAL_TESTS
 
 
 def real_scope_outputs(tmp_path, found, changed_path):
@@ -562,6 +566,9 @@ def real_scope_outputs(tmp_path, found, changed_path):
                     continue
                 assert step.unavailable is None, 'A scenario cannot invent outputs from an unavailable step'
                 identity = ':'.join((workflow.name, job.name, step.raw['id']))
+                if step.raw.get('uses', '').split('@')[0] == 'actions/checkout':
+                    outputs[identity] = {}
+                    continue
                 output_path = tmp_path / (identity.replace(':', '-') + '.output')
                 output_path.touch()
                 step_env = {**env, 'GITHUB_OUTPUT': str(output_path)}
@@ -598,7 +605,7 @@ def test_golden_plan(tmp_path):
     for rows, expected in ((docs, 'SKIP'), (code, 'RUN')):
         application = [step['state'] for row in rows for step in row['steps'] if step['step'] == 'Run application suite']
         assert application == [expected, expected]
-        serial = [step['state'] for row in rows for step in row['steps'] if step['step'] == 'Run isolated row budget test']
+        serial = [step['state'] for row in rows for step in row['steps'] if step['step'] == 'Run isolated row budget and lifecycle resume tests']
         assert serial == [expected]
     assert all('scope' not in step['step'].lower() or step['state'] != 'NOT RUN'
                for row in docs for step in row['steps'])

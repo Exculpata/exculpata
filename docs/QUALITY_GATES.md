@@ -88,25 +88,60 @@ up to 125 s (approval 2026-11-15T17:17). Accepted totals emit `ACCEPTED EXCEPTIO
 totals above either ceiling still fail. All other tests retain the 30% limit.
 Remove these exceptions when the tests are fixed.
 
-The 10,000-row rebuild test is deselected by the application shard argument
-files and runs once in `application-row-budget`, after both shards finish.
-Its `Run isolated row budget test` step invokes only that exact node with
-`-n 0`, the existing pytest timeout and all phase durations. Local parity reads
-this same job and dependency graph; the serial runner waits for each preceding
-cell, so no other pytest work overlaps the isolated step. Hosted CI gives the
-post-shard job its own runner. The other parameters and tests in the file remain
-in the shards; the two approved duration ceilings are unchanged.
+The 10,000-row rebuild and heavily coded item lifecycle resume tests are
+deselected by every application shard argument file and run once, in that order,
+in the serial post-shard `application-row-budget` job. Shard contention measured
+115–143 s for row budget and 125.64 s for lifecycle resume; isolation removes
+that competition without raising either ceiling. The
+`Run isolated row budget and lifecycle resume tests` step invokes exactly these
+two nodes in one pytest invocation with `-n 0`, the existing 360 s timeout and
+all phase durations. The application aggregate requires this job to succeed.
+Local parity reads the same workflow and dependency graph: both shards must
+finish, and the concurrent scheduler reserves its entire worker budget for this
+job so no other cell overlaps it. `CI_PARITY_SERIAL=1` runs the same steps in
+order. Hosted CI gives the post-shard job its own runner. Other parameters and
+tests in both files remain in the shards; the 135 s and 125 s ceilings and the
+30% rule are unchanged.
 
 Exact unavailable steps and evidence are recorded in
 [`ci-parity-expected-skips.toml`](../scripts/ci-parity-expected-skips.toml) and printed
 in every report. HEAD differs from the hosted integration candidate; runner images,
 services, browser/model runtimes, installs/downloads and hosted timing remain gaps.
+The application suite's `test_reports_browser_timezone_survives_loss_of_cdp_session`
+executes the reports journey up to its browser launch boundary and verifies that
+ChromeDriver receives `TZ=America/New_York` under a UTC runner or standalone shell.
+The browser and its renderer processes inherit that zone without relying on a CDP
+session override; the application process retains UTC. This regression runs in
+local parity without Chrome. It does not execute the browser journey: browser
+provisioning and synthetic journeys remain explicitly NOT RUN in local parity.
 [`test_ci_parity.py`](../tests/test_ci_parity.py), discovered by the existing
 application shards on non-documentation PRs, rejects missing/stale mappings and
 compares plans using real synthetic classification outputs. After reviewing drift,
 regenerate with `CI_PARITY_UPDATE_SNAPSHOT=1 python -m pytest -q tests/test_ci_parity.py::test_golden_plan`.
 Full per-step logs accompany the report; its final `SUMMARY` line is the launcher
 contract. The tool does not acquire the launcher's pytest lock.
+
+Independent jobs and non-fail-fast matrix entries run concurrently within the
+operating-system CPU budget; xdist workers reserve their declared capacity and
+other cells reserve one unit. Dependencies and per-cell step order are retained,
+with complete cell reports emitted in plan order. Fail-fast matrices remain serial
+so cancellation outcomes stay identical. Each checkout owns its source-adjacent
+bytecode caches; parity does not inject `PYTHONPYCACHEPREFIX`, preserving the same
+cache lookup for Python processes that ignore environment variables. Set
+`CI_PARITY_SERIAL=1` for the original
+serial execution when measuring equivalence. The external pytest lock still covers
+one complete invocation; it is not acquired or changed by the scheduler.
+
+On 2026-11-15, paired measurements of
+`bfc017dd7128241804ddf14aef96a28e61e0fc67` under one lock hold took **2,715 seconds
+before (serial)** and **1,766 seconds after (concurrent)**. Concurrent/serial was
+**0.650460 (65.05%)**, above the 60% goal; the longest cell was application shard 1,
+whose suite step took 1,412.7 seconds concurrently versus 1,286.4 seconds serially.
+Lock wait was zero measured seconds and excluded from both wall times. Both runs
+exited 0 with identical results: 39 PASS, 0 FAIL, 15 SKIP, 28 NOT RUN, 21 HARNESS
+and one service replay (`ran=40`, `failed=0`, `not_run_unexpected=0`). One test
+newly exceeded 108 seconds (104.906 seconds serial, 120.413 seconds concurrent),
+so the timing acceptance was not met despite both parity runs being green.
 
 Service entries may declare `replay = "pytest-service-stub"`; currently only the
 PostgreSQL acceptance step does. Parity extracts its pytest commands, omits
