@@ -268,7 +268,8 @@ class ProductionService:
             target = binding['target'] or attempt['target']
             if not self.valid(matter_id, source, target, revision, check_path=False) or (
                     attempt['parser_revision'] != PARSER_REVISION or attempt['definition_digest'] != binding['digest']):
-                if self.repository.catalog(matter_id, source.document_id) is None:
+                current = self.repository.catalog(matter_id, source.document_id)
+                if current is None or current['source_state'] != 'ready':
                     self.repository.update_attempt(matter_id, attempt['attempt_id'], status='stale', phase='stale')
                     binding['dirty'].discard(attempt['attempt_id'])
                     binding['attempt_roots'].pop(attempt['attempt_id'], None)

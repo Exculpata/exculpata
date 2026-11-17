@@ -9,12 +9,15 @@ from __future__ import annotations
 import csv
 import io
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Iterable, Mapping
 
 from case_intelligence.source_load_files import LoadFileError, parse_dat, parse_opt
+from case_intelligence.source_image_load_files import (
+    detect_image_load_file, parse_dii, parse_lfp,
+)
 from case_intelligence.modules.discovery_review.fields import (
     MAX_HEADER_CHARS, Definition, normalize_header,
 )
@@ -39,6 +42,9 @@ SOURCE_FORMATS = MappingProxyType({
     "opt": _SourceFormat("page", (0, 1, 2, 3, 6)),
     "csv": _SourceFormat("document"),
     "tsv": _SourceFormat("document"),
+    "lfp": _SourceFormat("page"),
+    "dii": _SourceFormat("document", projection_priority=10,
+                         matching_dependencies=("dat",)),
 })
 
 
@@ -51,12 +57,16 @@ def source_format(name: str) -> str:
 def classify_source(path, *, name: str) -> str:
     """Resolve the format of an authorized source before its attempt is created.
 
-    The current DAT/OPT/CSV/TSV readers retain their established name-based
-    dispatch. This separate public boundary lets content-based adapters inspect
-    the supplied protected path without changing the service's ownership rules.
-    Empty means unsupported or ambiguous; the caller records failed coverage.
+    DAT/OPT/CSV/TSV retain their established name-based dispatch. Eligible LFP
+    and DII names use the shared content classifier, including cross-suffix
+    inputs. Empty means unsupported or ambiguous; the caller records failed
+    coverage instead of choosing an interpreter from an untrusted extension.
     """
-    return source_format(name)
+    eligible = source_format(name)
+    if eligible in {"lfp", "dii"}:
+        classification = detect_image_load_file(path, name=name)
+        return classification.format if classification.outcome == "recognized" else ""
+    return eligible
 
 
 def record_category(source_format: str) -> str:
@@ -239,12 +249,49 @@ def _recognition(headers, definition):
             tuple(header for header in headers if header in ambiguous))
 
 
+def dii_review_event(event):
+    """Keep DII tags inert while exposing its explicitly supplied document facts.
+
+    The core event retains exact original tags. The persisted review event has
+    technical BATESBEG/PGCOUNT aliases, with every original tag/value pair kept
+    in order in optional_values and in visibly labelled, nonsemantic columns.
+    Those columns also retain raw metadata in the existing conflict comparison;
+    DOCID and parent metadata cannot accidentally become configured identifiers
+    or DAT family endpoints. No canonical count column exists when it is absent.
+    """
+    if event.kind != "accepted":
+        return event
+    supplied = {}
+    for key, value in event.optional_values:
+        if key in {"document_begin", "declared_count", "observed_image_entries"}:
+            if key in supplied:
+                raise ValueError("DII document semantics are ambiguous.")
+            supplied[key] = value
+    if (not supplied.get("document_begin") or "observed_image_entries" not in supplied
+            or event.headers is None or event.cells is None
+            or len(event.headers) != len(event.cells)):
+        raise ValueError("DII document semantics are incomplete.")
+    headers, cells = ["BATESBEG"], [supplied["document_begin"]]
+    if "declared_count" in supplied:
+        headers.append("PGCOUNT")
+        cells.append(supplied["declared_count"])
+    original = tuple(zip(event.headers, event.cells))
+    headers.extend("DII source tag " + header for header, _ in original)
+    cells.extend(value for _, value in original)
+    headers.append("DII observed image entries")
+    cells.append(supplied["observed_image_entries"])
+    return replace(event, headers=tuple(headers), cells=tuple(cells),
+                   optional_values=original + tuple(event.optional_values))
+
+
 def parse_events(path, *, source_format, on_event, cursor=None):
-    """Dispatch source events through one parser; later formats extend this seam."""
-    parser = {"dat": parse_dat, "opt": parse_opt}.get(source_format)
+    """Dispatch bounded parser events, adapting only explicit DII document facts."""
+    parser = {"dat": parse_dat, "opt": parse_opt, "lfp": parse_lfp, "dii": parse_dii}.get(source_format)
     if parser is None:
         raise LoadFileError("unsupported_format", path, 1)
-    yield from parser(path, on_event=on_event, cursor=cursor)
+    callback = ((lambda event: on_event(dii_review_event(event)))
+                if source_format == "dii" and on_event is not None else on_event)
+    yield from parser(path, on_event=callback, cursor=cursor)
 
 
 def _parse_dat_table(path, *, document_id, name, definition, on_event, cursor):

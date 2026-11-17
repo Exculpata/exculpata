@@ -271,3 +271,27 @@ r5 is scheduled to rerun parity alone after this new PR.md-only commit. Under th
 No product, test, workflow or script changes are included in this rerun commit. No skip, xfail, timeout increase or assertion weakening is introduced. last.md remains excluded and must not be committed.
 
 Focused r5 validation: **90 passed, 0 failed** in tests/test_pr_body.py. PR-body validation, whitespace validation and the required added-lines private-term scan passed. The retained product and publication-test paths are byte-for-byte unchanged from r2. Full parity remains pending with the launcher on the new committed revision.
+
+
+## Kickoff: merge-forward r6
+
+- Goal: merge origin/main including #554 into #528 while preserving publication windows, cached header aliases, and LFP/DII reconciliation so discovery continues to show complete, current production metadata. This is the authorized merge-forward only, outside the retry cap.
+- Expected files: retain this branch's PR.md and append this record; accept main's changes, combining shared discovery/index changes only where conflict resolution is necessary. No feature, contract, test, workflow, launcher or scanner changes.
+- Acceptance check: normal two-parent merge from `a3cb249be6a366f6ede831e5adad51a75f747ef1` and fetched origin/main; three-dot diff contains only #528 changes; both parents' focused tests and publication checks pass. Launcher full parity on the committed merge must report zero unexpected unrun steps, no NEAR TIMEOUT, and unchanged 108/125/135-second ceilings. Stop if integration requires new logic or a behavioral choice.
+- Issue: https://github.com/Exculpata/exculpata/issues/503; PR: https://github.com/Exculpata/exculpata/pull/528; merged integration: https://github.com/Exculpata/exculpata/pull/554. Live issue/PR comments, assignments and related work were checked; no competing claim or hold was found. The supplied merge-forward scope matches this outcome and acceptance check. Recorded before conflict resolution, in this attempt's first commit; the original kickoff remains in the branch's first commit.
+
+## Merge-forward r6
+
+Merged origin/main including #554, whose merge SHA is `cfb8749508510895b9e6c48f0428501b9ec21f31`. The merge commit containing this record has first parent `a3cb249be6a366f6ede831e5adad51a75f747ef1` and second parent `cfb8749508510895b9e6c48f0428501b9ec21f31`.
+
+Only PR.md conflicted. Its branch-side contents are retained in full above. Shared production/service.py and reader.py merged automatically. The original #528 additions/deletions in both files are preserved exactly alongside #554; no new product logic or behavior choice was needed.
+
+
+### r6 validation and launcher handoff
+
+- Focused synthetic suite: **166 passed, 0 failed, 0 skipped** across publication windows, production projections, LFP/DII integration and parsing, DAT/OPT, pending-list state and LFP/DII admission. This includes the existing full-row cancellation/reopen check and #554's changed-source withdrawal regressions. The initial invocation used a nonexistent pending-list filename and collected no tests; the corrected invocation above completed successfully.
+- Slowest focused JUnit setup/call/teardown total: **40.069 s** for `test_opt_navigation_reaches_tail_on_both_endpoints`, below 108 s. No focused test exceeded the 30% duration limit.
+- All six branch-only files and fourteen main-only files are byte-for-byte preserved. Shared source additions/deletions match #528 exactly; the diff versus merged main contains exactly the original nine #528 paths. The original branch PR.md is retained in full.
+- Ruff for the shared source files, whitespace checks, PR-body validation, the working-tree publication scan (`--skip-history`) and the required added-lines private-term scan passed. No test edits, new skips/xfails, timeout increases or weakened assertions were introduced by this merge resolution. last.md is locally excluded and untracked.
+
+Full CI parity on the committed merge is assigned to the launcher after this attempt finishes, per the final task instruction. **r6 full parity and its serial post-shard timings are pending**, not claimed green from r5 or this focused run. The launcher must report `not_run_unexpected=0`, no NEAR TIMEOUT, and every ordinary test at or below 108 s; record the measured lifecycle-resume seconds (ceiling 125 s) and row_budget[10000] seconds (ceiling 135 s) when available. Neither isolated test was part of this focused suite. No launcher, config, parity script, scanner or allowlist was edited. No push or main-branch update was performed.

@@ -58,8 +58,8 @@ Rows past the first for one item are counted and not used.
 Use **Choose files** or **Choose a folder** on the workbench's Add sources
 surface to add supported `.dat`, `.opt`, `.lfp`, and `.dii` files, including
 uppercase suffixes. Load-file originals are saved without searchable text.
-Production documents imports supported DAT/OPT metadata separately; admission
-of LFP/DII is available before their interpretation. Metadata import does not make the
+Production documents imports supported DAT/OPT metadata, LFP page records, and
+DII document metadata separately. Metadata import does not make the
 load file searchable. Original bytes and their digests are retained. Raw load
 files have no byte preview or Text view, and their contents cannot be opened
 through the source-content route. Authorized preservation archives retain the originals, and ordinary
@@ -96,10 +96,10 @@ pilot selector remains limited to PDF and TXT; its default extended scanning
 policy does not provide DAT/OPT/LFP/DII admission without a scanner. Browser-selected
 folders do not expand ZIP archives, and ZIP files are not admitted.
 
-### Proposed LFP and DII admission subset
+### Proposed LFP and DII subset
 
 **PROPOSED subset, approved by the owner 2026-11-14T12:08.** These deliberately narrow, generated dialects
-are supported for protected intake; they do not establish compatibility with all
+are supported for protected intake and interpretation; they do not establish compatibility with all
 LFP or DII producers. A format suffix makes a source eligible for validation.
 Recognition examines content and complete validation rejects a malformed or
 binary tail after a valid prefix. Selecting a file, passing preflight, or receiving
@@ -127,7 +127,8 @@ rejected. Metadata is followed by exactly one `@D @I\relative\directory\`
 declaration (or `@D @I\` for the production root) and at least one bare safe image
 filename per line with suffix `.tif`, `.tiff`, `.png`, `.jpg`, or `.jpeg` (ASCII
 case-insensitive). This image-suffix restriction is the proposed local subset,
-not a claim that every DII producer uses it. The image entries are counted incrementally. A supplied count
+not a claim that every DII producer uses it. The image entries are counted
+incrementally. A supplied count
 does not expand into entries, pages, or Bates labels.
 
 These inputs use the same supported encodings and 1 MiB source-byte physical-record
@@ -146,7 +147,7 @@ of the proposed DII notation, not filesystem authority. Admitted originals keep
 their exact bytes and hashes and remain protected from GET, HEAD and Range byte
 previews. LFP/DII admission creates no text units, searchable coverage, family,
 page-label, image-decoding or association claim. DAT remains the family authority;
-DII interpretation, when supplied, is document metadata only and never invents
+DII interpretation is document metadata only and never invents
 per-page Bates from `@T`, a filename, or a declared count.
 
 The proposed subset follows the public LFP overview,
@@ -155,6 +156,71 @@ reference for document-oriented DII records. The accepted syntax and
 compatibility limits are documented in the grammar proposal.
 The mandatory DII document mode/Bates tag, exact location forms, and excluded
 offsets, commands, quoting and multiline values are explicit compatibility limits.
+
+### Interpretation, recovery and coverage
+
+Recognition inspects bounded content using the same proposed grammar as intake.
+It reports recognized, unsupported, malformed or ambiguous content; a filename
+or an incidental `IM` substring is insufficient. Once a grammar is recognized,
+corruption cannot trigger fallback to another format. Detection replays its
+prefix or resumes the same verified source without dropping consumed bytes.
+
+LFP uses the same page-record type as OPT. Each valid `IM` record supplies one
+literal page key, volume, reference and document boundary; keys may be
+nonconsecutive. Original location components, offset, boundary, type and optional
+rotation remain available as raw values. An omitted rotation differs from a
+supplied `0`. A rejected physical line breaks document-group continuity. Parsing
+can inspect a later independently valid `IM` record, but only a valid `D` record
+restarts an associated group; a continuation after damage remains unassociated.
+
+DII emits one document result per valid block and zero page records. Only
+`@BATESBEG` supplies document begin. The `@T` identifier, optional `@DOCID`, and
+optional `@PARENTID` retain their own meanings and never replace Bates. Supplied
+page count, observed image-entry count, emitted pages and rejected records are
+separate counts. Missing supplied count stays unknown; an explicit count mismatch
+receives a cited diagnostic without repairing either value. Thousands of image
+entries in one document are consumed incrementally, not retained as a page list.
+
+DII semantic guarantees assume the shipped field definition or a meaning-preserving
+equivalent. Raw source-tag and observed-entry columns are inspection metadata;
+do not configure them as identifier, path or family aliases. Deployment edits to
+field aliases are not format-scoped today and can assign unsupported meaning to
+raw DII values. Uploaded content and reviewer requests cannot change these aliases.
+Custom semantic definitions require separate review or a future format-scoped
+projection guard.
+
+A known malformed DII scalar, repeated tag, missing required field or unsafe
+reference rejects that block. Recovery resets directory, count, identifiers and
+relationship state and occurs only at a validated column-zero `@T ` boundary.
+An unknown structural command or unsupported multiline introducer makes later
+apparent boundaries untrustworthy: document emission stops for the remaining
+source, and coverage remains incomplete with the remaining total unknown.
+No successful prefix certifies the damaged tail. Admission still rejects the
+whole malformed upload; diagnostic recovery does not weaken that boundary.
+
+Each accepted or reliably delimited rejected result cites its own load-file
+source and version, physical start line, record or block ordinal, raw values and
+diagnostics. Semantic OPT/LFP page equality does not erase that format-specific
+provenance. DII can agree on shared document facts while explicitly having no
+page output. Raw records remain inspectable on their source when no unique
+admitted document can be associated. Incomplete or stale generations cannot
+publish current associations, and parent storage retains collection-wide
+duplicate/conflict checks without a production-sized parser collection.
+
+Embedded image references remain inert even during recovery. Parsing reads only
+the authorized load file and never opens, resolves, stats, globs or fetches a
+referenced image. Matching an admitted image belongs to the existing authorized
+production boundary. LFP boundaries and DII parent tokens cannot create families;
+only accepted DAT attachment declarations have that authority. Conflicting or
+unsupported relationship assertions remain QC rather than guessed ancestry.
+
+Document shows explicit LFP page metadata and supported admitted JPEG/PNG images;
+DII document values appear through document metadata inspection. Page labels do
+not enter Text or become document Bates through arithmetic. TIFF references show
+metadata and an unavailable-preview explanation until the separate rendering
+slice supplies containment and integrity checks. Parsing neither decodes an
+image nor establishes visual correspondence, applies a rotation, changes source
+page counts or creates searchable text.
 
 ## DAT metadata, explicit page records and families
 
@@ -185,8 +251,8 @@ never a Bates number. Previous and Next traverse stored records without a
 million-record cutoff, including records visible only on the OPT source.
 Expired generation links require reloading rather than silently rebinding.
 
-Only explicit, valid OPT document groups can associate through an unambiguous
-accepted DAT class. Rejected records break group continuity. No OPT means no
+Only explicit, valid OPT or LFP document groups can associate through an unambiguous
+accepted DAT class. Rejected records break group continuity. Without OPT or LFP there are no
 per-page Bates labels; labels are never expanded from a range or page count.
 A uniquely admitted JPEG or PNG can appear beside its explicit record. Missing
 images, TIFF images without rendering support, and ambiguous references show

@@ -18,12 +18,14 @@ from email import policy
 from email.parser import BytesHeaderParser
 from functools import lru_cache
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import Any, Mapping
 
 from case_intelligence.modules.discovery_review import load_files
 from case_intelligence.modules.discovery_review.fields import (
     LOAD_FILE_PREFIX, Definition, Field, normalize_header,
 )
+from case_intelligence.modules.discovery_review.production.repository import ProductionStale
 
 EMBEDDED_MEDIA_TYPES = frozenset({"application/pdf", "image/jpeg", "image/png"})
 MAX_EMAIL_HEADER_BYTES = 256 * 1024
@@ -191,6 +193,80 @@ def production_order_components(definition: Definition, item: Item, parent: Item
             'context': {'document_id': root, 'token': parent.token,
                         'name': parent.values.get('name', ''),
                         'parent': item.document_id == root}}
+
+
+def produced_image_binding(repository, *, matter_id: str, selected_document_id: str,
+                           selected_version_id: str, window: Mapping) -> Mapping | None:
+    """Bind one inspected page to a unique admitted image without opening it.
+
+    ``window`` must be the fresh public ProductionService.record_window result
+    for the selected document and page. That service validates the actual source
+    guard, parser, definition and publication target; these bounded repository
+    reads reject a changed descriptor, foreign scope or ambiguous image. This
+    result is metadata, not an authority to open a path. A rendering caller must
+    obtain a fresh window and equal binding before publication and serving, and
+    capture the image's genuine digest/size from the guarded source store.
+
+    Neither OPT nor the supported LFP grammar supplies a TIFF frame mapping.
+    Their page ordinal and LFP offset zero do not imply frame one: explicit_frame
+    remains None. A renderer can resolve a sole inventory frame separately.
+    """
+    if window.get("category") != "page":
+        raise ValueError("An image binding requires an inspected page record.")
+    inspected_attempt, inspected = window.get("attempt"), window.get("current")
+    if not isinstance(inspected_attempt, Mapping) or not isinstance(inspected, Mapping):
+        raise ValueError("An image binding requires a current inspected record.")
+    attempt_id, ordinal = inspected_attempt.get("attempt_id"), inspected.get("ordinal")
+    if not isinstance(attempt_id, str) or type(ordinal) is not int or ordinal < 1:
+        raise ValueError("The inspected image record selector is invalid.")
+    attempt = repository.attempt(matter_id, attempt_id)
+    record = repository.record(matter_id, attempt_id, ordinal, category="page")
+    if (attempt is None or record is None
+            or selected_document_id not in {attempt["document_id"], record["document_id"]}):
+        raise KeyError(ordinal)
+    selected = repository.catalog(matter_id, selected_document_id)
+    if selected is None or selected["version_id"] != selected_version_id:
+        raise KeyError(selected_document_id)
+    attempt_keys = ("attempt_id", "document_id", "version_id", "digest", "source_format",
+                    "root_key", "generation", "target", "input_revision", "status",
+                    "parser_revision", "definition_digest")
+    record_keys = ("attempt_id", "ordinal", "raw_fingerprint", "generation",
+                   "document_id", "association_status", "kind", "source_id", "version_id")
+    if (any(attempt.get(key) != inspected_attempt.get(key) for key in attempt_keys)
+            or any(record.get(key) != inspected.get(key) for key in record_keys)):
+        raise ProductionStale("The inspected production image changed. Reload to continue.")
+    if (attempt["status"] != "complete" or record["kind"] != "accepted"
+            or record["generation"] != attempt["generation"]
+            or record["association_status"] != "matched"):
+        return None
+    source = repository.catalog(matter_id, attempt["document_id"])
+    if (source is None or source["version_id"] != attempt["version_id"]
+            or source["source_state"] != "ready" or source["origin"] != "upload"
+            or selected["source_state"] != "ready" or selected["origin"] != "upload"):
+        raise ProductionStale("The inspected production source is no longer current.")
+    root = attempt["root_key"]
+    if (not root or repository.provenance(matter_id, attempt["document_id"], attempt["version_id"]) != root
+            or repository.provenance(matter_id, selected_document_id, selected_version_id) != root):
+        return None
+    page = load_files.record_semantics(record)
+    if not page["valid"]:
+        return None
+    candidates = repository.candidate_lookup(matter_id, root, paths=(page["path"],),
+        excluded_document_id=attempt["document_id"], limit=2)
+    if len(candidates) != 1:
+        return None
+    image = candidates[0]
+    if image["media_type"] not in {"image/tiff", "image/jpeg", "image/png"}:
+        return None
+    return MappingProxyType({"matter_id": matter_id, "selected_document_id": selected_document_id,
+        "selected_version_id": selected_version_id, "attempt_id": attempt_id,
+        "generation": attempt["generation"], "source_id": attempt["document_id"],
+        "source_version_id": attempt["version_id"], "source_digest": attempt["digest"],
+        "target": attempt["target"], "input_revision": attempt["input_revision"],
+        "root_key": root, "ordinal": ordinal, "raw_fingerprint": record["raw_fingerprint"],
+        "association_status": record["association_status"], "explicit_frame": None,
+        "image": MappingProxyType({"document_id": image["document_id"], "version_id": image["version_id"],
+                                   "media_type": image["media_type"]})})
 
 
 def action_token(document_id: str, version_id: str) -> str:
