@@ -184,6 +184,8 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
                   for key, label in ITEM_VIEWS if key in available],
         "unavailable": [label for key, label in ITEM_VIEWS if key not in available],
         "production": production, "family": item.family,
+        "production_reload": links(reload_attempt=production.get('attempt_id', ''),
+                                   reload_token=production.get('reload', ''))['url'],
         "record_sources": [{"name": reference['source_name'], "status": reference.get('status', ''),
             "url": f'/matters/{slug}/production?' + urlencode({
                 'doc': action_token(reference['source_id'], reference['source_version_id']),

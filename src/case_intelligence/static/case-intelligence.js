@@ -465,7 +465,7 @@
   let activePreflight = null;
   let preflightAbortController = null;
   let preflightVersion = 0;
-  const securityCheckedSuffixes = new Set(["jpg", "jpeg", "png", "tif", "tiff", "eml", "csv", "tsv", "xlsx", "dat", "opt"]);
+  const securityCheckedSuffixes = new Set(["jpg", "jpeg", "png", "tif", "tiff", "eml", "csv", "tsv", "xlsx", "dat", "opt", "lfp", "dii"]);
   const requiresSecurityCheck = (name, policy = "extended") => {
     if (policy === "disabled") return false;
     if (policy === "all") return true;
@@ -1509,7 +1509,7 @@
       const path = file.webkitRelativePath || file.name;
       const suffix = file.name.toLocaleLowerCase().split(".").pop();
       const mediaSuffixes = ["wav", "mp3", "m4a", "ogg", "opus", "mp4", "mov", "webm"];
-      const reviewSuffixes = ["pdf", "docx", "txt", "jpg", "jpeg", "png", "tif", "tiff", "eml", "csv", "tsv", "xlsx", "dat", "opt"];
+      const reviewSuffixes = ["pdf", "docx", "txt", "jpg", "jpeg", "png", "tif", "tiff", "eml", "csv", "tsv", "xlsx", "dat", "opt", "lfp", "dii"];
       if (![...reviewSuffixes, ...mediaSuffixes].includes(suffix)) throw new Error(`${file.name} is not a supported review source.`);
       if (!file.size) throw new Error(`${file.name} is empty.`);
       const maximum = mediaSuffixes.includes(suffix) ? maximumMediaFileBytes : maximumUploadFileBytes;
