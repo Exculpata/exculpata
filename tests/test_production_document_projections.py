@@ -1,6 +1,7 @@
 """Set-based production preparation retains single-document semantics."""
 import pytest
 
+from case_intelligence.modules.discovery_review.production import ProductionService
 from tests.test_discovery_review_dat_opt_storage import app_case, finish_import
 
 
@@ -21,6 +22,81 @@ def test_document_projections_equal_single_document_projection(tmp_path, profile
             case.service.document_projections(mid, [(pairs[0][0], 'wrong-version')])
         with pytest.raises(ValueError):
             case.service.document_projections(mid, pairs * 2)
+
+
+@pytest.mark.parametrize('replacement_service', [False, True])
+def test_completed_projection_survives_cancel_and_rebind(tmp_path, replacement_service):
+    with app_case(tmp_path, count=4, width=128) as case:
+        attempt = finish_import(case)
+        mid, service = case.matter.matter_id, case.service
+        pairs = [(d.document_id, d.version_id) for d in case.store.documents.values()]
+        expected = tuple(service.document_projection(mid, *pair) for pair in pairs)
+        assert all(row['state'] == 'complete' for row in expected)
+        if replacement_service:
+            service.cancel(mid)
+            service = ProductionService(case.context, repository=case.repository)
+            service.bind(case.matter, case.store, case.definition)
+            scanning = service.reconcile_attempt(mid, attempt)
+            assert scanning['status'] == 'building'
+            assert scanning['dependencies']['was_complete']
+            assert scanning['dependencies']['state'] == 'scan'
+            pending = tuple(service.document_projection(mid, *pair) for pair in pairs)
+            assert all(row['state'] == 'pending' for row in pending)
+            assert service.document_projections(mid, pairs) == pending
+            assert service.advance(mid, max_steps=128)['state'] == 'complete'
+            attempt = case.repository.attempt(mid, attempt['attempt_id'])
+            assert attempt['dependencies']['was_complete']
+            assert tuple(service.document_projection(mid, *pair) for pair in pairs) == expected
+        stamp = case.repository.stamp(mid)
+        service.cancel(mid)
+        service.bind(case.matter, case.store, case.definition)
+        assert service.advance(mid, max_steps=128)['state'] == 'complete'
+        assert case.repository.stamp(mid) == stamp
+        attempt = case.repository.attempt(mid, attempt['attempt_id'])
+        assert attempt['status'] == 'complete'
+        assert attempt['dependencies']['owner'] == service.epoch
+        assert service.binding(mid)['validated'] == {}
+        assert service.attempt_current(mid, attempt)
+        assert tuple(service.document_projection(mid, *pair) for pair in pairs) == expected
+        changes = case.workspace.connection.total_changes
+        assert service.document_projections(mid, pairs) == expected
+        assert case.workspace.connection.total_changes == changes
+
+
+@pytest.mark.parametrize('state', [
+    'foreign_unvalidated', 'foreign_validated', 'foreign_stale_validation', 'paused', 'pending_revision',
+])
+def test_projection_dependency_owner_and_recovery_states(tmp_path, state):
+    with app_case(tmp_path, count=4, width=128) as case:
+        attempt = finish_import(case)
+        mid, service = case.matter.matter_id, case.service
+        binding = service.binding(mid)
+        dependencies = dict(attempt['dependencies'])
+        revision = attempt['input_revision']
+        binding['validated'].clear()
+        if state.startswith('foreign_'):
+            dependencies['owner'] = 'synthetic-other-service'
+            if state != 'foreign_unvalidated':
+                binding['validated'][attempt['attempt_id']] = service.dependency_stamp(dependencies)
+            if state == 'foreign_stale_validation':
+                dependencies['hash'] = 'synthetic-changed-dependencies'
+        elif state == 'paused':
+            dependencies.update(paused=True, restarts=3, reload='synthetic-reload-token', was_complete=True)
+            case.repository.update_attempt(mid, attempt['attempt_id'], status='building', phase='paused')
+        else:
+            revision += ':pending'
+        case.repository.save_dependencies(mid, attempt['attempt_id'], dependencies, revision)
+        pairs = [(d.document_id, d.version_id) for d in case.store.documents.values()]
+        expected = tuple(service.document_projection(mid, *pair) for pair in pairs)
+        own = expected[next(i for i, pair in enumerate(pairs) if pair[0] == attempt['document_id'])]
+        if state == 'paused':
+            assert own['state'] == 'paused' and own['restarts'] == 3
+            assert own['reload'] == 'synthetic-reload-token'
+        else:
+            assert own['state'] == ('complete' if state == 'foreign_validated' else 'pending')
+        changes = case.workspace.connection.total_changes
+        assert service.document_projections(mid, pairs) == expected
+        assert case.workspace.connection.total_changes == changes
 
 
 from tests.fixture_write import fixture_write

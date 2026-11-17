@@ -188,3 +188,42 @@ Ruff, whitespace validation, the PR-body check, the working-tree publication sca
 - Expected files: production/service.py and tests/test_production_document_projections.py; stored_index/rebuild.py or the publication test file only if the reproduced interaction requires it; PR.md.
 - Acceptance check: branch-only reproduction five times; merged baseline once, twenty serial repeats and the two-file xdist run; a deterministic regression failing before the fix; twenty green repeats and xdist afterward, focused index/production suites, and launcher full parity on the final committed revision with existing duration gates. No weakened assertions or changed budgets.
 - Issue: https://github.com/Exculpata/exculpata/issues/503; related PR https://github.com/Exculpata/exculpata/pull/528 and merged PR #527. Rechecked issue and PR context: no assignee or competing hold found. The supplied final-retry scope authorizes this integration correction and matches the outcome and checks above. Recorded before merge and fix coding; original kickoff remains in the first branch commit.
+
+
+## Merge-queue correction r2
+
+Starting branch revision: `81cab3c49cbc5429652e5588ebe68ce7b51afcb7`. Launch main: `718469390d50c49465fd7e7f64d6661c4ed91363`. Normal merge commit on the launcher branch: `f3e5c6e9301dbeeb528f7fb5004eb03473224365`; both requested revisions are ancestors. No other branch was changed.
+
+**CI-ONLY MISS:** Local parity on the parent built on `dafce68` could not exercise #527, which was absent from that branch. #527 added a dependency-currentness check accepting the owning service epoch or a matching cached validation stamp (`production/service.py:237-245`). Cancellation removes the binding (`production/service.py:97-105`); rebinding creates an empty validation cache (`production/service.py:146-151`). The window adapter constructed a new ProductionService with a fresh epoch (`production/service.py:93,1115`) while sharing the caller's binding, so after cancel/reopen it rejected a completed attempt still owned and accepted by the caller. The deterministic regression proves status stays complete, the production stamp stays unchanged, the cache is empty, and single-document projection stays complete (`tests/test_production_document_projections.py:50-62`). That false pending payload had no subsequent production transition to invalidate it. Generated document IDs sometimes put the native on the single-record fallback, explaining intermittent detection; the fixture uses a fresh temporary matter and complete rows are already compared in document-key order. This is a semantic batch/single mismatch, not shared fixture leakage or unstable comparison order.
+
+Hypothesis verdict: **#527 interaction confirmed; transient building-state explanation rejected for the reproduced failure.** `document_projections` already calls the shared `document_projection`; the missing input was its owning service epoch, not copied projection status logic. The explicit replacement-service regression also exercises the real `building`/`was_complete` scan and restoration before rebinding, and reproduces the same defect after restoration.
+
+Fix level: **code**, at the batch adapter boundary. Preserve `self.epoch` on the read-only window service (`production/service.py:1117`), alongside the existing shared bindings/discovery state. The per-window validation-result cache stays local. This changes one product line, adds no reads or writes, and preserves the main implementation of attempt currentness, input revisions, recovery and 409 responses. No contract change, schema/key change, row/step-constant change or order-window work is needed. The unchanged full-row cancellation test checks stored payloads, fingerprints, item rows and value rows against uninterrupted publication.
+
+Regression baseline: `f3e5c6e9301dbeeb528f7fb5004eb03473224365`. Before the product fix, both new deterministic cancel/rebind cases failed at batch-versus-single equality, including the case with a real replacement owner and retained `was_complete`; all five new foreign-owner/validation/pause/pending-revision controls passed. The setup proves the cause without relying on random IDs, sleeps, retries or altered publication assertions.
+
+### Reproduction before the fix
+
+| Revision and command | Passed | Failed |
+| --- | ---: | ---: |
+| Branch-only `81cab3c4`, unchanged failing test, five separate pytest invocations in a shell loop | 5 | 0 |
+| Merged baseline, unchanged failing test alone | 0 | 1 |
+| Merged baseline, unchanged failing test, twenty separate pytest invocations in a shell loop | 5 | 15 |
+| Merged baseline, both publication-window and pending-list files with `-n 4` | 18 | 1 |
+| Merged product source, seven new regression/control cases | 5 | 2 |
+
+The merged xdist failure is the same full-item cancellation comparison; every pending-list test passed. Initial short correctness runs overlapped an unrelated parity job and make no timing acceptance claim. Raw logs are retained in the job's external `evidence/` directory.
+
+
+### Validation after the fix
+
+- Unchanged cancellation/full-row comparison: **20 passed, 0 failed**, twenty separate pytest invocations in a shell loop.
+- Both unchanged publication-window and pending-list files with `-n 4`: **19 passed, 0 failed**. No rerun/repeat plugin was used.
+- Complete projection file: **27 passed, 0 failed**, including both previously failing reopen regressions and the five new #527 state controls.
+- Gate A remeasured through real synthetic HTTP publication using the r1 context-local SQL/commit observer: **2,923 statements, 86 commits, 86 project steps** per 1,000 generated records (1,001 indexed sources), unchanged from r1. That is **2.923 statements and 0.086 commits per record**, including 1,118 control statements, or 13 per step. Maximum publication step remains **236 touches**. This run counts statements without tracemalloc; it makes no new elapsed-time or memory qualification claim.
+
+- Full requested focused index/DAT/OPT/production suite plus fixture-write policy, inventory, coverage, reflective-denial, DB-access, import-boundary and source-size checks: **2,266 passed, 0 failed, 2 existing skips**. The skips are the explicit million-item qualification and PostgreSQL portability without a configured DSN; this run does not claim PostgreSQL validation.
+- JUnit setup/call/teardown totals: lifecycle resume **110.252 s** (ceiling 125), row_budget[10000] **49.932 s** (ceiling 135), slowest other test **60.053 s** (ceiling 108). All observed focused-test duration limits passed; the run overlapped another job and is not a replacement for the launcher's final parity timing gate.
+- Ruff with caching disabled, whitespace validation, PR-body validation, working-tree publication scanning (`--skip-history`) and the required added-lines private-term scan pass. A locally generated Ruff cache was moved outside the worktree before the publication scan. The two requested existing test files are byte-for-byte unchanged from the merged baseline. Synthetic data only; no push, main-branch change, force-push, hook bypass, skip, xfail, retry plugin or assertion weakening.
+
+Full CI parity on the final committed revision is assigned to the launcher by the task's final instruction. The r1 parity result is historical and does not establish r2 readiness. The launcher must enforce zero unexpected unrun steps, no NEAR TIMEOUT and the unchanged 108/125/135-second duration ceilings.

@@ -1114,6 +1114,7 @@ class ProductionService:
             repository = self.repository.projection_reader(matter_id, pairs, load_files.document_format_order())
             window = WindowService(self.context, repository=repository)
             window.bindings, window.discovery_done = self.bindings, self.discovery_done
+            window.epoch = self.epoch
             window.validated = {}
             return tuple(window.document_projection(matter_id, document, version) for document, version in pairs)
 
