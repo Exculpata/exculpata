@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 import zipfile
 from unittest.mock import Mock, PropertyMock
 
@@ -274,20 +275,29 @@ def test_one_box_destination_preserves_failures(one_box_script, failure):
 
 
 @pytest.mark.parametrize('failure', ['not ready', 'always stale'])
-def test_one_box_destination_retains_wait_deadline(one_box_script, failure):
+def test_one_box_destination_retains_wait_deadline(one_box_script, failure, monkeypatch):
     from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
-    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import wait
+
+    elapsed = 0.0
+
+    def advance_clock(seconds):
+        nonlocal elapsed
+        elapsed += seconds
+
+    monkeypatch.setattr(wait, 'time', SimpleNamespace(monotonic=lambda: elapsed, sleep=advance_clock))
 
     driver = Mock()
     driver.execute_script.return_value = failure == 'always stale'
     type(driver.find_element.return_value).text = PropertyMock(side_effect=StaleElementReferenceException())
     with pytest.raises(TimeoutException):
-        one_box_script.wait_for_destination(WebDriverWait(driver, .01, poll_frequency=.001),
+        one_box_script.wait_for_destination(wait.WebDriverWait(driver, 3, poll_frequency=2),
             '/matters/synthetic', 'Synthetic route reason')
+    assert driver.execute_script.call_count == 3
     if failure == 'not ready':
         driver.find_element.assert_not_called()
     else:
-        assert driver.find_element.call_count > 1
+        assert driver.find_element.call_count == 3
 
 
 def test_pins_match_browser_driver_version_and_official_archives(runner):
