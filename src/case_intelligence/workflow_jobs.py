@@ -9,6 +9,7 @@ from case_intelligence.legacy_names import (
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from functools import partial
 from typing import Callable, Mapping, Sequence
 
 from .workspace_store import (
@@ -100,7 +101,7 @@ class ResearchCoordinator:
                 self._wake.wait(timeout=0.5)
                 self._wake.clear()
                 continue
-            cancelled = lambda: self.workspace.research_cancellation_requested(job.job_id)
+            cancelled = partial(self.workspace.research_cancellation_requested, job.job_id)
             try:
                 if cancelled():
                     raise _WorkflowCancelled()
