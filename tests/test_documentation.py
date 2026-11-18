@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterable
 from html.parser import HTMLParser
+import os
 from pathlib import Path
 import re
+import subprocess
 from urllib.parse import unquote, urlsplit
 
 import pytest
@@ -192,7 +195,6 @@ def test_workflows_do_not_request_codex_reviews_automatically() -> None:
 
 def test_rename_contract_is_checked_on_documentation_only_changes() -> None:
     """The lightweight CI path must not let docs whitelist their own typos."""
-    import subprocess
     import sys
 
     for script in ("rename_contract_check.py", "rename_contract_artifacts.py"):
@@ -228,15 +230,17 @@ def _heading_slugs(path: Path) -> set[str]:
             for heading in headings} | anchors.anchors
 
 
-def markdown_link_errors(root: Path) -> list[str]:
-    documents = sorted((root / "docs").rglob("*.md")) + sorted(root.glob("*.md"))
+def markdown_link_errors(root: Path, documents: Iterable[Path] | None = None) -> list[str]:
+    if documents is None:
+        tracked = subprocess.check_output(
+            ["git", "ls-files", "-z", "--", "*.md"], cwd=root, timeout=15,
+        )
+        documents = (root / os.fsdecode(name) for name in tracked.split(b"\0") if name)
     errors = []
-    for document_path in documents:
+    for document_path in sorted(documents):
         for link in LINK.findall(document_path.read_text(encoding="utf-8")):
             url = urlsplit(link)
-            if url.scheme in {"http", "https", "mailto"}:
-                continue
-            if url.scheme or url.netloc:
+            if url.scheme or url.netloc or url.path.startswith("/"):
                 continue
             target = (document_path.parent / unquote(url.path or document_path.name)).resolve()
             display = unquote(url.path) or document_path.name
@@ -255,6 +259,26 @@ def test_repository_markdown_links_have_no_unrecorded_failures():
     assert set(markdown_link_errors(ROOT)) == KNOWN_BROKEN_MARKDOWN_LINKS
 
 
+def test_markdown_link_validation_checks_only_tracked_sources(tmp_path: Path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, timeout=15)
+    nested = tmp_path / "guides" / "setup"
+    nested.mkdir(parents=True)
+    # fixture-write: Stage a synthetic Markdown source with a missing relative target.
+    (nested / "getting started.md").write_text("[Guide](missing.md)\n", encoding="utf-8")
+    # fixture-write: A staged source includes a site route and a valid query-bearing link.
+    (nested / "routes.md").write_text(
+        "[Application](/demo/route)\n[Text](getting%20started.md?raw=true)\n",
+        encoding="utf-8",
+    )
+    # fixture-write: An untracked local draft is deliberately outside the link inventory.
+    (tmp_path / "draft.md").write_text("[Draft](missing-draft.md)\n", encoding="utf-8")
+    subprocess.run(["git", "add", "--", "guides"], cwd=tmp_path, check=True, timeout=15)
+
+    assert markdown_link_errors(tmp_path) == [
+        "guides/setup/getting started.md: missing link target missing.md",
+    ]
+
+
 @pytest.mark.parametrize("attribute", ["id", "name"])
 @pytest.mark.parametrize("quote", ['"', "'"])
 def test_markdown_links_accept_html_anchors(tmp_path: Path, attribute: str, quote: str):
@@ -270,7 +294,7 @@ def test_markdown_links_accept_html_anchors(tmp_path: Path, attribute: str, quot
         f"<a {attribute}={quote}stable-anchor{quote}></a>\n## Current heading\n",
         encoding="utf-8",
     )
-    assert markdown_link_errors(tmp_path) == []
+    assert markdown_link_errors(tmp_path, docs.glob("*.md")) == []
 
 
 def test_markdown_links_report_missing_fragment(tmp_path: Path):
@@ -284,7 +308,7 @@ def test_markdown_links_report_missing_fragment(tmp_path: Path):
     (docs / "target.md").write_text(
         '<a id="stable-anchor"></a>\n## Current heading\n', encoding="utf-8",
     )
-    assert markdown_link_errors(tmp_path) == [
+    assert markdown_link_errors(tmp_path, docs.glob("*.md")) == [
         "docs/source.md: missing fragment target.md#missing-anchor",
     ]
 
@@ -364,7 +388,7 @@ def test_markdown_link_validation_reports_missing_files_and_fragments(tmp_path):
     (docs / "index.md").write_text("[file](missing.md) [heading](target.md#absent)\n")
     # fixture-write: synthetic Markdown target with a deliberately different heading.
     (docs / "target.md").write_text("# Present\n")
-    assert markdown_link_errors(tmp_path) == [
+    assert markdown_link_errors(tmp_path, docs.glob("*.md")) == [
         "docs/index.md: missing link target missing.md",
         "docs/index.md: missing fragment target.md#absent",
     ]

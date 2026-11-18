@@ -2141,7 +2141,9 @@ kind = "host"
 digest = "260a43df6fb18a04734e9e0a9243f8ac97a5c1b58ed93719c7723b7fc5f15efc"
 detail = "full-text-ledger.json"
 
-# Local login gateway trust: resolve the compose "gateway" service to check the direct TCP peer; no outbound connection.
+# Local login gateway trust resolves the bare name "gateway" through the system
+# resolver, which may send DNS traffic. The app uses the returned addresses only
+# to check the direct TCP peer.
 
 [[source]]
 path = "src/case_intelligence/workbench.py"
