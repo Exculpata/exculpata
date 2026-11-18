@@ -16,7 +16,8 @@ def test_empty_index_promotes_matching_identity(tmp_path):
     assert indexes.embedding_change_warning(indexes.load_embedding_index(path), model="m", revision="r") == indexes.UNKNOWN_WARNING
     for _ in range(2):
         assert indexes.record_embedding_index(path, model="m", revision="r", populated=True) == ""
-        assert indexes.load_embedding_index(path) == {"model": "m", "revision": "r", "populated": True}
+        assert indexes.load_embedding_index(path) == {"model": "m", "revision": "r", "populated": True,
+                                                      "projection_format": indexes.PROJECTION_FORMAT}
         assert indexes.embedding_change_warning(indexes.load_embedding_index(path), model="m", revision="r") == ""
 
 
@@ -37,7 +38,8 @@ def test_note_populated_index_and_read_only_status(tmp_path, monkeypatch):
     installer._doctor_generator(console, tmp_path, dry_run=True)
     assert warnings == [indexes.UNKNOWN_WARNING]
     assert indexes.note_populated_index(populated=True) == ""
-    assert indexes.load_embedding_index(path) == {"model": "m", "revision": "r", "populated": True}
+    assert indexes.load_embedding_index(path) == {"model": "m", "revision": "r", "populated": True,
+                                                 "projection_format": indexes.PROJECTION_FORMAT}
     assert indexes.note_populated_index(populated=True) == ""
     assert CaseIntelligenceWorkbench._embedding_index_warning(workbench) == ""
     warnings.clear()

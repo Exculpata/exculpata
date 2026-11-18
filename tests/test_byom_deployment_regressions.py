@@ -29,9 +29,7 @@ def test_compose_app_and_retrieval_share_embedding_identity(monkeypatch, tmp_pat
     monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_INDEX_RECORD", str(tmp_path / "index.json"))
     monkeypatch.setenv("CASE_REVIEW_EMBEDDING_MODEL", "synthetic/first")
     monkeypatch.setenv("CASE_REVIEW_EMBEDDING_REVISION", "synthetic-revision-1")
-    # fixture-write: Seed synthetic data for this isolated regression.
-    (tmp_path / "index.json").write_text(json.dumps({"model": "synthetic/first",
-        "revision": "synthetic-revision-1", "populated": True}))
+    assert note_populated_index(populated=False) == ""
     assert note_populated_index(populated=True) == ""
     monkeypatch.setenv("CASE_REVIEW_EMBEDDING_MODEL", "synthetic/second")
     assert "must be rebuilt" in note_populated_index(populated=True)

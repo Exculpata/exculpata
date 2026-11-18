@@ -31,6 +31,7 @@ import uuid
 from contextlib import asynccontextmanager, closing
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
+from functools import cache
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Mapping, Sequence
 from urllib.parse import parse_qs, quote_plus, urlencode, urlparse
@@ -159,6 +160,8 @@ from .pilot_uploads import (
     securely_delete_owned_tree,
 )
 from .review_bench import RetrievalUnavailable
+from .embedding_index import MISSING_EMBEDDINGS, note_populated_index
+from .retrieval_endpoints import EndpointFailure
 from .retrieval_limits import INPUT_BLOCKED_STAGE, RetrievalInputProblem
 from .review_bench_v2 import (
     Candidate,
@@ -1057,28 +1060,10 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         if self.postgres_connection is None:
             self.postgres_connection = self._connect_postgres(configured_postgres_dsn)
             self._owns_postgres = self.postgres_connection is not None
-        self.embedding = embedding
-        self.reranker, worker_ready = reranker, False
-        if self.embedding is None or self.reranker is None:
-            worker_url = os.getenv("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", "").strip()
-            from .retrieval_endpoints import configured_endpoint
-            local_ready = bool(worker_url and self._retrieval_worker_ready(worker_url))
-            embedding_ready = configured_endpoint("EMBEDDING") is not None or local_ready
-            rerank_ready = configured_endpoint("RERANK") is not None or local_ready
-            worker_ready = embedding_ready or rerank_ready
-            if self.embedding is None and embedding_ready:
-                self.embedding = RemoteEmbeddingAdapter(worker_url)
-            if self.reranker is None and rerank_ready:
-                self.reranker = RemoteRerankerAdapter(worker_url)
-        if self.embedding is None:
-            self.embedding = DeterministicEmbeddingAdapter()
-        if self.reranker is None:
-            self.reranker = DeterministicReranker()
+        self._configure_retrieval(embedding, reranker, learned_retrieval)
         if learned_retrieval is None:
-            learned_retrieval = worker_ready
-        self.learned_retrieval = bool(
-            learned_retrieval and self.postgres_connection is not None
-        )
+            learned_retrieval = self.embedding is not None or self.reranker is not None
+        self.learned_retrieval = bool(learned_retrieval and self.postgres_connection is not None)
         self.postgres_ready = False
         if self.postgres_connection is not None:
             try:
@@ -1089,7 +1074,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             except Exception:
                 self.postgres_connection.rollback()
                 self.learned_retrieval = False
-        self.embedding_index_warning = self._embedding_index_warning()
+        self.embedding_index_warning = self._embedding_index_warning() if self._embedding_selected else ""
         if self.embedding_index_warning:
             LOGGER.warning("%s", self.embedding_index_warning)
         self._rebuild_all_indexes()
@@ -1236,6 +1221,64 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             return psycopg.connect(dsn, connect_timeout=2, autocommit=True)
         except Exception:
             return None
+
+    def _configure_retrieval(self, embedding, reranker, enabled: bool | None) -> None:
+        from .retrieval_endpoints import configured_endpoint, probe_endpoint
+
+        worker_url = os.getenv("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", "").strip()
+
+        @cache
+        def worker_ready() -> bool:
+            return bool(worker_url and self._retrieval_worker_ready(worker_url))
+
+        def provider(role, supplied, adapter):
+            if enabled is False:
+                return None, "disabled", False
+            if supplied is not None:
+                return supplied, "provided by application", True
+            try:
+                endpoint = configured_endpoint(role)
+            except ValueError as exc:
+                return None, str(exc), False
+            if endpoint is not None:
+                result = probe_endpoint(endpoint)
+                if result == "ok":
+                    return adapter(""), "endpoint verified", True
+                return None, result, True
+            if worker_ready():
+                return adapter(worker_url), "bundled worker ready", True
+            return None, "bundled worker unavailable" if worker_url else "not configured", False
+
+        self.embedding, self.embedding_status, self._embedding_selected = provider(
+            "EMBEDDING", embedding, RemoteEmbeddingAdapter,
+        )
+        self.reranker, self.rerank_status, _ = provider("RERANK", reranker, RemoteRerankerAdapter)
+
+    def _retrieval_endpoint_failed(self, role: str, reason: str) -> None:
+        with self._postgres_lock:
+            if role == "EMBEDDING":
+                self.embedding, self.embedding_status = None, reason
+            elif role == "RERANK":
+                self.reranker, self.rerank_status = None, reason
+            else:
+                raise ValueError("Unknown retrieval role")
+
+    def _embedding_blocker(self) -> str:
+        from .retrieval_endpoints import require_index_identity
+
+        if self.embedding_index_warning:
+            return self.embedding_index_warning
+        try:
+            require_index_identity(require_record=True)
+        except RuntimeError as exc:
+            self.embedding_index_warning = str(exc)
+            return self.embedding_index_warning
+        return ""
+
+    def _active_embedding(self):
+        if self.learned_retrieval and self.embedding is not None and not self._embedding_blocker():
+            return self.embedding
+        return None
 
     @staticmethod
     def _retrieval_worker_ready(url: str) -> bool:
@@ -2506,6 +2549,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         document_ids: frozenset[str] | None = None,
     ) -> HybridRetriever:
         if self.learned_retrieval and self.postgres_ready and self.postgres_connection is not None:
+            reranker = self.reranker
             return HybridRetriever(
                 PostgresHybridBackend(
                     self.postgres_connection,
@@ -2513,10 +2557,11 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                     pilot_store_factory=lambda: self.source_store(matter),
                     document_ids=document_ids,
                 ),
-                self.embedding,
-                self.reranker,
+                self._active_embedding(),
+                reranker,
                 minimum_dense_score=0.72,
-                minimum_rerank_score=0.80,
+                minimum_rerank_score=0.80 if reranker is not None else math.inf,
+                endpoint_failed=self._retrieval_endpoint_failed,
             )
         return HybridRetriever(
             InMemoryHybridBackend(
@@ -4385,10 +4430,9 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
     def _index_document(self, matter: MatterRecord, document: PilotDocument) -> None:
         if not self.postgres_ready or self.postgres_connection is None:
             return
-        if self.learned_retrieval:
-            from .retrieval_endpoints import require_index_identity
-            require_index_identity(require_record=not isinstance(self.embedding, DeterministicEmbeddingAdapter))
-        with self._postgres_lock:
+        units = document.parsed_units()
+
+        def project(embedder):
             upsert_postgres_document(
                 self.postgres_connection,
                 matter_id=matter.matter_id,
@@ -4396,12 +4440,8 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                 document_id=document.document_id,
                 display_name=document.display_name,
                 media_type=document.media_type,
-                units=document.parsed_units(),
-                embedder=(
-                    self.embedding
-                    if self.learned_retrieval
-                    else DeterministicEmbeddingAdapter()
-                ),
+                units=units,
+                embedder=embedder,
                 source_version_id=document.version_id,
                 content_digest=document.digest,
                 byte_size=document.size,
@@ -4412,6 +4452,19 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                 ),
                 ensure_schema=False,
             )
+
+        with self._postgres_lock:
+            embedder = self._active_embedding()
+            try:
+                project(embedder)
+            except EndpointFailure as exc:
+                self._retrieval_endpoint_failed("EMBEDDING", str(exc))
+                embedder = None
+                project(None)
+            if units and embedder is not None:
+                self.embedding_index_warning = note_populated_index(populated=True)
+            elif units and not self.embedding_index_warning:
+                self.embedding_index_warning = MISSING_EMBEDDINGS
 
     def _project_media_transcript(
         self,
@@ -6233,21 +6286,24 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
 
     def _embedding_index_warning(self) -> str:
         from .embedding_index import (
-            configured_embedding, embedding_change_warning, embedding_index_path,
-            load_embedding_index, note_populated_index,
+            UNKNOWN_WARNING, configured_embedding, embedding_change_warning,
+            embedding_index_path, load_embedding_index,
         )
 
-        populated = False
-        counted = False
         if self.postgres_ready and self.postgres_connection is not None:
+            if embedding_index_path() is None:
+                return UNKNOWN_WARNING
             try:
                 with self.postgres_connection.cursor() as cursor:
-                    cursor.execute("SELECT 1 FROM review_chunk WHERE embedding IS NOT NULL LIMIT 1")
-                    populated = cursor.fetchone() is not None
-                counted = True
+                    cursor.execute(
+                        "SELECT EXISTS (SELECT 1 FROM review_chunk WHERE embedding IS NOT NULL), "
+                        "EXISTS (SELECT 1 FROM review_chunk WHERE embedding IS NULL)"
+                    )
+                    populated, missing = cursor.fetchone()
             except Exception:
-                counted = False
-        if counted:
+                return UNKNOWN_WARNING
+            if missing:
+                return MISSING_EMBEDDINGS
             return note_populated_index(populated=populated)
         path = embedding_index_path()
         if path is None:
@@ -6269,13 +6325,28 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             "refused": "refused",
             "unreachable": "not checked",
         }.get(schema_mode, "not checked")
+        index_status = "unavailable"
+        if self.postgres_ready and self._embedding_selected:
+            index_status = self._embedding_blocker() or "ready"
+        embedding_ready = self.learned_retrieval and self.embedding is not None and index_status == "ready"
+        if embedding_ready and self.reranker is not None:
+            search = "word + meaning"
+        elif embedding_ready:
+            search = "word search with embeddings"
+        elif self.learned_retrieval and self.reranker is not None:
+            search = "word search with reranking"
+        else:
+            search = "word search only"
         return {
-            "search": "word + meaning" if self.learned_retrieval else "word search only",
+            "search": search,
+            "embedding": self.embedding_status,
+            "reranking": self.rerank_status,
+            "embedding_index": index_status,
             "answering": "ready" if self.generator.available else "temporarily unavailable",
             "schema_enforcement": schema_label,
             "schema_detail": str(getattr(client, "schema_detail", "") or ""),
             "model_qualification": str(getattr(client, "model_notice", "") or ""),
-            "embedding_index_warning": self._embedding_index_warning(),
+            "embedding_index_warning": index_status if index_status not in {"ready", "unavailable"} else "",
             "source_review": "ready",
             "ingestion": "background queue" if self.background_ingestion else "request-bound",
             "ocr": os.getenv("CASE_INTELLIGENCE_OCR_MODE", "off") or "off",
@@ -8866,9 +8937,10 @@ def create_workbench_app(
         )
         backup_status = _backup_status_projection()
         malware_status = scanner_status(bench.malware_scanner, force=True)
+        page_context = base_context(request)
         model_portfolio = model_portfolio_projection(
             bench.generator,
-            learned_retrieval=bench.learned_retrieval,
+            learned_retrieval=page_context["capabilities"]["search"] == "word + meaning",
             answer_workers=bench.answers.worker_count if bench.answers is not None else 0,
             research_workers=(
                 bench.research.worker_count if bench.research is not None else 0
@@ -8894,7 +8966,7 @@ def create_workbench_app(
             request=request,
             name="workbench_admin.html",
             context={
-                **base_context(request),
+                **page_context,
                 "admin_matters": tuple(matter_rows),
                 "closure_recoveries": closure_recoveries,
                 "stale_matters": stale_matters,

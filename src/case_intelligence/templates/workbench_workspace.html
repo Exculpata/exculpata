@@ -44,7 +44,15 @@
     {% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}
     <div class="notice notice-neutral download-status" data-download-status role="status" aria-live="polite" hidden></div>
     {% if capabilities.search != 'word + meaning' %}
-    <div class="notice notice-neutral" role="status">Meaning search is temporarily unavailable. Exact word search still works.</div>
+    <div class="notice notice-neutral" role="status">
+      {% if capabilities.search == 'word search with embeddings' %}
+      Embeddings help rank word matches. Matches based on meaning alone also need a reranker.
+      {% elif capabilities.search == 'word search with reranking' %}
+      The reranker orders word matches. Meaning search needs a ready embedding index.
+      {% else %}
+      Meaning search is temporarily unavailable. Exact word search still works.
+      {% endif %}
+    </div>
     {% endif %}
     {% if capabilities.answering != 'ready' %}
     <div class="notice notice-neutral" role="status">Answering is temporarily unavailable. Search and source review still work.</div>
@@ -105,7 +113,7 @@
       <div class="search-mode-heading">
         <div>
           <h2 id="search-heading">Search this matter</h2>
-          <p>Semantic passage search finds ranked related passages. <a href="/matters/{{ matter.slug }}/exact-search">Find sources by the words they contain.</a></p>
+          <p>{% if capabilities.search == 'word + meaning' %}Find passages by words and meaning.{% else %}Find passages that match your search terms.{% endif %} <a href="/matters/{{ matter.slug }}/exact-search">Find sources by the words they contain.</a></p>
         </div>
         <a href="/matters/{{ matter.slug }}?mode=ask">Back to conversation</a>
       </div>

@@ -7804,7 +7804,7 @@ detail = "network import"
 [[source]]
 path = "src/case_intelligence/retrieval_endpoints.py"
 kind = "client"
-digest = "9794fd4bffade444285152a875edb21c04c7b5f8c39ec6041fb0d542a7e51d36"
+digest = "0e35eab805a5923641d89657492d67bee5a99d5ab0290134c1f9cb0d5314c7b6"
 detail = "http.client.HTTPException"
 
 [[source]]

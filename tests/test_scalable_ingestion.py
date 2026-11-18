@@ -494,6 +494,7 @@ def test_parallel_ingestion_serializes_the_shared_postgres_connection(monkeypatc
     bench.postgres_ready = True
     bench.postgres_connection = object()
     bench._postgres_lock = threading.RLock()
+    bench.embedding_index_warning = ""
     bench.embedding = object()
     bench.learned_retrieval = True
     matter = SimpleNamespace(matter_id="ci-matter-" + "a" * 32, display_name="Synthetic")

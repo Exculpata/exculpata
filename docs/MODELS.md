@@ -86,10 +86,10 @@ telemetry. Remote endpoints require explicit consent to send matter text.
 
 Bring-your-own answer servers are described in
 [model configuration](MODEL_CONFIGURATION.md#existing-answer-endpoints).
-Embeddings and reranking remain in-process, including when
-`CASE_REVIEW_MODEL_DEVICE=cpu`; endpoint selection does not replace them or
-resolve their origin eligibility. Remote endpoints require explicit consent to
-send matter text and are never recommended or selected by default.
+Operators can also configure embeddings and reranking independently. The app
+checks each selected endpoint and shows its status in the administrator
+console. Remote endpoints require explicit consent to send matter text.
+See [retrieval endpoint configuration](MODEL_CONFIGURATION.md#optional-embedding-and-rerank-endpoints).
 
 ## Hardware tiers by usable model memory
 

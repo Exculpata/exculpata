@@ -138,6 +138,7 @@ def test_extracted_email_labels_reach_search_candidates(tmp_path, monkeypatch):
     workbench.learned_retrieval = workbench.postgres_ready = True
     workbench.postgres_connection = object()
     workbench._postgres_lock = None
+    workbench.embedding_index_warning = ""
     workbench.embedding = DeterministicEmbeddingAdapter()
     workbench.reranker = None
     backend = workbench._retriever(matter).backend

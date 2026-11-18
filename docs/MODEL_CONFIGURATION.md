@@ -318,11 +318,15 @@ Cohere/Jina-style `/v1/rerank` server (`model`, `query`, `documents`; response
 `results` with `index` and `relevance_score`). Both must list their model at
 `GET /v1/models`. URLs are HTTPS origins, without `/v1`.
 
-Roles are selected independently. With only a rerank endpoint and no ready local
-worker, retrieval and indexing use deterministic embeddings. A fresh local-only
-installation needs no endpoint index rebuild. Configuring an embedding endpoint
-without an index record gives the rebuild guidance below. Model-backed callers
-still require valid provenance at a configured index-record location.
+At startup, the app checks each configured endpoint independently with a model
+list request and synthetic text. A failed startup check or subsequent API failure disables that role for the running app. The local
+worker can supply roles without a configured endpoint. When only reranking is
+ready, it orders lexical search results. With only embeddings, vector similarity
+can improve the order of word matches. A result based on meaning alone requires
+both the existing similarity threshold and a passing model rerank score.
+Newly indexed passages without embeddings remain available
+to word search, with their embedding column set to SQL `NULL`. Restart the app
+after repairing an endpoint to refresh readiness. If a server fails during indexing or search, the app keeps the text and continues with the available search capabilities.
 
 For each prefix (`CASE_INTELLIGENCE_EMBEDDING` or `CASE_INTELLIGENCE_RERANK`),
 set `_ALLOWED_HOSTS` to the exact host, `_REMOTE_CONFIRMED=1` for a public
@@ -342,8 +346,18 @@ configuration for correction before running. Unvalidated URLs and pins never
 reach the relay.
 
 Run `python -m case_intelligence.retrieval_endpoints` inside the app namespace
-for content-free diagnostics. The existing index requires 768 dimensions.
-A changed model or endpoint, or unknown index identity, blocks embedding calls.
+to repeat the synthetic checks. The embedding endpoint can pass while the
+stored index still needs a rebuild. The index requires 768-dimensional vectors
+and a recorded endpoint and model identity. Rebuild when that identity is
+missing or changes, or when rows are missing vectors after a partial build.
+Populated indexes created before this migration also need a one-time rebuild.
+Earlier versions could record a model name alongside deterministic fallback
+vectors. The new format records that the projection was initialized empty or
+explicitly rebuilt. Exact search stays available during migration.
+The rebuild processes the entire installation. With an external embedding
+endpoint, it sends text from every indexed matter to that server. Check that
+each affected matter permits that destination before rebuilding.
+
 Keep a backup, stop the app and all other index writers, and run
 `python -m case_intelligence.retrieval_rebuild --confirm-stopped` with the same
 environment, PostgreSQL access and index-record mount, then restart the app.

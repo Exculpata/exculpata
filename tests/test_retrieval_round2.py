@@ -33,7 +33,7 @@ def retrieval_environment(monkeypatch, tmp_path):
     monkeypatch.setattr(endpoints, "open_generator_request", unexpected_request)
 
 
-def test_rerank_only_uses_deterministic_embeddings(retrieval_environment, monkeypatch, tmp_path):
+def test_rerank_only_orders_lexical_matches(retrieval_environment, monkeypatch, tmp_path):
     url = "https://rerank.example.test"
     pins = json.dumps({"issuer": url, "addresses": [str(ipaddress.IPv4Address((10 << 24) | 7))]})
     for suffix, value in {"URL": url, "MODEL": "synthetic-reranker", "EGRESS_PINS": pins}.items():
@@ -42,8 +42,13 @@ def test_rerank_only_uses_deterministic_embeddings(retrieval_environment, monkey
     requests = []
 
     def request(req, **kwargs):
-        requests.append((req.full_url, json.loads(req.data), kwargs["environment_prefix"]))
-        return io.BytesIO(b'{"results":[{"index":0,"relevance_score":0.95}]}')
+        if req.data is None:
+            assert req.full_url == url + "/v1/models"
+            return io.BytesIO(b'{"data":[{"id":"synthetic-reranker"}]}')
+        payload = json.loads(req.data)
+        requests.append((req.full_url, payload, kwargs["environment_prefix"]))
+        rows = [{"index": i, "relevance_score": 0.95} for i in range(len(payload["documents"]))]
+        return io.BytesIO(json.dumps({"results": rows}).encode())
 
     monkeypatch.setattr(endpoints, "open_generator_request", request)
     connection = MagicMock(autocommit=False)
@@ -51,9 +56,11 @@ def test_rerank_only_uses_deterministic_embeddings(retrieval_environment, monkey
     cursor.fetchone.side_effect = [(None,), None]
     bench = CaseIntelligenceWorkbench(tmp_path / "runtime", postgres_connection=connection)
     try:
-        assert isinstance(bench.embedding, review.DeterministicEmbeddingAdapter)
         assert isinstance(bench.reranker, review.RemoteRerankerAdapter)
-        assert bench.learned_retrieval
+        status = bench.capabilities()
+        assert status["embedding"] == "not configured"
+        assert status["reranking"] == "endpoint verified"
+        assert status["search"] == "word search with reranking"
         endpoints.require_index_identity()
         assert endpoints.relay_environment(os.environ) == {
             "EMBEDDING_EGRESS_URL": "", "EMBEDDING_EGRESS_PINS": "",
@@ -67,13 +74,16 @@ def test_rerank_only_uses_deterministic_embeddings(retrieval_environment, monkey
         candidate = bench._candidate(matter, document, document.parsed_units()[0], 1)
         retriever = bench._retriever(matter)
         monkeypatch.setattr(retriever.backend, "lexical", lambda *a, **kw: (candidate,))
-        monkeypatch.setattr(retriever.backend, "dense", lambda *a, **kw: (candidate,))
+        monkeypatch.setattr(retriever.backend, "dense", lambda *a, **kw: pytest.fail("No embedding endpoint"))
         assert retriever.search(matter.matter_id, "blue bicycle")[0].score == 0.95
         cursor.execute.reset_mock()
         bench._index_document(matter, document)
         chunks = [call.args[1] for call in cursor.execute.call_args_list
                   if call.args[0].startswith("INSERT INTO review_chunk(")]
-        assert json.loads(chunks[0][6]) == pytest.approx(review.DeterministicEmbeddingAdapter().embed([text])[0])
+        assert chunks[0][6] is None
+        probe = requests.pop(0)
+        assert probe[0] == url + "/v1/rerank"
+        assert text not in probe[1]["documents"]
         assert requests == [(url + "/v1/rerank", {
             "model": "synthetic-reranker", "documents": [text], "query": "blue bicycle",
         }, "CASE_INTELLIGENCE_RERANK")]
@@ -86,18 +96,11 @@ def test_fresh_index_and_caller_rebuild_messages(retrieval_environment, monkeypa
     endpoints.require_index_identity()
     monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_URL", "https://embed.example.test")
     monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_MODEL", "synthetic-embedder")
-    bench = object.__new__(CaseIntelligenceWorkbench)
-    bench.learned_retrieval = bench.postgres_ready = True
-    bench.postgres_connection = MagicMock()
-    bench.embedding = review.RemoteEmbeddingAdapter("")
     for check in (endpoints.require_index_identity,
-                  lambda: review.RemoteEmbeddingAdapter("").embed(["Synthetic evidence"]),
-                  lambda: bench._index_document(None, None)):
+                  lambda: review.RemoteEmbeddingAdapter("").embed(["Synthetic evidence"])):
         with pytest.raises(RuntimeError) as failure:
             check()
         assert str(failure.value) == endpoints.REBUILD
-    assert endpoints.doctor("EMBEDDING") == endpoints.REBUILD
-    bench.postgres_connection.cursor.assert_not_called()
     monkeypatch.setattr(embedding_index, "embedding_index_path", lambda: None)
     with pytest.raises(RuntimeError, match="must be rebuilt"):
         endpoints.require_index_identity()
