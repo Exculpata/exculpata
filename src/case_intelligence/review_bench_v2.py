@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Callable, Iterable, Mapping, Protocol, Sequence
 
 from .review_quality import rank_exact_record_candidates, rank_temporal_candidates
+from .retrieval_endpoints import EndpointFailure
 from .retrieval_limits import (
     MAX_EMBEDDING_TEXTS, MAX_RERANK_TEXTS, RetrievalInputProblem, request_batches, text_fragments,
 )
@@ -613,17 +614,19 @@ class PostgresHybridBackend:
 
 
 class HybridRetriever:
-    """Bounded lexical+dense RRF followed by bounded reranking."""
+    """Fuse lexical matches with an optional dense lane, then rerank the bounded pool."""
 
     def __init__(
-        self, backend: HybridBackend, embedder: EmbeddingAdapter, reranker: RerankerAdapter,
+        self, backend: HybridBackend, embedder: EmbeddingAdapter | None, reranker: RerankerAdapter | None,
         lane_limit: int = 100, rerank_limit: int = 40, rrf_k: int = 60,
         minimum_dense_score: float | None = None,
         minimum_rerank_score: float | None = None,
+        *, endpoint_failed: Callable[[str, str], None] | None = None,
     ) -> None:
         self.backend = backend
         self.embedder = embedder
-        self.reranker = reranker
+        self.reranker = reranker if reranker is not None else DeterministicReranker()
+        self.endpoint_failed = endpoint_failed
         self.lane_limit = min(max(lane_limit, 1), 100)
         self.rerank_limit = min(max(rerank_limit, 1), 40)
         self.rrf_k = max(rrf_k, 1)
@@ -645,13 +648,20 @@ class HybridRetriever:
             return ()
         if stage_callback is not None:
             stage_callback("retrieving")
-        query_vector = self.embedder.embed([query])[0]
         extraction_token = _search_extraction_units.set({})
         try:
-            lanes = (
-                tuple(self.backend.lexical(matter_id, query, self.lane_limit)),
-                tuple(self.backend.dense(matter_id, query_vector, query, self.lane_limit)),
-            )
+            lexical = tuple(self.backend.lexical(matter_id, query, self.lane_limit))
+            dense = ()
+            if self.embedder is not None:
+                try:
+                    query_vector = self.embedder.embed([query])[0]
+                except EndpointFailure as exc:
+                    if self.endpoint_failed is None:
+                        raise
+                    self.endpoint_failed("EMBEDDING", str(exc))
+                else:
+                    dense = tuple(self.backend.dense(matter_id, query_vector, query, self.lane_limit))
+            lanes = (lexical, dense)
         finally:
             _search_extraction_units.reset(extraction_token)
         if any(item.matter_id != matter_id for lane in lanes for item in lane):
@@ -687,11 +697,20 @@ class HybridRetriever:
                     raise RuntimeError("conflicting retrieval candidate identity")
                 fused[key] = replace(item, score=0.0)
                 scores[key] = scores.get(key, 0.0) + 1.0 / (self.rrf_k + rank)
-        ordered = sorted(fused, key=lambda key: (-scores[key], key))[: self.rerank_limit]
-        candidates = tuple(replace(fused[key], score=scores[key]) for key in ordered)
+        def candidate_pool(keys):
+            ordered = sorted(keys, key=lambda key: (-scores[key], key))[: self.rerank_limit]
+            return tuple(replace(fused[key], score=scores[key]) for key in ordered)
+
         if stage_callback is not None:
             stage_callback("reranking")
-        reranked = self.reranker.rerank(query, candidates)
+        candidates = candidate_pool(fused)
+        try:
+            reranked = self.reranker.rerank(query, candidates)
+        except EndpointFailure as exc:
+            if self.endpoint_failed is None:
+                raise
+            self.endpoint_failed("RERANK", str(exc))
+            reranked = DeterministicReranker().rerank(query, candidate_pool(lexical_keys))
         if any(item.matter_id != matter_id for item in reranked):
             raise RuntimeError("matter boundary violation after reranking")
         if self.minimum_dense_score is not None:
@@ -899,19 +918,22 @@ def _stage_unchanged_case_theory_citations(cursor, matter_id, document_id, units
     return staging_page
 
 
+_DEFAULT_DEMO_EMBEDDER = DeterministicEmbeddingAdapter()
+
+
 def upsert_postgres_document(
     connection, *, matter_id: str, matter_name: str, document_id: str,
     display_name: str, media_type: str, units: Sequence[object],
-    embedder: EmbeddingAdapter | None = None, source_version_id: str = "synthetic-v1",
+    embedder: EmbeddingAdapter | None = _DEFAULT_DEMO_EMBEDDER, source_version_id: str = "synthetic-v1",
     content_digest: str = "synthetic", byte_size: int = 0, storage_key: str = "pilot",
     ensure_schema: bool = True,
 ) -> None:
-    """Matter-scoped generic document/page/chunk replacement for pilot uploads."""
-    texts = [str(unit.text) for unit in units]
-    active_embedder = embedder or DeterministicEmbeddingAdapter()
-    vectors = active_embedder.embed(texts)
-    if len(vectors) != len(units) or any(len(vector) != 768 for vector in vectors):
-        raise RuntimeError("embedding adapter returned an invalid vector batch")
+    """Replace the document projection. Pass embedder=None to store text with NULL vectors."""
+    vectors = None
+    if embedder is not None:
+        vectors = embedder.embed([str(unit.text) for unit in units])
+        if len(vectors) != len(units) or any(len(vector) != 768 for vector in vectors):
+            raise RuntimeError("embedding adapter returned an invalid vector batch")
     transaction = connection.transaction() if connection.autocommit else nullcontext()
     with transaction, connection.cursor() as cursor:
         if ensure_schema:
@@ -941,7 +963,7 @@ def upsert_postgres_document(
             "DELETE FROM review_page WHERE matter_id=%s AND document_id=%s AND page_id<>%s",
             (matter_id, document_id, staging_page),
         )
-        for ordinal, (unit, vector_values) in enumerate(zip(units, vectors)):
+        for ordinal, unit in enumerate(units):
             page_id = f"unit-{ordinal + 1}"
             chunk_id = f"chunk-{ordinal + 1}"
             cursor.execute(
@@ -950,7 +972,9 @@ def upsert_postgres_document(
                 (matter_id, document_id, page_id, int(unit.number), str(unit.text), source_version_id,
                  getattr(unit, "line_start", None), getattr(unit, "line_end", None)),
             )
-            vector = "[" + ",".join(f"{value:.8f}" for value in vector_values) + "]"
+            vector = None
+            if vectors is not None:
+                vector = "[" + ",".join(f"{value:.8f}" for value in vectors[ordinal]) + "]"
             cursor.execute(
                 "INSERT INTO review_chunk(matter_id,document_id,page_id,chunk_id,ordinal,text,embedding,line_start,line_end,source_version_id,excerpt_digest) "
                 "VALUES (%s,%s,%s,%s,%s,%s,%s::vector,%s,%s,%s,%s)",

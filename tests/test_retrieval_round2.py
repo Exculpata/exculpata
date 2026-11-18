@@ -86,18 +86,11 @@ def test_fresh_index_and_caller_rebuild_messages(retrieval_environment, monkeypa
     endpoints.require_index_identity()
     monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_URL", "https://embed.example.test")
     monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_MODEL", "synthetic-embedder")
-    bench = object.__new__(CaseIntelligenceWorkbench)
-    bench.learned_retrieval = bench.postgres_ready = True
-    bench.postgres_connection = MagicMock()
-    bench.embedding = review.RemoteEmbeddingAdapter("")
     for check in (endpoints.require_index_identity,
-                  lambda: review.RemoteEmbeddingAdapter("").embed(["Synthetic evidence"]),
-                  lambda: bench._index_document(None, None)):
+                  lambda: review.RemoteEmbeddingAdapter("").embed(["Synthetic evidence"])):
         with pytest.raises(RuntimeError) as failure:
             check()
         assert str(failure.value) == endpoints.REBUILD
-    assert endpoints.doctor("EMBEDDING") == endpoints.REBUILD
-    bench.postgres_connection.cursor.assert_not_called()
     monkeypatch.setattr(embedding_index, "embedding_index_path", lambda: None)
     with pytest.raises(RuntimeError, match="must be rebuilt"):
         endpoints.require_index_identity()

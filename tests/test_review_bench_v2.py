@@ -4,11 +4,13 @@ import asyncio
 import io
 import json
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from case_intelligence import retrieval_worker
+from case_intelligence.retrieval_endpoints import EndpointFailure
 from case_intelligence.review_bench import create_app
 from case_intelligence.review_bench_v2 import (
     Candidate,
@@ -43,6 +45,105 @@ def test_deterministic_reranker_is_pool_invariant(query):
         results.append([(item.chunk_id, item.score) for item in ranked if item.chunk_id.startswith("head-")])
     assert [key for key, _ in results[0]] == [key for key, _ in results[1]]
     assert results[0] == results[1]
+
+
+@pytest.mark.parametrize("use_reranker", [False, True])
+def test_lexical_candidates_can_be_reranked_without_embeddings(use_reranker):
+    backend = InMemoryHybridBackend((
+        _c("matter-alpha", "both-terms", 1, "red parcel"),
+        _c("matter-alpha", "one-term", 2, "red"),
+        _c("matter-alpha", "unrelated", 3, "violet bicycle"),
+        _c("matter-bravo", "other-matter", 1, "red parcel"),
+    ))
+    reranker = Mock() if use_reranker else None
+    if reranker is not None:
+        reranker.rerank.side_effect = lambda query, candidates: tuple(reversed(candidates))
+    retriever = HybridRetriever(backend, embedder=None, reranker=reranker)
+
+    result = retriever.search("matter-alpha", "red parcel")
+
+    assert backend.calls == [("lexical", "matter-alpha")]
+    assert [item.chunk_id for item in result] == (
+        ["one-term", "both-terms"] if use_reranker else ["both-terms", "one-term"]
+    )
+    assert {item.citation for item in result} == {"Page 1", "Page 2"}
+
+
+@pytest.mark.parametrize("role", ["EMBEDDING", "RERANK"])
+def test_live_endpoint_failure_preserves_lexical_matches_without_repeating_calls(role):
+    backend, embedder, reranker, failed = Mock(), Mock(), Mock(), Mock()
+    lexical = _c("synthetic-matter", "z-lexical", 2, "Synthetic amber parcel")
+    dense_only = _c("synthetic-matter", "a-dense", 3, "Synthetic amber")
+    backend.lexical.return_value = (lexical,)
+    backend.dense.return_value = (dense_only,)
+    embedder.embed.return_value = ((1.0,),)
+    reranker.rerank.side_effect = lambda query, candidates: candidates
+    if role == "EMBEDDING":
+        embedder.embed.side_effect = EndpointFailure("Endpoint unavailable")
+    else:
+        reranker.rerank.side_effect = EndpointFailure("Endpoint unavailable")
+    retriever = HybridRetriever(backend, embedder, reranker, rerank_limit=1,
+                                minimum_dense_score=0.72, minimum_rerank_score=0.80,
+                                endpoint_failed=failed)
+
+    result = retriever.search("synthetic-matter", "amber")
+
+    assert [(row.chunk_id, row.citation) for row in result] == [("z-lexical", "Page 2")]
+    failed.assert_called_once_with(role, "Endpoint unavailable")
+    backend.lexical.assert_called_once()
+    embedder.embed.assert_called_once_with(["amber"])
+    reranker.rerank.assert_called_once()
+    submitted = reranker.rerank.call_args.args[1]
+    if role == "EMBEDDING":
+        backend.dense.assert_not_called()
+        assert [row.chunk_id for row in submitted] == ["z-lexical"]
+    else:
+        backend.dense.assert_called_once()
+        assert [row.chunk_id for row in submitted] == ["a-dense"]
+
+
+@pytest.mark.parametrize("source", ["uncaught endpoint", "index identity", "database", "foreign candidate"])
+def test_live_failure_recovery_keeps_model_and_matter_guards(source):
+    backend, embedder, reranker, failed = Mock(), Mock(), Mock(), Mock()
+    backend.lexical.return_value = ()
+    embedder.embed.return_value = ((1.0,),)
+    if source == "uncaught endpoint":
+        embedder.embed.side_effect = EndpointFailure(source)
+    elif source == "index identity":
+        embedder.embed.side_effect = RuntimeError(source)
+    elif source == "database":
+        backend.dense.side_effect = EndpointFailure(source)
+    else:
+        backend.dense.return_value = (_c("other-matter", "foreign", 3, "Synthetic parcel"),)
+    retriever = HybridRetriever(backend, embedder, reranker,
+                                endpoint_failed=None if source == "uncaught endpoint" else failed)
+    with pytest.raises(RuntimeError, match="matter boundary" if source == "foreign candidate" else source):
+        retriever.search("synthetic-matter", "parcel")
+    failed.assert_not_called()
+    reranker.rerank.assert_not_called()
+
+
+def test_lexical_reindex_keeps_citation_and_excludes_chunk_from_dense_search(postgres_schema):
+    import psycopg
+    from case_intelligence.pilot_uploads import PilotUnit
+    from case_intelligence.review_bench_v2 import upsert_postgres_document
+
+    matter = "synthetic-lexical-reindex"
+    text = "Synthetic amber parcel"
+    unit = PilotUnit(1, text, 2, 3)
+    document = dict(matter_id=matter, matter_name="Synthetic", document_id="notes",
+                    display_name="Synthetic notes.txt", media_type="text/plain", units=(unit,))
+    query_vector = DeterministicEmbeddingAdapter().embed([text])[0]
+    with psycopg.connect(postgres_schema) as connection:
+        backend = PostgresHybridBackend(connection)
+        upsert_postgres_document(connection, **document)
+        assert len(backend.dense(matter, query_vector, text, 4)) == 1
+        upsert_postgres_document(connection, **document, embedder=None)
+        assert backend.dense(matter, query_vector, text, 4) == ()
+        rows = backend.lexical(matter, "amber parcel", 4)
+        assert [(row.document_id, row.chunk_id, row.citation) for row in rows] == [
+            ("notes", "chunk-1", "Lines 2–3")
+        ]
 
 
 @pytest.mark.parametrize("query", [

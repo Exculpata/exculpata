@@ -16,6 +16,12 @@ from .retrieval_limits import MAX_BODY_BYTES
 
 REBUILD = ("The embedding index must be rebuilt. Select a 768-dimensional model, stop app writers, "
            "then run: python -m case_intelligence.retrieval_rebuild --confirm-stopped")
+WRONG_DIMENSION = ("The endpoint returned vectors with the wrong dimension. Select a 768-dimensional "
+                   "model. If you change models, the index must be rebuilt with the rebuild command.")
+
+
+class EndpointFailure(RuntimeError):
+    """An actionable diagnostic containing no endpoint-supplied text."""
 
 
 @dataclass(frozen=True)
@@ -100,10 +106,10 @@ def request_json(config, path, body=None):
     except urllib.error.HTTPError as exc:
         code = exc.code
         exc.close()
-        raise RuntimeError("Endpoint authentication failed; check the credential." if code in {401, 403}
-                           else "Endpoint refused the request; check API compatibility.") from None
+        raise EndpointFailure("Endpoint authentication failed; check the credential." if code in {401, 403}
+                              else "Endpoint refused the request; check API compatibility.") from None
     except (http.client.HTTPException, OSError, ValueError):
-        raise RuntimeError("Endpoint unreachable or invalid response; check configuration and relay.") from None
+        raise EndpointFailure("Endpoint unreachable or invalid response; check configuration and relay.") from None
 
 
 def endpoint_batch(config, operation, body):
@@ -127,32 +133,52 @@ def endpoint_batch(config, operation, body):
         if any(type(value) not in (int, float) or not math.isfinite(value) for value in numbers):
             raise ValueError
         if embedding and any(len(vector) != 768 for vector in values):
-            raise RuntimeError(REBUILD)
+            raise EndpointFailure(WRONG_DIMENSION)
         return {key: values}
     except (KeyError, TypeError, ValueError, OverflowError):
-        raise RuntimeError("Invalid retrieval response; check API compatibility.") from None
+        raise EndpointFailure("Invalid retrieval response; check API compatibility.") from None
+
+
+def probe_endpoint(config: Endpoint) -> str:
+    """Check a configured API with synthetic inputs independently of the stored index."""
+    if config.role not in {"EMBEDDING", "RERANK"}:
+        return "Unknown retrieval role. Select embeddings or reranking."
+    try:
+        config = replace(config, timeout=min(config.timeout, 15))
+        models = request_json(config, "/v1/models")
+        if not isinstance(models["data"], list):
+            return "Invalid model list. Check the endpoint's /v1/models response."
+        if not any(row.get("id") == config.model for row in models["data"]):
+            return "Configured model is not listed; check the model setting."
+        if config.role == "EMBEDDING":
+            endpoint_batch(config, "embed", {"texts": ["Synthetic diagnostic text"]})
+        else:
+            endpoint_batch(config, "rerank", {"texts": ["Synthetic first passage", "Synthetic second passage"],
+                                              "query": "Synthetic query"})
+        return "ok"
+    except http.client.HTTPException:
+        return "Endpoint unreachable or invalid response; check configuration and relay."
+    except EndpointFailure as exc:
+        return str(exc)
+    except (ValueError, KeyError, TypeError, AttributeError, RecursionError):
+        return "Invalid retrieval configuration or model list; check settings and API compatibility."
 
 
 def doctor(role):
     try:
         config = configured_endpoint(role)
-        if config is None:
-            return "local worker (no external endpoint configured)"
-        if role == "EMBEDDING":
-            require_index_identity()
-        config = replace(config, timeout=min(config.timeout, 15))
-        models = request_json(config, "/v1/models")
-        if not any(row.get("id") == config.model for row in models["data"]):
-            return "Configured model is not listed; check the model setting."
-        endpoint_batch(config, "embed" if role == "EMBEDDING" else "rerank",
-                       {"texts": ["Synthetic diagnostic text"], "query": "Synthetic query"})
-        return "ok"
-    except http.client.HTTPException:
-        return "Endpoint unreachable or invalid response; check configuration and relay."
-    except (ValueError, KeyError, TypeError, AttributeError):
-        return "Invalid retrieval configuration or model list; check settings and API compatibility."
-    except RuntimeError as exc:
+    except ValueError as exc:
         return str(exc)
+    if config is None:
+        return "No external endpoint configured. Local worker availability was not checked."
+    result = probe_endpoint(config)
+    if role == "EMBEDDING":
+        try:
+            require_index_identity()
+        except RuntimeError:
+            endpoint_status = "Endpoint passed." if result == "ok" else result
+            return f"{endpoint_status} {REBUILD}"
+    return result
 
 
 if __name__ == "__main__":

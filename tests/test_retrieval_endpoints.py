@@ -34,7 +34,7 @@ def endpoint(monkeypatch, tmp_path):
             state["body"] = body
             rows = ([{"index": i, "embedding": [state.get("component", 0.1)] * state["dimension"]}
                      for i in range(len(body["input"]))] if "input" in body else
-                    [{"index": i, "relevance_score": state.get("component", 0.75)}
+                    [{"index": 0 if state.get("repeat_index") else i, "relevance_score": state.get("component", 0.75)}
                      for i in range(len(body["documents"]))])
             self.reply({"data" if "input" in body else "results": rows})
 
@@ -142,6 +142,47 @@ def test_runtime_routes_and_refuses_changed_identity(endpoint, monkeypatch):
     with pytest.raises(RuntimeError, match="rebuilt"):
         adapter.embed(["Synthetic evidence"])
     assert "rebuild" in endpoints.doctor("EMBEDDING").lower()
+
+
+def test_endpoint_probe_is_independent_of_index(endpoint, monkeypatch):
+    monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_MODEL", "replacement")
+    endpoint["model"] = "replacement"
+    config = endpoints.configured_endpoint("EMBEDDING")
+    assert endpoints.probe_endpoint(config) == "ok"
+    status = endpoints.doctor("EMBEDDING").lower()
+    assert "endpoint passed" in status and "rebuild" in status
+    assert endpoint["body"] == {"model": "replacement", "input": ["Synthetic diagnostic text"]}
+    assert len(endpoint["requests"]) == 4
+
+
+@pytest.mark.parametrize("role", ["EMBEDDING", "RERANK"])
+def test_unconfigured_and_invalid_endpoints_skip_network(endpoint, monkeypatch, role):
+    monkeypatch.delenv(f"CASE_INTELLIGENCE_{role}_URL")
+    status = endpoints.doctor(role).lower()
+    assert "no external endpoint" in status and "not checked" in status
+    monkeypatch.setenv(f"CASE_INTELLIGENCE_{role}_URL", "http://models.example.test")
+    status = endpoints.doctor(role)
+    assert f"CASE_INTELLIGENCE_{role}_" in status and "HTTPS" in status
+    assert endpoint["requests"] == []
+
+
+def test_dimension_mismatch_is_an_endpoint_failure(endpoint):
+    endpoint["dimension"] = 3
+    diagnosis = endpoints.probe_endpoint(endpoints.configured_endpoint("EMBEDDING"))
+    assert "returned" in diagnosis.lower() and "768" in diagnosis
+    assert "endpoint passed" not in endpoints.doctor("EMBEDDING").lower()
+
+
+@pytest.mark.parametrize("role", ["EMBEDDING", "RERANK"])
+def test_listed_model_with_invalid_api_response_fails_probe(endpoint, role):
+    if role == "RERANK":
+        endpoint["repeat_index"] = True
+    else:
+        endpoint["component"] = "synthetic-invalid-output"
+    assert endpoints.probe_endpoint(endpoints.configured_endpoint(role)) == (
+        "Invalid retrieval response; check API compatibility."
+    )
+    assert len(endpoint["requests"]) == 2
 
 
 def test_default_and_secret_file(endpoint, monkeypatch, tmp_path):
