@@ -101,7 +101,7 @@ its transport cannot be bypassed with `NO_PROXY`. The bundled generator continue
 to use the exact-allowlisted internal companion route. External generator HTTP
 URLs and `$` interpolation are rejected at configuration boundaries. Host loopback
 answer servers are unreachable from the containerized app; no host-gateway route
-is installed. The host-only doctor transport does not alter application routing.
+is installed. The installer checks reachability from the running application.
 
 Outer configuration whitespace and trailing slashes are trimmed consistently
 with application settings, including issuer-bound pin matching. Line controls
@@ -259,9 +259,10 @@ to check its effective `CASE_INTELLIGENCE_GENERATOR_TIMEOUT` before a schema
 probe. A value above the shared generator limit, or an invalid/non-finite value,
 returns an explicit configuration message and exits 1.
 The doctor rejects timeouts above 310 s or at or below 0, stricter than the app's 1 to 300 s clamp, and fails closed.
-The installer doctor also reports this timeout detail and fails for the bundled generator.
-The in-app diagnostic is distinct from the installer's external schema probe. Recreate both images
-after changing shared limits so the doctor and relay use the same version.
+The installer runs the same diagnostic for bundled and external generators. It
+reports this timeout error and fails when the configured limit is invalid.
+External schema probes use the app's configured CONNECT relay. Recreate both
+images after changing shared limits so the doctor and relay use the same version.
 
 This is a destination control, not TLS inspection: CONNECT can carry other
 protocols or paths to the approved authority. The application still validates

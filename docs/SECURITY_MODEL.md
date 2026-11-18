@@ -45,8 +45,9 @@ link-local, multicast, unspecified, reserved and transition addresses remain den
 The app retains consent, exact-host and destination checks; TLS hostname verification
 stays end to end and redirects are refused. Ambient proxies cannot bypass the relay.
 Only the bundled internal generator uses HTTP and the companion transport.
-Doctor checks bundled generators from the existing app container namespace;
-external doctor probes run directly on the host and cannot prove app reachability.
+The installer checks bundled and external generators from the running app container.
+For an external server, the synthetic schema request uses the app's credentials,
+saved consent, and configured relay.
 See [model configuration](MODEL_CONFIGURATION.md).
 
 Gateway access logs retain only timestamp, HTTP status, response byte count and
