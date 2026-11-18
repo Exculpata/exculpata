@@ -155,6 +155,24 @@ def test_endpoint_probe_is_independent_of_index(endpoint, monkeypatch):
     assert len(endpoint["requests"]) == 4
 
 
+@pytest.mark.parametrize("populated", [False, True])
+def test_legacy_index_identity_cannot_authorize_existing_vectors(endpoint, populated):
+    from case_intelligence.embedding_index import embedding_index_path
+
+    config = endpoints.configured_endpoint("EMBEDDING")
+    path = embedding_index_path()
+    legacy = json.dumps({"model": config.model, "revision": config.identity, "populated": populated})
+    path.write_text(legacy)  # fixture-write: synthetic index produced by the earlier projection
+    assert record_embedding_index(path, model=config.model, revision=config.identity, populated=True)
+    assert path.read_text() == legacy
+    with pytest.raises(RuntimeError, match="rebuilt"):
+        RemoteEmbeddingAdapter("").embed(["Synthetic evidence"])
+    assert endpoint["requests"] == []
+    assert "rebuild" in endpoints.doctor("EMBEDDING").lower()
+    assert record_embedding_index(path, model=config.model, revision=config.identity, populated=False) == ""
+    endpoints.require_index_identity(require_record=True)
+
+
 @pytest.mark.parametrize("role", ["EMBEDDING", "RERANK"])
 def test_unconfigured_and_invalid_endpoints_skip_network(endpoint, monkeypatch, role):
     monkeypatch.delenv(f"CASE_INTELLIGENCE_{role}_URL")
@@ -230,6 +248,10 @@ def test_rebuild_preserves_compound_identity(endpoint, monkeypatch, fail):
     rows = [("matter-a", "document-a", "shared-chunk", "Synthetic A"),
             ("matter-b", "document-b", "shared-chunk", "Synthetic B")]
     calls = []
+    path = embedding_index_path()
+    legacy = load_embedding_index(path)
+    del legacy["projection_format"]
+    path.write_text(json.dumps(legacy))  # fixture-write: synthetic index predating learned-only vectors
 
     class Connection:
         autocommit = True
@@ -259,12 +281,13 @@ def test_rebuild_preserves_compound_identity(endpoint, monkeypatch, fail):
         endpoint["status"] = 401
         with pytest.raises(RuntimeError, match="authentication"):
             rebuild(Connection())
-        assert load_embedding_index(embedding_index_path())["model"] == "synthetic"
+        assert load_embedding_index(path) == legacy
         return
     assert rebuild(Connection()) == 2
     assert "ACCESS EXCLUSIVE" in calls[0]
-    record = load_embedding_index(embedding_index_path())
+    record = load_embedding_index(path)
     assert record["model"] == "rebuilt-model" and record["populated"] is True
+    endpoints.require_index_identity(require_record=True)
     assert "synthetic-secret" not in json.dumps(record)
 
 
@@ -290,7 +313,7 @@ def test_disabled_learned_retrieval_never_calls_endpoint(endpoint, monkeypatch, 
     from unittest.mock import MagicMock
     from case_intelligence.embedding_index import embedding_index_path
     from case_intelligence.pilot_uploads import PilotDocument
-    from case_intelligence.review_bench_v2 import DeterministicEmbeddingAdapter, RemoteRerankerAdapter
+    from case_intelligence.review_bench_v2 import RemoteRerankerAdapter
     from case_intelligence.workbench import CaseIntelligenceWorkbench
 
     if identity == "changed":
@@ -302,6 +325,7 @@ def test_disabled_learned_retrieval_never_calls_endpoint(endpoint, monkeypatch, 
     bench.postgres_ready = True
     bench.postgres_connection = MagicMock(autocommit=False)
     bench._postgres_lock = threading.RLock()
+    bench.embedding_index_warning = ""
     bench.embedding = RemoteEmbeddingAdapter("http://retrieval:8767")
     bench.reranker = RemoteRerankerAdapter("http://retrieval:8767")
     matter = SimpleNamespace(matter_id="synthetic-matter", display_name="Synthetic matter")
@@ -321,12 +345,13 @@ def test_disabled_learned_retrieval_never_calls_endpoint(endpoint, monkeypatch, 
         chunks = [call.args[1] for call in cursor.execute.call_args_list
                   if call.args[0].startswith("INSERT INTO review_chunk(")]
         assert len(chunks) == 1 and chunks[0][5] == text
-        assert json.loads(chunks[0][6]) == pytest.approx(DeterministicEmbeddingAdapter().embed([text])[0])
+        assert chunks[0][6] is None
         bench.postgres_connection.commit.assert_called_once()
         if identity != "matching":
             bench.learned_retrieval = True
-            with pytest.raises(RuntimeError, match="rebuilt"):
-                bench._index_document(matter, document)
-            bench.postgres_connection.commit.assert_called_once()
+            bench._index_document(matter, document)
+            chunks = [call.args[1] for call in cursor.execute.call_args_list
+                      if call.args[0].startswith("INSERT INTO review_chunk(")]
+            assert len(chunks) == 2 and chunks[-1][6] is None
     finally:
         assert endpoint["requests"] == [], "Disabled learned retrieval contacted the endpoint"

@@ -72,7 +72,7 @@ def retrieval_ready(worker_url, local_ready):
 
 
 def require_index_identity(*, require_record=False):
-    from .embedding_index import configured_embedding, embedding_index_path, load_embedding_index
+    from .embedding_index import configured_embedding, embedding_change_warning, embedding_index_path, load_embedding_index
     path = embedding_index_path()
     record = load_embedding_index(path) if path else None
     model, revision = configured_embedding()
@@ -81,8 +81,7 @@ def require_index_identity(*, require_record=False):
                 or path is not None and (require_record or path.exists())):
             raise RuntimeError(REBUILD)
         return
-    if (type(record.get("populated")) is not bool
-            or record.get("model") != model or record.get("revision") != revision):
+    if embedding_change_warning(record, model=model, revision=revision, allow_empty=True):
         raise RuntimeError(REBUILD)
 
 

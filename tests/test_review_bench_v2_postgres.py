@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.test_retrieval_endpoints import endpoint as endpoint
+
 from case_intelligence.pilot_uploads import DOCUMENT_MEDIA_TYPES, MEDIA_TYPES, PilotUnit
 
 from case_intelligence.review_bench_v2 import (
@@ -29,6 +31,56 @@ pytestmark = [pytest.mark.usefixtures("postgres_schema"), pytest.mark.skipif(
     not os.getenv("CASE_REVIEW_POSTGRES_TEST_DSN"),
     reason="set CASE_REVIEW_POSTGRES_TEST_DSN for the isolated development database",
 )]
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize("legacy", [False, True], ids=["missing-vectors", "legacy-vectors"])
+def test_enabling_embeddings_after_lexical_intake_requires_rebuild(
+    endpoint, monkeypatch, tmp_path, postgres_test_dsn, legacy,
+):
+    import json
+    import psycopg
+    from fastapi.testclient import TestClient
+
+    from case_intelligence import embedding_index, retrieval_endpoints
+    from tests.test_milestone_a_workbench import _create_matter
+    from tests.test_workbench_retrieval_capabilities import _app
+    from case_intelligence.retrieval_rebuild import rebuild
+
+    monkeypatch.delenv("CASE_INTELLIGENCE_RERANK_URL")
+    monkeypatch.delenv("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", raising=False)
+    monkeypatch.setenv("CASE_INTELLIGENCE_POSTGRES_DSN", postgres_test_dsn)
+    with TestClient(_app(tmp_path, learned_retrieval=False)) as client:
+        if legacy:
+            # The previous lexical-only writer supplied deterministic vectors during intake.
+            monkeypatch.setattr(client.app.state.workbench, "_active_embedding",
+                                DeterministicEmbeddingAdapter)
+        slug = _create_matter(client)
+        client.post(f"/matters/{slug}/uploads", files={
+            "files": ("Inventory.txt", b"Synthetic bicycle receipt.", "text/plain"),
+        }).raise_for_status()
+    assert endpoint["requests"] == []
+    if legacy:
+        config = retrieval_endpoints.configured_endpoint("EMBEDDING")
+        record = {"model": config.model, "revision": config.identity, "populated": True}
+        # fixture-write: The older synthetic receipt names the configured endpoint after lexical intake.
+        embedding_index.embedding_index_path().write_text(json.dumps(record))
+    with TestClient(_app(tmp_path)) as client:
+        status = client.get("/health").json()["capabilities"]
+        assert status["embedding"] == "endpoint verified"
+        assert "rebuild" in status["embedding_index"].lower()
+        if legacy:
+            assert "format" in status["embedding_index"].lower()
+            assert embedding_index.load_embedding_index(embedding_index.embedding_index_path()) == record
+        assert status["search"] == "word search only"
+        result = client.get(f"/matters/{slug}/exact-search", params={"words": "bicycle"})
+        assert result.status_code == 200 and "Inventory.txt" in result.text
+    with psycopg.connect(postgres_test_dsn, autocommit=True) as connection:
+        assert rebuild(connection) >= 1
+    with TestClient(_app(tmp_path)) as client:
+        status = client.get("/health").json()["capabilities"]
+        assert status["embedding_index"] == "ready"
+        assert status["search"] == "word search with embeddings"
 
 
 def test_live_postgres_migration_reopen_and_hybrid_page_citation():

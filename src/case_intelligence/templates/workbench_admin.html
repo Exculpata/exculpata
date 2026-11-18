@@ -143,6 +143,12 @@
       <div><p class="eyebrow">Local AI portfolio</p><h2 id="admin-ai-heading">{{ model_portfolio.headline }}</h2></div>
       <span class="storage-health {{ 'ready' if model_portfolio.ready else 'attention' }}">{{ 'Configured services available' if model_portfolio.ready else 'Operator review needed' }}</span>
     </div>
+    <h3>Search capabilities</h3>
+    <dl>
+      <dt>Embedding provider</dt><dd>{{ capabilities.embedding }}</dd>
+      <dt>Reranking provider</dt><dd>{{ capabilities.reranking }}</dd>
+      <dt>Embedding index</dt><dd>{{ capabilities.embedding_index }}</dd>
+    </dl>
     <div class="administrator-ai-grid">
       {% for lane in model_portfolio.lanes %}
       <article>
