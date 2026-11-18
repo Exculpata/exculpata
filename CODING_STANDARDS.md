@@ -142,10 +142,10 @@ The static fixture inventory checks Python files under the root `tests/`
 directory without executing imports, matching main's scope. Production modules
 retain their own write boundaries. A passing inventory is not proof about
 arbitrary Python reflection or imported code. The corpus and application CI jobs
-use `scripts/corpus-write-guard.sh prepare` to make `benchmarks/corpus/` read-only
-before tests, then `check` to reject tracked changes and untracked additions even
-after failed tests. This runtime boundary applies regardless of which code path
-attempts the write; it does not rely on static Python provenance analysis.
+guard against ordinary writes to `benchmarks/corpus/`. They make the corpus
+read-only before tests with `scripts/corpus-write-guard.sh prepare`, then run
+`check` to reject tracked changes and Git-visible untracked additions even
+after failed tests.
 Use explicit named
 handles and the supported syntax described in
 [development guidance](docs/DEVELOPMENT.md#synthetic-fixture-writes).
