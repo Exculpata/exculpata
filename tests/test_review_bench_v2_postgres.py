@@ -51,6 +51,7 @@ def test_enabling_embeddings_after_lexical_intake_requires_rebuild(
     monkeypatch.delenv("CASE_INTELLIGENCE_RERANK_URL")
     monkeypatch.delenv("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", raising=False)
     monkeypatch.setenv("CASE_INTELLIGENCE_POSTGRES_DSN", postgres_test_dsn)
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
     with TestClient(_app(tmp_path, learned_retrieval=False)) as client:
         if legacy:
             # The previous lexical-only writer supplied deterministic vectors during intake.
