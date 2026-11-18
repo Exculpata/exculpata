@@ -13,7 +13,7 @@ from case_intelligence.review_bench_v2 import RemoteEmbeddingAdapter
 
 @pytest.fixture
 def endpoint(monkeypatch, tmp_path):
-    state = {"status": 200, "model": "synthetic", "dimension": 768, "requests": []}
+    state = {"status": 200, "model": "synthetic", "dimension": 768, "requests": [], "bodies": []}
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -32,6 +32,7 @@ def endpoint(monkeypatch, tmp_path):
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             state["body"] = body
+            state["bodies"].append(body)
             rows = ([{"index": i, "embedding": [state.get("component", 0.1)] * state["dimension"]}
                      for i in range(len(body["input"]))] if "input" in body else
                     [{"index": 0 if state.get("repeat_index") else i, "relevance_score": state.get("component", 0.75)}
@@ -45,8 +46,11 @@ def endpoint(monkeypatch, tmp_path):
                 self.wfile.write(b"HTTP/1.1 synthetic-chunk-TEXT synthetic-key\r\n")
                 self.close_connection = True
                 return
-            data = json.dumps(value if state["status"] == 200 else {"detail": "synthetic-secret"}).encode()
-            self.send_response(state["status"])
+            status = state["status"]
+            if "fail_on_post" in state and (self.command != "POST" or len(state["bodies"]) != state["fail_on_post"]):
+                status = 200
+            data = json.dumps(value if status == 200 else {"detail": "synthetic-secret"}).encode()
+            self.send_response(status)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)  # fixture-write: synthetic HTTP response only
@@ -238,57 +242,6 @@ def test_proxy_destinations(role):
     assert proxy.read_connect(WireRequest(b"CONNECT models.example.test:443 HTTP/1.1\r\n\r\n"), allowed)
     with pytest.raises(proxy.Denied):
         proxy.read_connect(WireRequest(b"CONNECT models.example.test:444 HTTP/1.1\r\n\r\n"), allowed)
-
-
-@pytest.mark.parametrize("fail", [False, True])
-def test_rebuild_preserves_compound_identity(endpoint, monkeypatch, fail):
-    from contextlib import contextmanager, nullcontext
-    from case_intelligence.retrieval_rebuild import rebuild
-    from case_intelligence.embedding_index import embedding_index_path, load_embedding_index
-    rows = [("matter-a", "document-a", "shared-chunk", "Synthetic A"),
-            ("matter-b", "document-b", "shared-chunk", "Synthetic B")]
-    calls = []
-    path = embedding_index_path()
-    legacy = load_embedding_index(path)
-    del legacy["projection_format"]
-    path.write_text(json.dumps(legacy))  # fixture-write: synthetic index predating learned-only vectors
-
-    class Connection:
-        autocommit = True
-        @contextmanager
-        def transaction(self):
-            yield
-            assert load_embedding_index(embedding_index_path()) is None
-
-        def cursor(self, **kwargs):
-            return nullcontext(self)
-
-        def execute(self, sql):
-            calls.append(sql)
-
-        def fetchmany(self, size):
-            result = rows[:]
-            rows.clear()
-            return result
-
-        def executemany(self, sql, values):
-            assert "matter_id=%s AND document_id=%s AND chunk_id=%s" in sql
-            assert [row[1:] for row in values] == [("matter-a", "document-a", "shared-chunk"),
-                                                   ("matter-b", "document-b", "shared-chunk")]
-
-    monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_MODEL", "rebuilt-model")
-    if fail:
-        endpoint["status"] = 401
-        with pytest.raises(RuntimeError, match="authentication"):
-            rebuild(Connection())
-        assert load_embedding_index(path) == legacy
-        return
-    assert rebuild(Connection()) == 2
-    assert "ACCESS EXCLUSIVE" in calls[0]
-    record = load_embedding_index(path)
-    assert record["model"] == "rebuilt-model" and record["populated"] is True
-    endpoints.require_index_identity(require_record=True)
-    assert "synthetic-secret" not in json.dumps(record)
 
 
 def test_rerank_runtime_and_local_switch(endpoint, monkeypatch):

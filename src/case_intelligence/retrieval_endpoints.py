@@ -14,8 +14,9 @@ from .generator_config import generator_pins
 from .oidc_network_policy import validated_https_url
 from .retrieval_limits import MAX_BODY_BYTES
 
-REBUILD = ("The embedding index must be rebuilt. Select a 768-dimensional model, stop app writers, "
-           "then run: python -m case_intelligence.retrieval_rebuild --confirm-stopped")
+REBUILD = ("The embedding index must be rebuilt. Select a 768-dimensional model and stop app writers. "
+           "Run python -m case_intelligence.retrieval_rebuild --confirm-stopped. For an external "
+           "endpoint, first save and review the output of --plan, then add --approved-plan FILE.")
 WRONG_DIMENSION = ("The endpoint returned vectors with the wrong dimension. Select a 768-dimensional "
                    "model. If you change models, the index must be rebuilt with the rebuild command.")
 
