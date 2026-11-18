@@ -18,6 +18,7 @@ from case_intelligence.review_bench_v2 import (
     PostgresHybridBackend,
     RemoteEmbeddingAdapter,
     RemoteRerankerAdapter,
+    apply_postgres_migrations,
     extract_pdf_pages,
     delete_postgres_document,
     delete_postgres_matter,
@@ -45,7 +46,7 @@ def test_enabling_embeddings_after_lexical_intake_requires_rebuild(
     from case_intelligence import embedding_index, retrieval_endpoints
     from tests.test_milestone_a_workbench import _create_matter
     from tests.test_workbench_retrieval_capabilities import _app
-    from case_intelligence.retrieval_rebuild import rebuild
+    from case_intelligence.retrieval_rebuild import rebuild, rebuild_plan
 
     monkeypatch.delenv("CASE_INTELLIGENCE_RERANK_URL")
     monkeypatch.delenv("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", raising=False)
@@ -77,11 +78,80 @@ def test_enabling_embeddings_after_lexical_intake_requires_rebuild(
         result = client.get(f"/matters/{slug}/exact-search", params={"words": "bicycle"})
         assert result.status_code == 200 and "Inventory.txt" in result.text
     with psycopg.connect(postgres_test_dsn, autocommit=True) as connection:
-        assert rebuild(connection) >= 1
+        assert rebuild(connection, approved_plan=rebuild_plan(connection)) >= 1
     with TestClient(_app(tmp_path)) as client:
         status = client.get("/health").json()["capabilities"]
         assert status["embedding_index"] == "ready"
         assert status["search"] == "word search with embeddings"
+
+
+@pytest.mark.postgres
+def test_external_rebuild_approves_and_commits_both_matters_together(endpoint, monkeypatch):
+    import json
+    import psycopg
+
+    from case_intelligence import embedding_index, retrieval_endpoints
+    from case_intelligence.retrieval_rebuild import RebuildApprovalError, rebuild, rebuild_plan
+    from tests.case_theory_db import isolated_database
+
+    pages = {
+        "matter-alpha": (PdfPage(1, "Synthetic north gate."), PdfPage(2, "Synthetic north path.")),
+        "matter-bravo": (PdfPage(1, "Synthetic south gate."),),
+    }
+    expected_batches = [[page.text for page in matter_pages] for matter_pages in pages.values()]
+    received = []
+    request_json = retrieval_endpoints.request_json
+    fail_second = True
+
+    def send(config, path, body):
+        endpoint["status"] = 503 if fail_second and len(received) == 1 else 200
+        endpoint["component"] = 0.25 if body["input"] == expected_batches[0] else 0.5
+        try:
+            return request_json(config, path, body)
+        finally:
+            received.append(endpoint["body"]["input"])
+
+    monkeypatch.setattr(retrieval_endpoints, "request_json", send)
+    record = embedding_index.embedding_index_path()
+    for populated in (False, True):
+        assert embedding_index.record_embedding_index(
+            record, model="previous", revision="previous-revision", populated=populated,
+        ) == ""
+    before_record = record.read_bytes()
+
+    with isolated_database() as dsn, psycopg.connect(dsn, autocommit=True) as connection:
+        with connection.cursor() as cursor:
+            apply_postgres_migrations(cursor)
+        initialize_postgres_demo(connection, pages)
+        vector_query = "SELECT embedding::text FROM review_chunk ORDER BY matter_id,document_id,chunk_id"
+        before_vectors = connection.execute(vector_query).fetchall()
+        assert len(before_vectors) == 3
+        plan = rebuild_plan(connection)
+        assert set(plan["matter_ids"]) == set(pages)
+        assert endpoint["requests"] == []
+        with pytest.raises(RebuildApprovalError):
+            rebuild(connection, approved_plan={**plan, "matter_ids": ["matter-alpha"]})
+        assert endpoint["requests"] == []
+
+        with pytest.raises(retrieval_endpoints.EndpointFailure):
+            rebuild(connection, approved_plan=plan)
+        assert received == expected_batches
+        assert len(endpoint["requests"]) == 2
+        assert connection.execute(vector_query).fetchall() == before_vectors
+        assert record.read_bytes() == before_record
+
+        fail_second = False
+        received.clear()
+        assert rebuild(connection, approved_plan=plan) == 3
+        assert received == expected_batches
+        assert len(endpoint["requests"]) == 4
+        stored_vectors = [json.loads(row[0]) for row in connection.execute(vector_query)]
+        assert stored_vectors == [[0.25] * 768, [0.25] * 768, [0.5] * 768]
+        config = retrieval_endpoints.configured_endpoint("EMBEDDING")
+        assert embedding_index.load_embedding_index(record) == {
+            "model": config.model, "revision": config.identity, "populated": True,
+            "projection_format": embedding_index.PROJECTION_FORMAT,
+        }
 
 
 def test_live_postgres_migration_reopen_and_hybrid_page_citation():

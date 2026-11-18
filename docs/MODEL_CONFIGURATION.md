@@ -354,13 +354,32 @@ Populated indexes created before this migration also need a one-time rebuild.
 Earlier versions could record a model name alongside deterministic fallback
 vectors. The new format records that the projection was initialized empty or
 explicitly rebuilt. Exact search stays available during migration.
-The rebuild processes the entire installation. With an external embedding
-endpoint, it sends text from every indexed matter to that server. Check that
-each affected matter permits that destination before rebuilding.
+The rebuild processes the entire installation. Keep a backup and use the app's
+environment, PostgreSQL access and index-record mount for the commands below.
 
-Keep a backup, stop the app and all other index writers, and run
-`python -m case_intelligence.retrieval_rebuild --confirm-stopped` with the same
-environment, PostgreSQL access and index-record mount, then restart the app.
+For an external embedding endpoint, preview the destination, model and complete
+list of affected matter IDs. The preview reads IDs locally and makes no API calls.
+Keep the file on the operator's machine because it identifies matters and their
+intended destination.
+
+```sh
+python -m case_intelligence.retrieval_rebuild --plan > rebuild-plan.json
+```
+
+Review the file and confirm each matter permits sending its indexed text to that
+endpoint and model. If every matter permits it, stop the app and all index
+writers, then supply that reviewed file as approval for this rebuild.
+
+```sh
+python -m case_intelligence.retrieval_rebuild --confirm-stopped --approved-plan rebuild-plan.json
+```
+
+The command checks the plan again under the index lock before reading passage
+text. A change to the destination, model or set of matters requires a fresh
+preview and review. Each embedding request contains passages from one matter.
+Approval applies to this rebuild operation. For the bundled worker, stop all
+writers and run `python -m case_intelligence.retrieval_rebuild --confirm-stopped`.
+After a successful rebuild, restart the app.
 The command replaces derived vectors transactionally, preserving source and
 citation identities; it does not alter the index dimension. It records the
 configured endpoint/model identity, not an attestation of remote model weights.
