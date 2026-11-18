@@ -48,49 +48,46 @@ def test_compilation_persists_client_notice_after_model_changes(tmp_path):
     assert "unvalidated model" in draft.sections[-1]["body"]
 
 
-@pytest.mark.parametrize("with_file", [False, True])
-def test_doctor_uses_inline_key_before_file(monkeypatch, tmp_path, with_file):
-    from tests.test_oss_installer import installer
-    from case_intelligence.generator_schema import SchemaProbe
-    token = "synthetic-inline-credential"
-    app = {"CASE_INTELLIGENCE_GENERATOR_BACKEND": "openai",
-           "CASE_INTELLIGENCE_GENERATOR_SERVER": "llamacpp",
-           "CASE_INTELLIGENCE_GENERATOR_URL": "https://answers.example.test:8000",
-           "CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS": "answers.example.test",
-           "CASE_INTELLIGENCE_GENERATOR_MODEL": "synthetic",
-           "CASE_INTELLIGENCE_GENERATOR_API_KEY": token}
-    if with_file:
-        app["CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE"] = "/synthetic/unreadable"
-    monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
-    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
-    seen, output = [], []
-    def probe(*args, **kwargs):
-        seen.append(kwargs["headers"])
-        return SchemaProbe("verified", 1, "Synthetic probe", "")
-    monkeypatch.setattr(installer, "probe_schema_enforcement", probe)
-    installer._doctor_generator(SimpleNamespace(note=output.append, warn=output.append), tmp_path, dry_run=False)
-    assert seen == [{"Authorization": "Bearer " + token}]
-    assert token not in "\n".join(output)
-
-
-def test_doctor_bundled_probe_uses_existing_app_namespace(monkeypatch, tmp_path):
+@pytest.mark.parametrize(("url", "host"), [
+    ("http://generator:8000", "generator"),
+    ("https://answers.example.test:8000", "answers.example.test"),
+])
+def test_doctor_checks_server_in_existing_app_namespace(monkeypatch, tmp_path, url, host):
     from tests.test_oss_installer import installer
     app = {"CASE_INTELLIGENCE_GENERATOR_BACKEND": "vllm",
-           "CASE_INTELLIGENCE_GENERATOR_URL": "http://generator:8000",
+           "CASE_INTELLIGENCE_GENERATOR_URL": url,
+           "CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS": host,
+           "CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE": "/run/secrets/generator-api-key",
            "CASE_INTELLIGENCE_GENERATOR_MODEL": "synthetic"}
     monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
     monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
     monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
-    monkeypatch.setattr(installer, "probe_schema_enforcement", lambda *a, **k: pytest.fail("host cannot reach bundled DNS"))
     commands, output = [], []
     def probe(command, **kwargs):
         commands.append(command)
         return SimpleNamespace(returncode=0, stdout=json.dumps({"status": "verified", "attempts": 1,
             "detail": "Synthetic schema check", "fix": ""}))
     monkeypatch.setattr(installer, "_probe", probe)
-    installer._doctor_generator(SimpleNamespace(note=output.append, warn=output.append), tmp_path, dry_run=False)
+    console = SimpleNamespace(note=output.append, warn=output.append)
+    installer._doctor_generator(console, tmp_path, dry_run=True)
+    assert commands == []
+    installer._doctor_generator(console, tmp_path, dry_run=False)
     assert commands == [["docker", "compose", "exec", "-T", "app", "python", "-m", "case_intelligence.generator_doctor"]]
-    assert "schema enforcement :: verified" in output
+    assert "running app schema enforcement :: verified" in output
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_doctor_redacts_invalid_saved_url_before_display(monkeypatch, tmp_path, dry_run):
+    from tests.test_oss_installer import installer
+    app = {"CASE_INTELLIGENCE_GENERATOR_BACKEND": "vllm",
+           "CASE_INTELLIGENCE_GENERATOR_URL": "https://synthetic-key@answers.example.test"}
+    monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
+    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
+    monkeypatch.setattr(installer, "_probe", lambda *a, **k: pytest.fail("invalid endpoint was probed"))
+    output = []
+    installer._doctor_generator(SimpleNamespace(note=output.append, warn=output.append), tmp_path, dry_run=dry_run)
+    assert all("synthetic-key" not in line for line in output)
+    assert any("not checked" in line for line in output)
 
 
 def test_packaged_registry_matches_editable_registry():
@@ -145,7 +142,7 @@ def test_bundled_doctor_other_rc_one_results_remain_unavailable(monkeypatch, tmp
     monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
     monkeypatch.setattr(installer, "_probe", lambda *a, **k: SimpleNamespace(returncode=1, stdout=stdout))
     output = []
-    installer._doctor_bundled_generator(SimpleNamespace(note=output.append, warn=output.append), tmp_path)
+    installer._doctor_generator_in_app(SimpleNamespace(note=output.append, warn=output.append), tmp_path)
     assert output == ["schema enforcement :: not checked; the application network probe is unavailable"]
 
 
@@ -158,6 +155,7 @@ def test_in_container_probe_uses_effective_config_and_runtime_credentials(monkey
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_BACKEND", "vllm")
     monkeypatch.delenv("CASE_INTELLIGENCE_GENERATOR_SERVER", raising=False)
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_API_KEY", "synthetic-inline-credential")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE", "/synthetic/unreadable")
     seen = []
     def probe(*args, **kwargs):
         seen.append((args, kwargs))

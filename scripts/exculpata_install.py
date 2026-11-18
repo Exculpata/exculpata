@@ -63,6 +63,7 @@ from case_intelligence.legacy_names import (
 )
 from case_intelligence.external_generator import (
     REMOTE_CONFIRMATION,
+    SERVERS as EXTERNAL_GENERATOR_SERVERS,
     EndpointRejected,
     GeneratorEndpoint,
     environment_values as _external_environment_values,
@@ -75,11 +76,10 @@ from case_intelligence.embedding_index import (
     embedding_change_warning,
     load_embedding_index,
 )
-from case_intelligence.generator_schema import SchemaProbe, probe_schema_enforcement, _urllib_transport
+from case_intelligence.generator_schema import SchemaProbe
 from case_intelligence.generator_config import (
     bundled_generator, generator_literal, generator_pins, validate_generator_url,
 )
-from generator_host_probe import open_host_generator_request
 from case_intelligence.hardware_profile import (
     HardwareReading, TierSuggestion, detect_hardware, load_profiles, parse_vram_bytes, suggest_tier,
 )
@@ -411,8 +411,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--models", choices=("none", "review", "transcription", "all"), default=None)
     parser.add_argument(
         "--external-generator",
-        choices=("ollama", "llamacpp", "lmstudio"),
-        help="use an Ollama, llama.cpp, or LM Studio server instead of the bundled generator",
+        choices=EXTERNAL_GENERATOR_SERVERS,
+        help="connect answer generation to an operator-managed API server",
     )
     parser.add_argument("--generator-egress-pins", default="", help="reviewed exact address pins as JSON with issuer (generator URL) and addresses")
     parser.add_argument("--external-generator-url", help="HTTPS origin of that server, without /v1 or /api/chat; host loopback is unreachable from the app")
@@ -588,10 +588,10 @@ def _collect_external_generator(console: Console, args: argparse.Namespace) -> G
         return None
     if args.non_interactive or args.external_generator or args.external_generator_url or args.external_generator_model:
         return _external_from_args(args)
-    print("Answer generation can use your Ollama, llama.cpp, or LM Studio server.")
-    print("Nothing is downloaded. Embeddings and reranking stay inside Exculpata.")
+    print("Answer generation can use your Ollama, llama.cpp, LM Studio, or vLLM API.")
+    print("The server supplies the model.")
     choice = _choose(
-        "Use my Ollama / llama.cpp server / LM Studio at a URL",
+        "Connect an answer server",
         ("no", "yes"),
         "no",
         non_interactive=False,
@@ -599,7 +599,7 @@ def _collect_external_generator(console: Console, args: argparse.Namespace) -> G
     if choice != "yes":
         return None
     while True:
-        server = _choose("Answer server", ("ollama", "llamacpp", "lmstudio"), "ollama", non_interactive=False)
+        server = _choose("Answer server", EXTERNAL_GENERATOR_SERVERS, "ollama", non_interactive=False)
         url = input("Server HTTPS URL (origin only; host loopback is unreachable from the app): ").strip()
         model = input("Model name the server lists: ").strip()
         try:
@@ -3447,7 +3447,6 @@ def _configure(
     external = _apply_external_generator(args, app_values, compose_values, paths)
     if external is not None:
         console.ok(f"external generator :: {external.server} {external.model} at {external.url}")
-        console.note("Embeddings and reranking stay inside Exculpata. Nothing was downloaded.")
         if not external.local_network:
             console.warn("Matter text will be sent to a host outside the local network")
     if not args.dry_run:
@@ -4159,14 +4158,20 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
                 console.warn("Retrieval endpoints not checked; app namespace diagnostic unavailable.")
     backend = app_env.get("CASE_INTELLIGENCE_GENERATOR_BACKEND", "").strip()
     if not backend:
-        console.note("answer server :: not configured")
+        console.note("saved answer server :: not configured")
         return
     server = app_env.get("CASE_INTELLIGENCE_GENERATOR_SERVER", "").strip() or (
         "ollama" if backend == "ollama" else "vllm"
     )
     url = app_env.get("CASE_INTELLIGENCE_GENERATOR_URL", "").strip()
     model = app_env.get("CASE_INTELLIGENCE_GENERATOR_MODEL", "").strip()
-    console.note(f"answer server :: {server} {model} at {url}")
+    if url:
+        try:
+            validate_generator_url(url)
+        except ValueError:
+            console.warn("schema enforcement :: not checked; the saved generator URL is invalid")
+            return
+    console.note(f"saved answer server :: {server} {model} at {url}")
     device = compose_env.get(name_value("environment", LEGACY_STEM, suffix="RETRIEVAL_DEVICE")) or compose_env.get(name_value("environment", suffix="RETRIEVAL_DEVICE")) or "cpu"
     console.note(f"embed and rerank :: configured worker or endpoint; worker device {device}")
     embedding = compose_env.get(name_value("environment", suffix="EMBEDDING_MODEL")) or compose_env.get(name_value("environment", LEGACY_STEM, suffix="EMBEDDING_MODEL")) or DEFAULT_EMBEDDING_MODEL
@@ -4192,7 +4197,6 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
     try:
         from case_intelligence.service_endpoints import validate_service_endpoint
 
-        validate_generator_url(url)
         validate_service_endpoint(
             url,
             environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS",
@@ -4206,38 +4210,10 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
             os.environ.pop("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", None)
         else:
             os.environ["CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS"] = previous
-    if urllib.parse.urlparse(url).hostname == "generator":
-        _doctor_bundled_generator(console, root)
-        return
-    headers: dict[str, str] = {}
-    token = app_env.get("CASE_INTELLIGENCE_GENERATOR_API_KEY", "")
-    if not token and app_env.get("CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE"):
-        key_path = root / "secrets" / "generator-api-key"
-        try:
-            token = key_path.read_text(encoding="utf-8").strip()
-        except OSError:
-            console.warn("schema enforcement :: not checked; the generator API key file is unreadable")
-            return
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    consent_key = "CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED"
-    previous_consent = os.environ.get(consent_key)
-    os.environ[consent_key] = app_env.get(consent_key, "0")
-    try:
-        result = probe_schema_enforcement(url, server, model, headers=headers, timeout=15,
-                                          transport=_urllib_transport(15, open_request=open_host_generator_request))
-    finally:
-        if previous_consent is None:
-            os.environ.pop(consent_key, None)
-        else:
-            os.environ[consent_key] = previous_consent
-    console.note(f"schema enforcement :: {result.label}")
-    console.note(result.detail)
-    if result.fix:
-        console.warn(result.fix)
+    _doctor_generator_in_app(console, root)
 
 
-def _doctor_bundled_generator(console: Console, root: Path) -> None:
+def _doctor_generator_in_app(console: Console, root: Path) -> None:
     command = [*_compose(root, ()), "exec", "-T", "app", "python", "-m", "case_intelligence.generator_doctor"]
     try:
         response = _probe(command, timeout=55)
@@ -4254,7 +4230,7 @@ def _doctor_bundled_generator(console: Console, root: Path) -> None:
     except (OSError, ValueError, TypeError, subprocess.SubprocessError):
         console.warn("schema enforcement :: not checked; the application network probe is unavailable")
         return
-    console.note(f"schema enforcement :: {result.label}")
+    console.note(f"running app schema enforcement :: {result.label}")
     console.note(result.detail)
     if result.fix:
         console.warn(result.fix)

@@ -69,7 +69,7 @@ lines 14–17:
 The bundled installer can point this client at an existing server.
 [`scripts/exculpata_install.py`](../scripts/exculpata_install.py) accepts
 `--models none|review|transcription|all`. `none` writes an empty backend unless
-`--external-generator ollama|llamacpp|lmstudio` is set with
+`--external-generator ollama|llamacpp|lmstudio|vllm` is set with
 `--external-generator-url` and `--external-generator-model`. `review` and `all`
 write `CASE_INTELLIGENCE_GENERATOR_BACKEND=openai`,
 `CASE_INTELLIGENCE_GENERATOR_URL=http://generator:8000`, the pinned served model
@@ -88,8 +88,8 @@ stale value cannot replace it. The app uses the internal companion transport for
 configured `CASE_INTELLIGENCE_GENERATOR_PROXY` relay. Ambient proxy variables
 and `NO_PROXY` cannot bypass it; redirects are refused. TLS hostname and
 certificate verification stay in the app, end to end. The relay never decrypts.
-Its existing five-second setup budget, 60-second tunnel deadline and 8 MiB tunnel
-limit also apply to generator traffic; a longer client timeout does not extend them.
+Generator, embedding, and rerank tunnels each allow up to 32 MiB across both
+directions combined and last up to 310 seconds.
 
 A server bound to host loopback (`127.0.0.1:11434`, `localhost`, or `::1`) cannot
 be reached by the containerized app. There is no host-gateway alias or alternate
@@ -97,14 +97,25 @@ route. Expose an operator-managed HTTPS endpoint reachable by the relay, with a
 trusted certificate. HTTP is rejected in interactive and non-interactive install,
 endpoint parsing, and environment settings construction.
 
-The installer checks local/remote consent on the host. Public destinations need
-`--confirm-remote-generator` (or interactive confirmation) because matter text
-and cited passages leave the installation. Private RFC1918/ULA destinations need
-explicit reviewed pins. Supply `--generator-egress-pins` as single-line JSON:
-`{"issuer":"https://answers.example.test:8443","addresses":["<reviewed-IP>"]}`.
-Replace the placeholder with an exact reviewed IP address; it is not accepted
-literally. The `issuer` field name matches the shared OIDC pin format but binds
-to the complete generator URL. The installer never infers pins from DNS.
+To use a private vLLM server with `--models none`, replace the example HTTPS
+origin and served model name below. Enter the exact private IP you reviewed for
+that origin. The relay must be able to reach the address and the application
+must trust the server's TLS certificate.
+
+```bash
+vllm_url=https://answers.example.test:8443
+read -r -p 'Reviewed private IP for the vLLM server: ' vllm_ip
+vllm_pins=$(printf '{"issuer":"%s","addresses":["%s"]}' "$vllm_url" "$vllm_ip")
+./install --models none --external-generator vllm \
+  --external-generator-url "$vllm_url" --external-generator-model synthetic-answer \
+  --generator-egress-pins "$vllm_pins"
+```
+
+Private RFC1918/ULA destinations require reviewed pins bound to the complete
+generator URL. Supply all reviewed addresses if DNS returns more than one.
+Public destinations require `--confirm-remote-generator` or interactive
+confirmation because questions, matter text, and cited passages can leave the
+installation. This consent applies across the installation.
 
 Pins are saved as `CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS`. Installer Compose
 commands derive `GENERATOR_EGRESS_URL` and `GENERATOR_EGRESS_PINS` from the selected
@@ -115,9 +126,8 @@ set before dialing only those numeric addresses. Every answer must match explici
 pins when supplied; otherwise only public addresses are permitted. Loopback,
 link-local, metadata, multicast, unspecified, reserved and transition addresses
 remain denied even with pins or remote consent. The app retains consent and
-destination checks using literal addresses and reviewed pins; external DNS belongs
-to the relay because app DNS is isolated. Host-side doctor probes retain direct
-address validation and do not establish app reachability.
+destination checks using literal addresses and reviewed pins. The relay resolves
+external names because app DNS is isolated.
 
 Generator values containing `$` are rejected before writing, when reading retained
 env files, and at app settings construction. This intentionally uses resolved
@@ -146,7 +156,10 @@ Startup sends a strict-schema request with answer thinking enabled. Schema
 status is cached separately for each model and thinking state. Extraction's
 state is checked on first use, and periodic refreshes retain separate state.
 Thinking probes add the same reasoning allowance to their 64-token output limit.
-`doctor` sends a non-thinking schema request unless `--dry-run` is set. Ollama
+`./install doctor` sends its synthetic, non-thinking schema request from the
+running app container. It uses the configured relay and credentials for an
+external server and the companion transport for a bundled server. Use
+`--dry-run` to skip the request. Ollama
 is checked with native `format`. llama.cpp,
 LM Studio, and vLLM are checked with nested `json_schema.schema`. If the body
 does not match, generation validates locally and retries, then refuses the
@@ -214,9 +227,7 @@ attestation and therefore cannot inherit a recorded pass.
 
 Compose passes the same effective embedding model and revision to the app and
 retrieval worker so populated-index mismatch warnings reflect the worker's
-configuration. Doctor probes bundled generators inside the existing app
-namespace, while external probes use saved endpoint consent and the runtime's
-inline-key-before-file precedence. Saved unsupported answers and compiled
+configuration. Saved unsupported answers and compiled
 reports retain the qualification notice from their generating client even if
 the active model later changes.
 

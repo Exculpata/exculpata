@@ -268,7 +268,7 @@ llama.cpp and LM Studio use that OpenAI path with the nested
 or test. Pointing the `openai` backend at another product works only when
 that product implements this exact contract; that compatibility is not
 established here. The installer can write those
-settings: `--external-generator ollama|llamacpp|lmstudio` with the server
+settings: `--external-generator ollama|llamacpp|lmstudio|vllm` with the server
 HTTPS origin (for example `https://answers.example.test:8443`) and model name. A host outside the local network requires
 `--confirm-remote-generator`, because matter text would leave the machine.
 `--models none` without an external server leaves answering unavailable.

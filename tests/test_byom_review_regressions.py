@@ -20,7 +20,6 @@ from case_intelligence.generation import (
     generator_from_environment,
 )
 from case_intelligence.generator_schema import probe_schema_enforcement
-from scripts.generator_host_probe import open_host_generator_request
 from case_intelligence.model_qualification import apply_harness_result, qualification_label
 from case_intelligence.work_product_exports import export_answer, export_full_review
 from tests.test_work_product_exports import _records, _review_records
@@ -107,31 +106,8 @@ def test_failed_dns_and_rejected_destinations_degrade_availability(monkeypatch):
         assert _bounded_json_get(client.endpoint + "/v1/models", timeout=0.1) == {}
 
 
-def test_host_probe_uses_approved_numeric_address_and_ignores_proxy(monkeypatch):
-    received = []
-    class Handler(QuietHandler):
-        def do_GET(self):
-            received.append(self.headers["Host"])
-            self.send_response(200)
-            self.end_headers()
-            # fixture-write: Seed synthetic data for this isolated regression.
-            self.wfile.write(b'{}')
-    with server(Handler) as port:
-        lookups = []
-        def resolve(host):
-            lookups.append(host)
-            return (ipaddress.ip_address("127.0.0.1"),) if len(lookups) == 1 else (endpoints._METADATA,)
-        monkeypatch.setattr(endpoints, "_resolve_addresses", resolve)
-        monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: pytest.fail("second DNS lookup"))
-        monkeypatch.setenv("http_proxy", "http://proxy.example.test:9")
-        request = urllib.request.Request(f"http://synthetic.example.test:{port}/v1/models")
-        with open_host_generator_request(request, timeout=1) as response:
-            assert response.read() == b'{}'
-    assert lookups == ["synthetic.example.test"]
-    assert received == [f"synthetic.example.test:{port}"]
-
-
-def test_redirect_cannot_forward_authorization(monkeypatch):
+def test_bundled_generator_redirect_cannot_forward_authorization():
+    from case_intelligence.service_endpoints import open_service_request
     received = []
     class Target(QuietHandler):
         def do_GET(self):
@@ -147,7 +123,7 @@ def test_redirect_cannot_forward_authorization(monkeypatch):
         with server(Redirect) as origin:
             req = urllib.request.Request(f"http://127.0.0.1:{origin}/", headers={"Authorization": "Bearer synthetic-token"})
             with pytest.raises(urllib.error.HTTPError) as error:
-                open_host_generator_request(req, timeout=1)
+                open_service_request(req, timeout=1, environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS")
             assert error.value.code == 302
     assert received == []
 
@@ -263,36 +239,33 @@ def test_rejected_model_answers_keep_qualification_label(format_name):
     assert b"unvalidated model" in body
 
 
-@pytest.mark.parametrize("saved,shell", [("1", None), ("0", "1")])
-def test_doctor_schema_probe_uses_saved_consent_and_restores_shell(monkeypatch, tmp_path, saved, shell):
-    import os
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_external_schema_doctor_enforces_runtime_consent(monkeypatch, confirmed):
     from types import SimpleNamespace
-    from tests.test_oss_installer import installer
-    from case_intelligence.generator_schema import SchemaProbe
-    key = "CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED"
-    if shell is None:
-        monkeypatch.delenv(key, raising=False)
+    from case_intelligence.generator_doctor import probe_configured_generator
+    from case_intelligence.generator_schema import PROBE_MARKER
+
+    for key, value in {
+        "BACKEND": "openai", "SERVER": "llamacpp", "MODEL": "synthetic",
+        "URL": "https://api.example.test", "ALLOWED_HOSTS": "api.example.test",
+        "EGRESS_PINS": "", "REMOTE_CONFIRMED": str(int(confirmed)),
+        "PROXY": "http://egress-proxy:3128",
+    }.items():
+        monkeypatch.setenv(f"CASE_INTELLIGENCE_GENERATOR_{key}", value)
+    requested = []
+
+    def open_request(request, *, timeout):
+        requested.append(request.full_url)
+        message = {"content": json.dumps({"marker": PROBE_MARKER})}
+        return io.BytesIO(json.dumps({"choices": [{"message": message}]}).encode())
+
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *handlers: SimpleNamespace(open=open_request))
+    if confirmed:
+        assert probe_configured_generator().status == "verified"
+        assert requested == ["https://api.example.test/v1/chat/completions"]
     else:
-        monkeypatch.setenv(key, shell)
-    app = {
-        "CASE_INTELLIGENCE_GENERATOR_BACKEND": "openai",
-        "CASE_INTELLIGENCE_GENERATOR_SERVER": "llamacpp",
-        "CASE_INTELLIGENCE_GENERATOR_URL": "https://api.example.test",
-        "CASE_INTELLIGENCE_GENERATOR_MODEL": "synthetic",
-        "CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS": "api.example.test",
-        key: saved,
-    }
-    monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
-    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
-    observed = []
-    def probe(*args, **kwargs):
-        observed.append(os.environ.get(key))
-        return SchemaProbe("verified", 1, "Synthetic probe", "")
-    monkeypatch.setattr(installer, "probe_schema_enforcement", probe)
-    console = SimpleNamespace(note=lambda text: None, warn=lambda text: None)
-    installer._doctor_generator(console, tmp_path, dry_run=False)
-    assert observed == [saved]
-    assert os.environ.get(key) == shell
+        assert probe_configured_generator().status == "unreachable"
+        assert requested == []
 
 
 def test_installer_imports_and_preflight_need_only_the_standard_library(tmp_path):

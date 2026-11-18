@@ -12,8 +12,8 @@ from .generator_config import generator_literal, validate_generator_url
 from .oidc_network_policy import Denied, ascii_hostname
 
 
-SERVERS = ("ollama", "llamacpp", "lmstudio")
-_BACKEND = {"ollama": "ollama", "llamacpp": "openai", "lmstudio": "openai"}
+_BACKEND = {"ollama": "ollama", "llamacpp": "openai", "lmstudio": "openai", "vllm": "openai"}
+SERVERS = tuple(_BACKEND)
 # Docker's host-gateway name. Kept split so the publication scan does not see
 # one internal hostname token.
 HOST_GATEWAY_NAME = "host." + "docker." + "internal"
@@ -79,8 +79,7 @@ def parse_generator_endpoint(
     kind = server.strip().casefold()
     if kind not in SERVERS:
         raise EndpointRejected(
-            "Answer server must be ollama, llamacpp, or lmstudio. "
-            "Enter one of those names."
+            f"Choose an answer server from {', '.join(SERVERS)}."
         )
     name = " ".join(model.split()).strip()
     if not name or len(name) > 200 or any(character in name for character in "\r\n\x00"):

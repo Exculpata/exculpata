@@ -34,7 +34,6 @@ from case_intelligence.generator_schema import (
     PROBE_CONFLICT,
     PROBE_MARKER,
     PROBE_SCHEMA,
-    SchemaProbe,
     SchemaTransportError,
     openai_response_format,
     probe_schema_enforcement,
@@ -551,13 +550,14 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     assert "Dry run: the schema check was not sent" in dry_output
     assert TOKEN not in dry_output
 
-    probes = []
+    commands = []
 
-    def probe(url, server, model, **kwargs):
-        probes.append((url, server, model, kwargs.get("headers")))
-        return SchemaProbe("verified", 1, "The server returned the required JSON object on the first check.", "")
+    def probe(command, *, timeout):
+        commands.append(command)
+        result = {"status": "verified", "attempts": 1, "detail": "Synthetic schema check", "fix": ""}
+        return subprocess.CompletedProcess(command, 0, json.dumps(result), "")
 
-    monkeypatch.setattr(installer, "probe_schema_enforcement", probe)
+    monkeypatch.setattr(installer, "_probe", probe)
     monkeypatch.setattr(installer, "_wait_health", lambda *args, **kwargs: None)
     monkeypatch.setattr(installer, "_verify_installed_package", lambda *args: None)
     monkeypatch.setattr(
@@ -569,9 +569,9 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     live_output = capsys.readouterr().out
     assert "schema enforcement :: verified" in live_output
     assert TOKEN not in live_output
-    assert probes[0][0] == "https://synthetic-answers:11434"
-    assert probes[0][1] == "ollama"
-    assert probes[0][3]["Authorization"] == f"Bearer {TOKEN}"
+    assert len(commands) == 1
+    assert commands[0][-6:] == ["exec", "-T", "app", "python", "-m", "case_intelligence.generator_doctor"]
+    assert TOKEN not in ' '.join(commands[0])
 
     (root / "state").mkdir(exist_ok=True)
     # fixture-write: Seed synthetic data for this isolated regression.
@@ -605,11 +605,39 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     assert TOKEN not in (root / "installation.json").read_text()
 
 
-def test_remote_and_partial_generator_settings_are_not_saved(tmp_path):
+def test_operator_vllm_configuration_round_trips_to_the_answer_client(tmp_path, monkeypatch):
+    url = "https://synthetic-answers:8000"
+    pins = json.dumps({"issuer": url, "addresses": [str(_office_address())]})
+    _trust_office_names(monkeypatch, "synthetic-answers")
+    installer, root, _, _ = _configure_node(tmp_path, [
+        "--external-generator", "vllm", "--external-generator-url", url,
+        "--external-generator-model", "synthetic-model", "--generator-egress-pins", pins,
+    ])
+    resumed = installer._parser().parse_args(["install", "--resume", "--root", str(root)])
+    installer._saved_node_arguments(resumed, root)
+    assert resumed.models == "none"
+    assert resumed.external_generator == "vllm"
+    assert resumed.external_generator_url == url
+    assert resumed.external_generator_model == "synthetic-model"
+    assert resumed.generator_egress_pins == pins
+    assert not resumed.confirm_remote_generator
+
+    application = installer._dotenv(installer._app_env(root))
+    for key, value in application.items():
+        if key.startswith("CASE_INTELLIGENCE_GENERATOR_"):
+            monkeypatch.setenv(key, value)
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_SCHEMA_PROBE", "0")
+    client = generator_from_environment()
+    assert isinstance(client, OpenAICompatibleGenerator)
+    assert (client.schema_server, client.endpoint, client.model) == ("vllm", url, "synthetic-model")
+
+
+@pytest.mark.parametrize("remote_server", ["lmstudio", "vllm"])
+def test_remote_and_partial_generator_settings_are_not_saved(tmp_path, remote_server):
     installer = _installer()
     with pytest.raises(RuntimeError, match="outside the local network"):
         _configure_node(tmp_path, [
-            "--external-generator", "lmstudio",
+            "--external-generator", remote_server,
             "--external-generator-url", "https://8.8.8.8:1234",
             "--external-generator-model", "synthetic-model",
         ])
@@ -636,7 +664,8 @@ def test_remote_and_partial_generator_settings_are_not_saved(tmp_path):
         installer._collect_external_generator(installer.Console(color=False, quiet=True), bundled)
 
 
-def test_interactive_generator_prompts_guide_instead_of_quitting(monkeypatch, capsys):
+@pytest.mark.parametrize("local_server", ["ollama", "vllm"])
+def test_interactive_generator_prompts_guide_instead_of_quitting(monkeypatch, capsys, local_server):
     _trust_office_names(monkeypatch, "synthetic-lan", HOST_GATEWAY_NAME)
     installer = _installer()
     answers = iter([
@@ -644,7 +673,7 @@ def test_interactive_generator_prompts_guide_instead_of_quitting(monkeypatch, ca
         "ollama",
         "not-a-url",
         "synthetic-model",
-        "ollama",
+        local_server,
         "https://synthetic-lan:8080",
         "synthetic-model",
         json.dumps({"issuer": "https://synthetic-lan:8080", "addresses": [str(_office_address())]}),
@@ -654,6 +683,7 @@ def test_interactive_generator_prompts_guide_instead_of_quitting(monkeypatch, ca
     endpoint = installer._collect_external_generator(installer.Console(color=False, quiet=True), args)
     output = capsys.readouterr().out
     assert endpoint is not None
+    assert endpoint.server == local_server
     assert endpoint.url == "https://synthetic-lan:8080"
     assert "HTTPS" in output
     assert "container" in output.casefold()
@@ -834,9 +864,10 @@ def test_populated_index_keeps_its_embedding_identity(tmp_path, monkeypatch):
 
     path = tmp_path / "state" / "embedding-index.json"
     path.parent.mkdir()
-    # fixture-write: Seed synthetic data for this isolated regression.
-    path.write_text(json.dumps({"model": "ibm-granite/granite-embedding-english-r2",
-        "revision": "47ea694b257b703fee9253d75c2b1f2985180498", "populated": True}))
+    assert record_embedding_index(
+        path, model="ibm-granite/granite-embedding-english-r2",
+        revision="47ea694b257b703fee9253d75c2b1f2985180498", populated=False,
+    ) == ""
     assert record_embedding_index(
         path, model="ibm-granite/granite-embedding-english-r2",
         revision="47ea694b257b703fee9253d75c2b1f2985180498", populated=True,

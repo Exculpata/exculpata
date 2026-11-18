@@ -182,8 +182,8 @@ def probe_schema_enforcement(
                 "unreachable",
                 sent,
                 detail,
-                "Confirm the server is running and that this host can open the configured URL. "
-                "A container name such as generator resolves only inside the application network.",
+                "Check that the application can reach the configured answer server. "
+                "For an external server, check its HTTPS endpoint and the configured egress relay.",
             )
         if _matches_probe(payload, kind):
             if sent == 1:
@@ -221,7 +221,6 @@ def _matches_probe(payload: Mapping[str, object], server: str) -> bool:
             content = json.loads(text)
         except json.JSONDecodeError:
             return False
-    # This fixed one-field probe also runs in the stdlib-only installer.
     return isinstance(content, dict) and content == {"marker": PROBE_MARKER}
 
 
