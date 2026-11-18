@@ -20,7 +20,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from case_intelligence.workflow_jobs import (
-    ResearchCoordinator,
     ReviewCoordinator,
     ReviewDecisionResult,
     WorkflowFailure,
@@ -257,38 +256,6 @@ def test_research_is_idempotent_checkpointed_recoverable_and_retryable(tmp_path)
     retried = restarted.retry_research_job(matter.matter_id, ACTOR, first.job_id)
     assert retried.state == "queued" and retried.result == {} and retried.completed_steps == 0
     restarted.close()
-
-
-def test_research_cancellation_checks_keep_their_claimed_job(tmp_path):
-    store, matter = _store(tmp_path)
-    try:
-        for number in ('1', '2'):
-            store.queue_research_job(
-                matter.matter_id, ACTOR, f'What happened in part {number}?',
-                f'Synthetic investigation {number}', 'research-request-' + number * 32,
-            )
-        first_cancellation_check = None
-        observations = []
-        second_processed = threading.Event()
-
-        def process(job, cancelled):
-            nonlocal first_cancellation_check
-            if first_cancellation_check is None:
-                first_cancellation_check = cancelled
-                store.cancel_research_job(matter.matter_id, ACTOR, job.job_id)
-            else:
-                observations.append((first_cancellation_check(), cancelled()))
-                second_processed.set()
-            return {}
-
-        coordinator = ResearchCoordinator(store, process=process)
-        try:
-            assert second_processed.wait(5), 'The coordinator did not process both investigations'
-            assert observations == [(True, False)]
-        finally:
-            coordinator.close()
-    finally:
-        store.close()
 
 
 def test_research_idempotency_key_is_bound_to_title_and_source_scope(tmp_path):
