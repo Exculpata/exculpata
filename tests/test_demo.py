@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import socket
+import subprocess
 import sys
 from unittest.mock import Mock
 
@@ -224,13 +225,33 @@ def test_seed_demo_refuses_unsafe_destinations(demo_script, tmp_path, destinatio
         (path / "sentinel.txt").write_text("Keep existing data.", encoding="utf-8")
     original_environment = os.environ.copy()
     with pytest.raises(ValueError):
-        with demo_script.seed_demo(path):
-            pytest.fail("Unsafe destination accepted")
+        demo_script._validate_demo_destination(path)
     assert os.environ == original_environment
     if destination == "nonempty":
         assert (path / "sentinel.txt").read_text(encoding="utf-8") == "Keep existing data."
     else:
         assert not path.exists()
+
+
+@pytest.mark.parametrize('ci', [False, True])
+def test_demo_destination_checks_with_blocked_probe(ci):
+    from tests.demo_probe import BLOCKED_PROBE
+
+    rejected = 'tests/test_demo.py::test_seed_demo_refuses_unsafe_destinations'
+    accepted = 'tests/test_demo.py::test_seed_demo_accounts_for_every_source_and_discovers_recurring_names_offline'
+    env = dict(os.environ, CI='true' if ci else '', PYTEST_ADDOPTS='')
+    result = subprocess.run(
+        [sys.executable, '-m', 'pytest', '-v', '-rs', '--color=no', '-p', 'no:cacheprovider',
+         '-p', 'tests.demo_probe', rejected, accepted],
+        cwd=ROOT, env=env, capture_output=True, text=True, timeout=60,
+    )
+    output = result.stdout + result.stderr
+    for destination in ('checkout', 'symlink', 'nonempty'):
+        assert f'{rejected}[{destination}] PASSED' in output, output
+    status = 'ERROR' if ci else 'SKIPPED'
+    assert f'{accepted} {status}' in output, output
+    assert BLOCKED_PROBE in output
+    assert result.returncode == (1 if ci else 0), output
 
 
 def test_seed_timeout_closes_workers_and_restores_environment(demo_script, tmp_path, monkeypatch):
@@ -361,11 +382,16 @@ def test_demo_context_defers_setup_and_unwinds_resources(demo_script, tmp_path, 
         client_context.__exit__.assert_called_once()
 
 
-def test_demo_context_defers_invalid_destination_error_until_entry(demo_script):
+def test_demo_context_defers_invalid_destination_error_until_entry(demo_script, monkeypatch):
+    unexpected_setup = Mock(side_effect=AssertionError("Demo setup began before destination validation"))
+    monkeypatch.setattr(demo_script, "demo_environment", unexpected_setup)
+    monkeypatch.setattr(demo_script, "create_workbench_app", unexpected_setup)
+    monkeypatch.setattr(demo_script, "TestClient", unexpected_setup)
     before = os.environ.copy()
     context = demo_script.seed_demo(ROOT)
     assert os.environ == before
     with pytest.raises(ValueError, match='outside the checkout'):
         with context:
             pytest.fail('An invalid directory reached the demo body')
+    unexpected_setup.assert_not_called()
     assert os.environ == before

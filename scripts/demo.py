@@ -190,12 +190,16 @@ def seed_demo(data_dir: Path, *, timeout_seconds: float = 120.0) -> _DemoContext
     return _DemoContext(data_dir, timeout_seconds)
 
 
-def _prepare_demo(data_dir: Path, timeout_seconds: float, stack: ExitStack) -> Demo:
-    data_dir = Path(data_dir)
+def _validate_demo_destination(data_dir: Path) -> None:
     if data_dir.is_symlink() or data_dir.resolve().is_relative_to(ROOT):
         raise ValueError("Demo data must be outside the checkout in a fresh temporary directory.")
     if data_dir.exists() and (not data_dir.is_dir() or any(data_dir.iterdir())):
         raise ValueError("Demo data requires a fresh or empty directory; existing files were preserved.")
+
+
+def _prepare_demo(data_dir: Path, timeout_seconds: float, stack: ExitStack) -> Demo:
+    data_dir = Path(data_dir)
+    _validate_demo_destination(data_dir)
     stack.enter_context(demo_environment())
     app = create_workbench_app(data_dir.resolve(), auth_mode="preview", secure_cookie=False,
         generator=UnavailableGenerator(), learned_retrieval=False,
