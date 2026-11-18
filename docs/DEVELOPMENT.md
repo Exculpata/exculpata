@@ -244,14 +244,16 @@ rejected; exact-operation exceptions cannot hide a later workspace database open
 
 The static inventory checks Python files under the root `tests/` directory,
 including unstaged sources, matching main's scope. It does not execute or resolve
-arbitrary import graphs. Corpus and application CI jobs make `benchmarks/corpus/`
-read-only with `bash scripts/corpus-write-guard.sh prepare` before tests and run
+arbitrary import graphs. Corpus and application CI jobs guard against ordinary
+writes to `benchmarks/corpus/`. They make the corpus read-only with
+`bash scripts/corpus-write-guard.sh prepare` before tests and run
 `bash scripts/corpus-write-guard.sh check` afterward, even after failure. The Git
-diff and status checks reject tracked changes and untracked additions from any
-executed code path. Dynamic `exec`/`eval`
-(including resolved aliases) is rejected without interpreting its payload. The
-fixed-input runtime harnesses are pinned in `tests.fixture_inventory`; only their
-dynamic-execution finding is allowed, and every other boundary check still runs.
+diff and status checks reject tracked changes and Git-visible untracked additions.
+
+The static inventory rejects dynamic `exec`/`eval` (including resolved aliases)
+without interpreting its payload. The fixed-input runtime harnesses are pinned in
+`tests.fixture_inventory`. Only their dynamic-execution finding is allowed, and
+every other boundary check still runs.
 See the [fixture standard](../CODING_STANDARDS.md#synthetic-fixture-writes).
 
 Builtin `__call__` access, starred positional calls to builtin `getattr`, and

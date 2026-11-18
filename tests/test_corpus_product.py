@@ -7,6 +7,7 @@ import wave
 
 import pytest
 from case_intelligence.generation import EvidenceItem
+from case_intelligence.workspace_store import WorkspaceStore
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
@@ -94,6 +95,22 @@ def test_full_mode_never_substitutes_prepared_transcript_expectations(tmp_path):
         product.observe(tmp_path, _inputs(tmp_path), full=True)
 
 
+@pytest.mark.parametrize('corruption', ['user-content', 'assistant-role'])
+def test_observation_rejects_a_corrupted_saved_turn_pair(tmp_path, monkeypatch, corruption):
+    original = WorkspaceStore.append_message
+
+    def append_message(store, matter_id, conversation_id, role, content, payload=None):
+        if corruption == 'user-content' and role == 'user':
+            content = 'Synthetic different question'
+        if corruption == 'assistant-role' and role == 'assistant':
+            role = 'user'
+        return original(store, matter_id, conversation_id, role, content, payload)
+
+    monkeypatch.setattr(WorkspaceStore, 'append_message', append_message)
+    with pytest.raises(RuntimeError, match="Corpus answer 'answer' has an invalid saved conversation"):
+        product.observe(tmp_path, _inputs(tmp_path))
+
+
 @pytest.mark.parametrize('kind', ['generated', 'not-supported', 'corrupt', None, False])
 def test_observation_preserves_persisted_answer_kind(tmp_path, monkeypatch, kind):
     original = product.CaseIntelligenceWorkbench._answer_payload
@@ -161,7 +178,7 @@ def test_observation_rejects_persisted_citation_locator_corruption(
     'source-name-missing', 'source-name-empty', 'source-name-wrong',
 ])
 def test_actual_corpus_rejects_corrupted_persisted_answers(monkeypatch, corruption):
-    original_ask = product.CaseIntelligenceWorkbench.ask
+    original_append = WorkspaceStore.append_message
     original_answer = product.CaseIntelligenceWorkbench._answer_payload
     original_citation = product.CaseIntelligenceWorkbench._saved_answer_citation_payload
     modified = []
@@ -192,14 +209,14 @@ def test_actual_corpus_rejects_corrupted_persisted_answers(monkeypatch, corrupti
         modified.append(payload)
         return payload
 
-    def changed_saved_answer(bench, *args, **kwargs):
-        answer = original_ask(bench, *args, **kwargs)
-        for claim in answer.payload['claims']:
-            claim['citations'] = [changed_citation(citation) for citation in claim['citations']]
-        return answer
+    def changed_saved_answer(store, matter_id, conversation_id, role, content, payload=None):
+        if role == 'assistant':
+            for claim in payload['claims']:
+                claim['citations'] = [changed_citation(citation) for citation in claim['citations']]
+        return original_append(store, matter_id, conversation_id, role, content, payload)
 
     if corruption in {'source-name-empty', 'source-name-wrong'}:
-        monkeypatch.setattr(product.CaseIntelligenceWorkbench, 'ask', changed_saved_answer)
+        monkeypatch.setattr(WorkspaceStore, 'append_message', changed_saved_answer)
     elif corruption == 'answer-kind':
         monkeypatch.setattr(product.CaseIntelligenceWorkbench, '_answer_payload', staticmethod(changed_answer))
     else:
@@ -323,19 +340,19 @@ def test_observation_preserves_wrong_claim_attachment_for_gate_rejection(tmp_pat
     gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
     manifest = _inputs(tmp_path)
     manifest['answers'][0]['question'] = 'What about the blue bicycle and orange parcel?'
-    original = product.CaseIntelligenceWorkbench.ask
+    original = WorkspaceStore.append_message
     observed_claims = []
 
-    def swapped(bench, *args, **kwargs):
-        answer = original(bench, *args, **kwargs)
-        claims = answer.payload['claims']
-        assert len(claims) == 2
-        assert claims[0]['citations'][0]['document_id'] != claims[1]['citations'][0]['document_id']
-        claims[0]['citations'], claims[1]['citations'] = claims[1]['citations'], claims[0]['citations']
-        observed_claims.extend(claims)
-        return answer
+    def swapped(store, matter_id, conversation_id, role, content, payload=None):
+        if role == 'assistant':
+            claims = payload['claims']
+            assert len(claims) == 2
+            assert claims[0]['citations'][0]['document_id'] != claims[1]['citations'][0]['document_id']
+            claims[0]['citations'], claims[1]['citations'] = claims[1]['citations'], claims[0]['citations']
+            observed_claims.extend(claims)
+        return original(store, matter_id, conversation_id, role, content, payload)
 
-    monkeypatch.setattr(product.CaseIntelligenceWorkbench, 'ask', swapped)
+    monkeypatch.setattr(WorkspaceStore, 'append_message', swapped)
     actual = product.observe(tmp_path, manifest)
     expected = {'documents':{'written':{'text':actual['written']['text'], 'cer':0, 'pages':1}},
         'audio':{'spoken':{'text':actual['spoken']['text'], 'wer':0.15,

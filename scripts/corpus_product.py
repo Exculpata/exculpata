@@ -17,6 +17,7 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+import unicodedata
 import uuid
 import wave
 
@@ -292,7 +293,15 @@ def observe(root: Path, manifest: dict, full: bool = False, *,
             for item in manifest.get("answers", []):
                 question = item["question"]
                 conversation = bench.workspace.create_conversation(matter.matter_id, item["id"])
-                answer = bench.ask(matter, conversation, question)
+                completed = bench.ask(matter, conversation, question)
+                turns = bench.workspace.messages(matter.matter_id, conversation.conversation_id)
+                expected_question = unicodedata.normalize("NFC", " ".join(question.split()))
+                if (tuple(turn.role for turn in turns) != ("user", "assistant")
+                        or turns[0].content != expected_question
+                        or turns[1].message_id != completed.message_id
+                        or turns[1].content != completed.content):
+                    raise RuntimeError(f"Corpus answer {item['id']!r} has an invalid saved conversation")
+                user_turn, answer = turns
                 claims = [{"text": claim["text"],
                            "citations": [_citation(bench, matter, citation, aliases)
                                          for citation in claim["citations"]]}
@@ -300,7 +309,7 @@ def observe(root: Path, manifest: dict, full: bool = False, *,
                 citations = [citation for claim in claims for citation in claim["citations"]]
                 results[item["id"]] = {"text": " ".join(claim["text"] for claim in claims),
                                        "kind": answer.payload.get("kind"),
-                                       "answerable": answer.payload["answerable"], "question": question,
+                                       "answerable": answer.payload["answerable"], "question": user_turn.content,
                                        "claims": claims, "citations": citations, "provider": "CorpusExtractiveGenerator",
                                        **dispatch[item["id"]]}
             return results
