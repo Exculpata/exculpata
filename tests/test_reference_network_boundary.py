@@ -226,14 +226,32 @@ def test_network_smoke_selects_changed_paths(smoke_selection, monkeypatch, paths
     assert output.read_text() == "run=" + str(expected).lower() + "\n"
 
 
+def write_compose_policy(path, compose):
+    entries = [f"{json.dumps(name)} = {json.dumps(graph)}" for name, graph in compose.items()]
+    # fixture-write: Keep the reviewed Compose graph in the disposable mutation tree.
+    path.write_text("[compose]\n" + "\n".join(entries) + "\n", encoding="utf-8")
+
+
 @pytest.fixture
 def contract_tree(tmp_path):
-    for name in ("src", "services", "deploy", "scripts", "config"):
-        shutil.copytree(ROOT / name, tmp_path / name,
-                        ignore=shutil.ignore_patterns("__pycache__", "*.egg-info"))
-    for path in ROOT.glob("compose*.yaml"):
-        shutil.copy(path, tmp_path / path.name)
+    """Use production Compose expectations and let each mutation supply its own source."""
+    for directory in ("config", "scripts", "src/case_intelligence"):
+        (tmp_path / directory).mkdir(parents=True)
+    policy = tomllib.loads((ROOT / "config/egress-allowlist.toml").read_text(encoding="utf-8"))
+    write_compose_policy(tmp_path / "config/egress-allowlist.toml", policy["compose"])
+    for relative in policy["compose"]:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / relative, destination)
     return tmp_path
+
+
+@pytest.fixture(scope="module")
+def network_checker():
+    spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    return checker
 
 
 def run_contract(root):
@@ -243,20 +261,24 @@ def run_contract(root):
                            "--root", str(root)], capture_output=True, text=True, timeout=45)
 
 
-def test_network_contract_current_tree():
-    result = run_contract(ROOT)
+def test_network_contract_mutation_fixture_has_clean_baseline(contract_tree):
+    assert not list(contract_tree.rglob("*.py"))
+    result = run_contract(contract_tree)
     assert result.returncode == 0, result.stderr
+
+
+def test_network_contract_current_tree(network_checker):
+    assert network_checker.check(ROOT) == []
 
 
 def test_network_contract_rejects_missing_generator_allowlist_edit(contract_tree):
     path = contract_tree / "config/egress-allowlist.toml"
-    original = path.read_text()
-    approved = tomllib.loads(original)["compose"]["compose.yaml"]
-    data = json.loads(approved)
+    compose = tomllib.loads(path.read_text())["compose"]
+    data = json.loads(compose["compose.yaml"])
     for key in ("cap_drop", "security_opt"):
         del data["services"]["generator"][key]
-    # fixture-write: Drop the generator hardening allowance in a synthetic contract tree.
-    path.write_text(original.replace(approved, json.dumps(data)))
+    compose["compose.yaml"] = json.dumps(data)
+    write_compose_policy(path, compose)
     result = run_contract(contract_tree)
     assert result.returncode == 1
     assert "generator: network membership" in result.stderr
@@ -404,13 +426,9 @@ def test_contract_rejects_private_and_split_hosts(contract_tree, source, host, l
     assert f"src/synthetic_probe.py:{line}: unreviewed outbound host: {host}" in result.stderr.splitlines()
 
 
-def test_contract_allowances_equal_findings():
-    spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
-    checker = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(checker)
-
+def test_contract_allowances_equal_findings(network_checker):
     findings = Counter((path, kind, digest, detail)
-                       for path, _, kind, digest, detail in checker.source_inventory(ROOT))
+                       for path, _, kind, digest, detail in network_checker.source_inventory(ROOT))
     policy = tomllib.loads((ROOT / "config/egress-allowlist.toml").read_text())
     allowances = Counter((item["path"], item["kind"], item["digest"], item["detail"])
                          for item in policy["source"])
@@ -549,16 +567,13 @@ def test_contract_rejects_unreviewed_model_and_media_clients(contract_tree, modu
     ('import httpx\ndef probe(destination):\n    c = httpx.Client()\n    get = c.get\n    # NEW\n', 'get(destination)', 'httpx.Client.get'),
     ('import httpx\ndef probe(destination):\n    c = httpx.Client()\n    c.get(destination)\n    # NEW\n', 'c.get(destination)', 'httpx.Client.get'),
 ])
-def test_contract_detects_only_new_call_with_approved_imports(contract_tree, baseline, addition, detail):
+def test_contract_detects_only_new_call_with_approved_imports(contract_tree, network_checker, baseline, addition, detail):
     path = contract_tree / "src/synthetic_probe.py"
     # fixture-write: Mutate the synthetic contract tree for boundary validation.
     path.write_text(baseline)
-    spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
-    checker = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(checker)
     policy = contract_tree / "config/egress-allowlist.toml"
     with policy.open("a") as stream:
-        for relative, _, kind, digest, description in checker.source_inventory(contract_tree):
+        for relative, _, kind, digest, description in network_checker.source_inventory(contract_tree):
             if relative == "src/synthetic_probe.py":
                 # fixture-write: Mutate the synthetic contract tree for boundary validation.
                 stream.write('\n[[source]]\n' + '\n'.join(
