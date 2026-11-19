@@ -415,7 +415,7 @@ def _matched_external_id(view: Mapping[str, object], job: MediaJobRecord) -> str
     if view.get("source_sha256") != job.source_sha256 or view.get("size_bytes") != job.byte_size:
         raise MediaProcessorError("The transcription service did not preserve the submitted source identity.")
     external_id = str(view.get("job_id") or view.get("id") or "")
-    if not external_id:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{8,100}", external_id):
         raise MediaProcessorError("The transcription service returned an invalid job identity.")
     return external_id
 
@@ -795,11 +795,7 @@ class MediaCoordinator:
                     quality=transcript.quality,
                     provenance=transcript.provenance,
                 )
-                if external_id and self.processor is not None and self.processor.available:
-                    try:
-                        self.processor.delete(owner, external_id)
-                    except MediaProcessorError:
-                        pass
+                self.cancel_external(job)
                 return
             known_hold = (
                 job.preflight.get("outcome") in {"no_audio", "no_speech", "uncertain", "failed"}
@@ -1006,21 +1002,32 @@ class MediaCoordinator:
                 pass
 
     def cancel_external(self, media_job: MediaJobRecord) -> bool:
-        """Strictly remove processor-owned bytes for a matter purge."""
+        """Remove processor scratch, including jobs whose legacy retry lost the ID."""
 
-        if not media_job.external_job_id:
+        external_id = media_job.external_job_id
+        if not external_id and self.workspace.media_transcript(
+            media_job.matter_id, media_job.document_id, media_job.source_version_id
+        ) is None:
             return True
-        if self.processor is None:
+        if self.processor is None or not self.processor.available:
             return False
         owner = processor_owner(media_job.media_job_id)
+        if not external_id:
+            try:
+                match = self.processor.find_job(owner, media_job.source_sha256, media_job.byte_size)
+                if match is None:
+                    return True
+                external_id = _matched_external_id(match, media_job)
+            except MediaProcessorError:
+                return False
         try:
-            self.processor.cancel(owner, media_job.external_job_id)
+            self.processor.cancel(owner, external_id)
         except MediaProcessorError:
             # A completed processor job may no longer accept cancellation; an
             # independently successful delete is still sufficient.
             pass
         try:
-            self.processor.delete(owner, media_job.external_job_id)
+            self.processor.delete(owner, external_id)
         except MediaProcessorNotFound:
             return True
         except MediaProcessorError:

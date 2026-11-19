@@ -46,6 +46,9 @@ passages and speaker labels, even when the transcription service is offline.
 Corrections, citation timestamps, and the processor's recorded quality and
 provenance stay with the original source version. If the transcript has yet to
 be imported, recovery checks for an earlier processor job before resubmission.
+On older retries that lost the processor job ID, Exculpata uses the job owner,
+source digest, and byte count to locate temporary processor files. Source and
+matter deletion wait until the processor can confirm cleanup.
 Older releases recorded the degraded status only when the job finished. For a
 job interrupted between import and completion on those releases, consult the
 saved transcript warnings and quality details when reviewing the result.

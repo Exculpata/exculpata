@@ -9,8 +9,10 @@ from tests.test_matter_media_workflow import (
 from tests.test_media_preflight import app_for, upload, wait_job
 
 
-@pytest.mark.parametrize("known_processor_job", [False, True])
-def test_retry_recovers_saved_review_after_transcript_import(tmp_path, monkeypatch, known_processor_job):
+@pytest.mark.parametrize(("known_processor_job", "processor_online"), [
+    (True, True), (False, True), (False, False),
+])
+def test_retry_recovers_saved_review_after_transcript_import(tmp_path, monkeypatch, known_processor_job, processor_online):
     class DegradedProcessor(ConfigurableCleanupMediaProcessor):
         def job(self, owner, external_job_id):
             return {**super().job(owner, external_job_id), "status": "degraded"}
@@ -53,7 +55,7 @@ def test_retry_recovers_saved_review_after_transcript_import(tmp_path, monkeypat
                                    (failed.media_job_id,))
 
     processor.cleanup_outcome = "success"
-    with TestClient(app_for(runtime, processor if known_processor_job else OfflineMediaProcessor())) as client:
+    with TestClient(app_for(runtime, processor if processor_online else OfflineMediaProcessor())) as client:
         bench = client.app.state.workbench
         matter = bench.matter(slug, ACTOR)
         document = bench.source_store(matter).get_by_action_token(token)
@@ -71,6 +73,16 @@ def test_retry_recovers_saved_review_after_transcript_import(tmp_path, monkeypat
         support = client.get(citation.href)
         assert support.status_code == 200 and 'data-start-ms="0"' in support.text
         assert correction in support.text
+        if not processor_online:
+            bench.media.close()
+            refused = client.post(source + "/remove", follow_redirects=False)
+            assert refused.status_code == 409 and "could not be removed yet" in refused.text
+            assert not bench.media.cancel_matter(matter.matter_id)
+    if not processor_online:
+        assert processor.jobs
+        with TestClient(app_for(runtime, processor)) as client:
+            client.app.state.workbench.media.close()
+            assert client.post(source + "/remove", follow_redirects=False).status_code == 303
     assert processor.submissions == 1
-    if known_processor_job:
-        assert processor.deleted == [(f"ci-{failed.media_job_id}", failed.external_job_id)]
+    assert processor.deleted == [(f"ci-{failed.media_job_id}", failed.external_job_id)]
+    assert not processor.jobs
