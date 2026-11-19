@@ -7879,3 +7879,9 @@ kind = "host"
 digest = "24d5f69bcfd1907cfb35c93d284fe7632e161c6751a8e100fa072ce546fc9598"
 detail = "attachment.txt"
 
+# Pytest uses a double colon to separate a test file from a node name.
+[[source]]
+path = "scripts/application-test-shard.py"
+kind = "host"
+digest = "71546855d6279ef70d20909b292c42c2dcb02cd06bde01485da52d13e304ebf4"
+detail = "::"

@@ -205,8 +205,12 @@ filters that could leave a required result missing.
 
 The application suite runs in two parallel `application-shards` matrix jobs.
 `scripts/application-test-shard.py` sorts the application test files and assigns
-alternating files to each shard; new files are included automatically. Each shard
-keeps the existing worker limits and diagnostics, with a separate artifact name.
+alternating files to each shard. New files are included automatically. Before
+starting its parallel tests, shard 0 runs `scripts/application-test-shard.py --check`
+to compare the full pytest collection with the two shard selections and the
+tests reserved for the serial job. The check has a ten-minute CI step budget.
+`make test` and `make test-fast` also run this check before executing the application tests.
+Each shard retains its own diagnostics and test report.
 The existing `application` required check aggregates both shards, the post-shard
 row budget job and classification;
 failed, cancelled or skipped dependencies cannot produce a successful aggregate.

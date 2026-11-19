@@ -3,6 +3,7 @@
 from collections import Counter
 import os
 from pathlib import Path
+import runpy
 import shlex
 import subprocess
 import sys
@@ -128,28 +129,35 @@ def test_failed_application_gate_does_not_run_guard_without_checkout(tmp_path, j
         assert any(line.startswith("SKIP (condition)") and step["name"] in line for line in messages)
 
 
-def test_shard_collection_excludes_only_serial_tests(tmp_path):
-    def collect(*args):
-        result = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", *args],
-                                cwd=ROOT, env={**os.environ, "PYTEST_ADDOPTS": "",
-                                               "PYTHONPATH": os.pathsep.join((str(ROOT / "src"), str(ROOT)))},
-                                capture_output=True, text=True, timeout=60)
-        assert result.returncode == 0, result.stdout + result.stderr
-        return {line for line in result.stdout.splitlines() if line.startswith("tests/") and "::" in line}
+def test_collection_comparison_accepts_only_complete_disjoint_shards():
+    check = runpy.run_path(str(SCRIPT))["verify_collections"]
+    sibling = "tests/test_discovery_review_index.py::test_rebuild_step_row_budget[10]"
+    ordinary = "tests/test_example.py::test_example"
+    all_nodes = [*SERIAL_TESTS, ordinary, sibling]
+    check(all_nodes, [[ordinary], [sibling]])
 
-    all_nodes = collect("tests")
-    shard_nodes = set()
-    for index in (0, 1):
-        arguments = subprocess.check_output([sys.executable, str(SCRIPT), str(index)], text=True)
-        argument_file = tmp_path / f"shard-{index}.txt"
-        argument_file.write_text(arguments)
-        nodes = collect("@" + str(argument_file))
-        assert not set(SERIAL_TESTS) & nodes
-        assert not shard_nodes & nodes
-        shard_nodes.update(nodes)
-    assert set(SERIAL_TESTS) <= all_nodes
-    assert shard_nodes == all_nodes - set(SERIAL_TESTS)
-    assert any("test_rebuild_step_row_budget[" in node for node in shard_nodes)
+    for shards, diagnostic in (
+        ([[], [sibling]], "missing"),
+        ([[ordinary], [ordinary, sibling]], "duplicate"),
+        ([[ordinary, sibling, sibling], []], "duplicate"),
+        ([[ordinary, ROW_BUDGET], [sibling]], "serial"),
+        ([[ordinary], [sibling, "tests/test_example.py::test_other"]], "unexpected"),
+    ):
+        with pytest.raises(ValueError, match=diagnostic):
+            check(all_nodes, shards)
+    with pytest.raises(ValueError, match="serial"):
+        check([ROW_BUDGET, ordinary, sibling], [[ordinary], [sibling]])
+
+
+def test_full_collection_check_runs_once_before_parallel_application_tests():
+    steps = workflow_jobs()["application-shards"]["steps"]
+    [inventory] = [step for step in steps if "application-test-shard.py --check" in step.get("run", "")]
+    run = next(step for step in steps if step["name"] == "Run application suite")
+    assert steps.index(inventory) < steps.index(run)
+    assert inventory["run"] == ".venv/bin/python scripts/application-test-shard.py --check"
+    assert inventory["if"] == "${{ needs.change-scope.outputs.docs_only != 'true' && matrix.shard == 0 }}"
+    assert inventory["timeout-minutes"] == 10
+    assert "continue-on-error" not in inventory
 
 
 def test_matrix_runs_selected_files_and_retains_separate_reports():
