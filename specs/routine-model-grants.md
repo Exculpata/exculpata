@@ -10,6 +10,6 @@ With two synthetic matters, authorize one and capture the provider requests. Onl
 
 ## Problem and approach
 
-An installation-level configuration identifies a provider but cannot establish permission for an individual matter. Store approvals durably with their matter, capability, canonical origin and model. Check the current grant at dispatch, including retries and each background batch. Record the operator's changes in the matter audit trail.
+An installation-level configuration identifies a provider but cannot establish permission for an individual matter. Store approvals durably with their matter, capability, canonical endpoint and model. Include any configured generation path prefix in the endpoint identity. Check the current grant at dispatch, including retries and each background batch. Record the operator's changes in the matter audit trail.
 
 Existing matters have no standing external approval on upgrade. Generation should report that approval is needed. Retrieval and indexing should keep local word search available. The installation-wide rebuild keeps its own reviewed plan.

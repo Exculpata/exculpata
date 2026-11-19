@@ -671,10 +671,17 @@ def test_audit_manifest_discloses_omissions_without_exporting_details(archive_ca
         cleanup_archive(artifact)
 
 
-def test_download_purge_and_session_authority_are_not_exported_or_snapshot_inputs(archive_case):
+def test_download_purge_and_session_authority_are_not_exported_or_snapshot_inputs(archive_case, monkeypatch):
     from case_intelligence.matter_archive_schema import CASE_AUTHORIZATION_TABLES
+    from case_intelligence.external_model_grants import configured_model_destination
     bench, matter, store = archive_case
     workspace = bench.workspace
+    model_endpoint = 'https://synthetic-model.example.test/private-tenant'
+    model_name = 'synthetic-private-grant-target'
+    monkeypatch.setenv('CASE_INTELLIGENCE_GENERATOR_BACKEND', 'openai')
+    monkeypatch.setenv('CASE_INTELLIGENCE_GENERATOR_URL', model_endpoint)
+    monkeypatch.setenv('CASE_INTELLIGENCE_GENERATOR_MODEL', model_name)
+    workspace.set_model_grant(matter.matter_id, configured_model_destination('generation'), OWNER, approved=True)
     session = workspace.create_session(OWNER, 'c'*64, 'test', '2099-01-01T00:00:00Z', '2099-01-02T00:00:00Z')
     current = close(bench, matter)
     before = build_matter_archive(bench, matter, OWNER, source_store=store)
@@ -690,6 +697,8 @@ def test_download_purge_and_session_authority_are_not_exported_or_snapshot_input
     oidc_subject = 'f8'*32
     oidc_configuration = 'b6'*32
     oidc_authorization = 'SYNTHETIC-PRIVATE-OIDC-AUTHORIZATION'
+    monkeypatch.delenv('CASE_INTELLIGENCE_GENERATOR_BACKEND')
+    workspace.observe_model_destinations()
     # Seed valid-shaped operational rows solely to exercise the export boundary;
     # this does not claim that direct database writes establish purge authority.
     with fixture_write(workspace):
@@ -726,7 +735,8 @@ def test_download_purge_and_session_authority_are_not_exported_or_snapshot_input
                 assert set(disclosure['columns'].values()) == {'excluded: operational authorization state'}
             material = b'\n'.join(archive.read(name) for name in archive.namelist())
             for canary in (session.session_id, 'c'*64, export, archive_digest, snapshot_digest,
-                           attempt, purge, binding_digest, oidc_subject, oidc_configuration, oidc_authorization):
+                           attempt, purge, binding_digest, oidc_subject, oidc_configuration, oidc_authorization,
+                           model_endpoint, model_name):
                 assert canary.encode() not in material
     finally:
         cleanup_archive(artifact)

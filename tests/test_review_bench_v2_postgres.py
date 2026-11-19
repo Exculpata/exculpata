@@ -86,6 +86,54 @@ def test_enabling_embeddings_after_lexical_intake_requires_rebuild(
 
 
 @pytest.mark.postgres
+def test_unapproved_matter_keeps_lexical_search_without_disabling_approved_embeddings_after_restart(
+    endpoint, monkeypatch, tmp_path, postgres_test_dsn,
+):
+    import psycopg
+    from fastapi.testclient import TestClient
+
+    from case_intelligence.external_model_grants import configured_model_destination
+    from tests.test_milestone_a_workbench import WEB_ACTOR, _create_matter
+    from tests.test_workbench_retrieval_capabilities import _app
+
+    monkeypatch.delenv("CASE_INTELLIGENCE_RERANK_URL")
+    monkeypatch.delenv("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", raising=False)
+    monkeypatch.setenv("CASE_INTELLIGENCE_POSTGRES_DSN", postgres_test_dsn)
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
+    matters = {}
+    for restart in (False, True):
+        with TestClient(_app(tmp_path)) as client:
+            bench = client.app.state.workbench
+            if not restart:
+                # Start with a NULL vector, then index a different matter through its approved endpoint.
+                for label in ("Bronze", "Amber"):
+                    slug = _create_matter(client, f"Synthetic {label}")
+                    matter = bench.matter(slug, WEB_ACTOR)
+                    matters[label] = matter
+                    if label == "Amber":
+                        bench.workspace.set_model_grant(
+                            matter.matter_id, configured_model_destination("embedding"), WEB_ACTOR, approved=True,
+                        )
+                    client.post(f"/matters/{slug}/uploads", files={
+                        "files": (f"{label}.txt", f"Synthetic {label} bicycle receipt.".encode(), "text/plain"),
+                    }).raise_for_status()
+
+            with psycopg.connect(postgres_test_dsn) as connection:
+                rows = connection.execute(
+                    "SELECT matter_id, embedding IS NOT NULL FROM review_chunk WHERE matter_id=ANY(%s)",
+                    ([matter.matter_id for matter in matters.values()],),
+                ).fetchall()
+            assert sorted(rows) == sorted([(matters["Bronze"].matter_id, False), (matters["Amber"].matter_id, True)])
+            for label, saved_matter in matters.items():
+                matter = bench.matter(saved_matter.slug, WEB_ACTOR)
+                citations = bench.search(matter, f"{label} bicycle")
+                assert [(hit.matter_id, hit.source_name) for hit in citations] == [(matter.matter_id, f"{label}.txt")]
+            inputs = [body["input"] for body in endpoint["bodies"] if body["input"] != ["Synthetic diagnostic text"]]
+            expected = [["Synthetic Amber bicycle receipt."], ["Amber bicycle"]]
+            assert inputs == (expected + [["Amber bicycle"]] if restart else expected)
+
+
+@pytest.mark.postgres
 def test_external_rebuild_approves_and_commits_both_matters_together(endpoint, monkeypatch):
     import json
     import psycopg

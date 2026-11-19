@@ -13,6 +13,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from contextlib import nullcontext
 import hashlib
 import json
 import math
@@ -23,8 +24,10 @@ import subprocess
 import tempfile
 
 from .generation import (
-    EvidenceItem, GenerationRejected, GenerationUnavailable, OllamaGenerator, _bounded_json_get,
+    EvidenceItem, GenerationRejected, GenerationUnavailable, GroundedGenerationService, OllamaGenerator,
+    _bounded_json_get, generator_from_environment,
 )
+from .evaluation_generation import _reviewed_endpoint_scope
 from .claim_evaluation import validate_runtime
 from .question_drafting import PURPOSES, draft_questions, unsupported_quotes
 from .question_output_policy import (
@@ -284,7 +287,7 @@ def binding_problems(execution: dict, identity: dict, pin: dict | None = None) -
     return problems
 
 
-def receipt(service, path: Path = DEFAULT_CASES, *, identity=model_identity,
+def receipt(service=None, path: Path = DEFAULT_CASES, *, identity=model_identity,
             profile: str | None = None, runtime: dict | None = None, explain=False) -> dict:
     """Run the set and record a receipt bound to the code and the pinned model.
 
@@ -298,6 +301,11 @@ def receipt(service, path: Path = DEFAULT_CASES, *, identity=model_identity,
         raise ValueError("Give both a generator profile and a runtime profile, or neither.")
     pin = model_pin(profile, runtime) if runtime is not None else None
     data, fingerprint = load_cases(path)
+    evaluation_scope = nullcontext()
+    if service is None:
+        service = GroundedGenerationService(generator_from_environment())
+        if fingerprint == QUESTION_SET_FINGERPRINT and identity is model_identity:
+            evaluation_scope = _reviewed_endpoint_scope(service.client)
     client = service.client
     result = dict(format=EVALUATION_FORMAT, synthetic_only=True,
                   acceptance_policy=dict(ACCEPTANCE_POLICY),
@@ -324,7 +332,8 @@ def receipt(service, path: Path = DEFAULT_CASES, *, identity=model_identity,
             return None
     observed = dict(before=observe())
     try:
-        result.update(evaluate(service, data, explain=explain))
+        with evaluation_scope:
+            result.update(evaluate(service, data, explain=explain))
     except GenerationUnavailable as exc:
         result["limitation"] = f"The configured runtime failed during evaluation: {exc}"
         return result

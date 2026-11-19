@@ -83,6 +83,7 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
     authority to repair citations or bypass deterministic verification.
     """
     from .generation import GenerationUnavailable, _bounded_json_request, _parse_model_content
+    from .generation_matter import _evaluation_request_options
     from .question_drafting import QUESTION_SCHEMA, question_prompt
     from .question_grounding import QuestionDraftReceipt, audit_attempts
     from .question_judging import judge_candidates
@@ -118,7 +119,7 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
         calls.append(record)
         start = time.monotonic()
         try:
-            response = _bounded_json_request(url, payload, timeout=timeout, **kwargs)
+            response = _bounded_json_request(url, payload, timeout=timeout, **kwargs, **_evaluation_request_options(client))
             if backend == "ollama":
                 message = response.get("message")
                 record.update(finish_reason=response.get("done_reason"),

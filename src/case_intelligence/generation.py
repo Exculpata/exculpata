@@ -43,6 +43,7 @@ from .generation_errors import (
     GenerationInvalidContent as GenerationInvalidContent,
     GenerationRejected, GenerationGroundingRejected,
 )
+from .generation_matter import _evaluation_request_options, require_generation_grant
 from .generator_schema import openai_response_format, refuse_tool_request
 from .model_qualification import UNVALIDATED_MODEL_LABEL, qualification_label
 from .service_endpoints import validate_service_endpoint
@@ -271,6 +272,7 @@ def _bounded_json_request(
     *,
     timeout: float,
     headers: Mapping[str, str] | None = None,
+    evaluation_client=None,
     opener: urllib.request.OpenerDirector | None = None,
 ) -> Mapping[str, object]:
     refuse_tool_request(payload)
@@ -284,6 +286,7 @@ def _bounded_json_request(
         from .generator_transport import open_generator_request
         open_request = opener.open if opener is not None else lambda request, **kwargs: open_service_request(request, environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", **kwargs)
         if urlparse(url).scheme == "https":
+            require_generation_grant(url, payload.get("model"), evaluation_client)
             open_request = lambda request, **kwargs: open_generator_request(request, opener=opener, **kwargs)
         with open_request(request, timeout=timeout) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
@@ -601,6 +604,7 @@ class OllamaGenerator:
                     "keep_alive": "5m",
                 }),
                 timeout=self.timeout, headers=self._headers,
+                **_evaluation_request_options(self),
                 **({"opener": self._opener} if self._opener is not None else {}),
             )
 
@@ -751,6 +755,7 @@ class OpenAICompatibleGenerator:
             return _bounded_json_request(
                 f"{self.endpoint}/v1/chat/completions", build(attempt),
                 timeout=self.timeout, headers=self._headers,
+                **_evaluation_request_options(self),
                 **({"opener": self._opener} if self._opener is not None else {}),
             )
 

@@ -67,7 +67,7 @@ class RecordedDispatch:
         return response
 
     def send(self, client, request, repair):
-        from .generation import GenerationUnavailable
+        from .generation_errors import GenerationApprovalRequired, GenerationUnavailable
         # Pin the same chat-template controls on both endpoints: relying on
         # different adapter defaults would invalidate complete-request admission.
         request['add_generation_prompt'] = True
@@ -79,6 +79,8 @@ class RecordedDispatch:
             token_request['chat_template_kwargs'] = request['chat_template_kwargs']
         try:
             tokens = self._send(client, '/tokenize', token_request, repair)
+        except GenerationApprovalRequired:
+            raise
         except GenerationUnavailable as exc:
             raise WorkspaceProblem('Saved context requires the configured runtime chat tokenizer and context window. Tokenizer access is unavailable; turn context off or restore the supported runtime.') from exc
         count, window = tokens.get('count'), tokens.get('max_model_len')

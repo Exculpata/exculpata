@@ -384,6 +384,8 @@
       {% endif %}
     </section>
 
+    {% if can_manage_members %}{% include "workbench_external_model_grants.html" %}{% endif %}
+
     <div class="setup-actions">
       {% if source_library.stats.ready %}
       <a class="button button-primary" href="/matters/{{ matter.slug }}">Open matter</a>

@@ -8,6 +8,7 @@ import json
 import sqlite3
 from typing import Iterable
 
+from .generation_matter import generation_matter_scope
 from .workspace_store import WorkspaceProblem
 
 
@@ -517,9 +518,10 @@ def _process_text_source(bench, run, decision, cancelled):
             rationale = 'This text range could not be classified; direct review is required.'
             ledger.charge_call(run)
             try:
-                classified = bench.generator.classify_source(criterion=version.instructions,
-                    include_guidance=version.include_guidance, exclude_guidance=version.exclude_guidance, evidence=evidence,
-                    output_tokens=policy.output_tokens)
+                with generation_matter_scope(bench.workspace, run.matter_id):
+                    classified = bench.generator.classify_source(criterion=version.instructions,
+                        include_guidance=version.include_guidance, exclude_guidance=version.exclude_guidance, evidence=evidence,
+                        output_tokens=policy.output_tokens)
                 if classified.decision not in {'include', 'not_identified'} or (classified.decision == 'include' and classified.used_evidence_ids != ('S1',)):
                     raise GenerationRejected('Text classification did not retain exact source support')
                 state, label, rationale = 'processed', ('include' if classified.decision == 'include' else 'exclude'), classified.rationale

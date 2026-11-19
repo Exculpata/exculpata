@@ -1,0 +1,29 @@
+{% set rows = external_model_grant_rows(matter.matter_id) %}
+{% if rows %}
+<section class="case-team-card" id="model-grants" aria-labelledby="model-grants-heading">
+  <h2 id="model-grants-heading">External model permissions</h2>
+  <p>Approval allows a service to receive material from this matter. Changing the endpoint or model requires fresh approval. Revoking approval stops future requests.</p>
+  {% for destination, label, description, approved, configuration_id in rows %}
+  <div>
+    <h3 id="model-grant-{{ loop.index }}">{{ label }}</h3>
+    <p>{{ description }}</p>
+    <dl>
+      <dt>Service endpoint</dt><dd id="model-endpoint-{{ loop.index }}">{{ destination.endpoint }}</dd>
+      <dt>Model</dt><dd id="model-name-{{ loop.index }}">{{ destination.model }}</dd>
+      <dt>Status</dt><dd>{{ 'Approved for this matter' if approved else 'Approval needed' }}</dd>
+    </dl>
+    <form method="post" action="/matters/{{ matter.slug }}/model-grants">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="configuration_id" value="{{ configuration_id }}">
+      <input type="hidden" name="capability" value="{{ destination.capability }}">
+      <input type="hidden" name="endpoint" value="{{ destination.endpoint }}">
+      <input type="hidden" name="model" value="{{ destination.model }}">
+      <button class="button button-secondary" type="submit" name="decision" value="{{ 'revoke' if approved else 'approve' }}"
+              aria-describedby="model-grant-{{ loop.index }} model-endpoint-{{ loop.index }} model-name-{{ loop.index }}">
+        {{ 'Revoke approval' if approved else 'Approve for this matter' }}
+      </button>
+    </form>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}

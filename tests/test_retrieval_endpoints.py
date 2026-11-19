@@ -8,7 +8,13 @@ import pytest
 
 from case_intelligence import retrieval_endpoints as endpoints
 from case_intelligence.embedding_index import record_embedding_index
+from case_intelligence.external_model_grants import model_destination
 from case_intelligence.review_bench_v2 import RemoteEmbeddingAdapter
+
+
+def _approved_adapter(adapter, capability, *models):
+    approved = {model_destination(capability, "https://models.example.test", model) for model in models}
+    return adapter.for_matter("matter", lambda matter_id, destination: matter_id == "matter" and destination in approved)
 
 
 @pytest.fixture
@@ -139,7 +145,7 @@ def test_doctor(endpoint, monkeypatch, caplog, role, condition, expected):
 
 
 def test_runtime_routes_and_refuses_changed_identity(endpoint, monkeypatch):
-    adapter = RemoteEmbeddingAdapter("http://retrieval:8767")
+    adapter = _approved_adapter(RemoteEmbeddingAdapter("http://retrieval:8767"), "embedding", "synthetic", "changed")
     assert len(adapter.embed(["Synthetic evidence"])[0]) == 768
     assert endpoint["body"] == {"model": "synthetic", "input": ["Synthetic evidence"]}
     monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_MODEL", "changed")
@@ -170,7 +176,7 @@ def test_legacy_index_identity_cannot_authorize_existing_vectors(endpoint, popul
     assert record_embedding_index(path, model=config.model, revision=config.identity, populated=True)
     assert path.read_text() == legacy
     with pytest.raises(RuntimeError, match="rebuilt"):
-        RemoteEmbeddingAdapter("").embed(["Synthetic evidence"])
+        _approved_adapter(RemoteEmbeddingAdapter(""), "embedding", "synthetic").embed(["Synthetic evidence"])
     assert endpoint["requests"] == []
     assert "rebuild" in endpoints.doctor("EMBEDDING").lower()
     assert record_embedding_index(path, model=config.model, revision=config.identity, populated=False) == ""
@@ -230,8 +236,9 @@ def test_invalid_configuration(endpoint, monkeypatch, setting, value):
 
 def test_runtime_dimension_failure(endpoint):
     endpoint["dimension"] = 2
+    adapter = _approved_adapter(RemoteEmbeddingAdapter("http://retrieval:8767"), "embedding", "synthetic")
     with pytest.raises(RuntimeError, match="rebuilt"):
-        RemoteEmbeddingAdapter("http://retrieval:8767").embed(["Synthetic evidence"])
+        adapter.embed(["Synthetic evidence"])
 
 
 @pytest.mark.parametrize("role", ["EMBEDDING", "RERANK"])
@@ -247,7 +254,8 @@ def test_proxy_destinations(role):
 def test_rerank_runtime_and_local_switch(endpoint, monkeypatch):
     from case_intelligence.review_bench_v2 import Candidate, RemoteRerankerAdapter
     candidate = Candidate("matter", "document", "chunk", "Synthetic", 1, "Synthetic passage")
-    ranked = RemoteRerankerAdapter("http://retrieval:8767").rerank("Synthetic query", [candidate])
+    adapter = _approved_adapter(RemoteRerankerAdapter("http://retrieval:8767"), "reranking", "synthetic")
+    ranked = adapter.rerank("Synthetic query", [candidate])
     assert ranked[0].chunk_id == candidate.chunk_id and ranked[0].score == 0.75
     assert endpoint["body"]["documents"] == [candidate.text]
     assert endpoints.retrieval_ready("", lambda url: False)

@@ -16,6 +16,7 @@ from typing import Mapping, Sequence
 from fastapi import Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from .generation_matter import generation_matter_scope
 from .generation import EvidenceItem, GenerationRejected, GenerationUnavailable
 from .store_records import MatterRecord, NotebookItemRecord, WorkspaceProblem
 
@@ -95,7 +96,8 @@ class AnswerQuestionDrafts:
             self.workspace.membership(matter.matter_id, actor_id)
             topic, passages = self._answer_passages(matter, conversation_id, message_id)
         evidence = [passage[0] for passage in passages]
-        draft = draft_questions(self.generator, purpose, topic, evidence)
+        with generation_matter_scope(self.workspace, matter.matter_id):
+            draft = draft_questions(self.generator, purpose, topic, evidence)
         # Access may have been revoked, or a cited passage changed, during the model
         # call: nothing is returned then, so a draft is only shown against current passages.
         with self.source_store(matter).mutation_guard(), self.workspace._lock:

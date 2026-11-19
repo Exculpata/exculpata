@@ -18,6 +18,7 @@ from typing import Callable, Mapping, Protocol, Sequence
 
 import httpx
 
+from .generation_matter import generation_matter_scope
 from .media_preflight import (
     MESSAGES as PREFLIGHT_MESSAGES,
     REVISION as PREFLIGHT_REVISION,
@@ -688,7 +689,8 @@ class MediaCoordinator:
                 raise MediaProcessorError(
                     "The transcript does not contain passages for an overview."
                 )
-            result = self.summarize_transcript(document, segments)
+            with generation_matter_scope(self.workspace, summary.matter_id):
+                result = self.summarize_transcript(document, segments)
             finished = self.workspace.finish_media_summary(
                 summary.transcript_id,
                 payload=result.payload,

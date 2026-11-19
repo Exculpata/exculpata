@@ -110,7 +110,7 @@ def test_cli_explain_keeps_json_stdout_and_requires_a_real_model(monkeypatch, ca
     cli = runpy.run_path(str(ROOT / 'scripts/evaluate-question-drafts.py'))
     def forbidden():
         raise AssertionError('Offline replay must not read runtime configuration or instantiate a generator')
-    monkeypatch.setitem(cli['main'].__globals__, 'generator_from_environment', forbidden)
+    monkeypatch.setattr('case_intelligence.question_draft_evaluation.generator_from_environment', forbidden)
     assert cli['main'](['--replay', str(RECORDED), '--explain', '--require-model']) == 1
     output = capsys.readouterr()
     assert json.loads(output.out)['model_gate'] == 'not_run'

@@ -12,6 +12,7 @@ import importlib.util
 import json
 import math
 import os
+from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -35,6 +36,7 @@ from .generation import (
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SUITE = (ROOT / "benchmarks" / "defense-workflow" / "v2" / "suite").with_suffix(".json")
+REVIEWED_SUITE_FINGERPRINT = "4b1b985b6ebe748fc11cbbfa2b5e03de70c233013b843668000f601ec6a6caab"
 _POSTGRES_DSN_ENV = "CASE_REVIEW_POSTGRES_TEST_DSN"
 _LEARNED_DENSE_FLOOR = 0.72
 _LEARNED_RERANK_FLOOR = 0.80
@@ -1215,6 +1217,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         suite = load_suite(args.suite)
         record = _model_record(args.mode, args.profile)
         judge = None
+        evaluation_scope = nullcontext()
         if args.mode == "stub":
             answerer: Answerer = ReferenceStub()
         else:
@@ -1226,6 +1229,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "CASE_INTELLIGENCE_GENERATOR_URL, and CASE_INTELLIGENCE_GENERATOR_MODEL, or use --mode stub"
                 )
             answerer = ConfiguredAnswerer(service)
+            if suite.fingerprint == REVIEWED_SUITE_FINGERPRINT:
+                from .evaluation_generation import _reviewed_endpoint_scope
+                evaluation_scope = _reviewed_endpoint_scope(client)
             if args.judge:
                 judge = _judge_from_client(client)
         if args.retriever == "postgres":
@@ -1235,10 +1241,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             retriever = rank_passages
             retriever_record = lexical_retriever_record()
-        scorecard = run_eval(
-            suite, answerer, top_k=args.top_k, judge=judge, model=record,
-            retriever=retriever, retriever_record=retriever_record,
-        )
+        with evaluation_scope:
+            scorecard = run_eval(
+                suite, answerer, top_k=args.top_k, judge=judge, model=record,
+                retriever=retriever, retriever_record=retriever_record,
+            )
         json_path, markdown_path = write_scorecard(args.output_dir, scorecard, force=args.force)
         if postgres is not None:
             postgres.close()

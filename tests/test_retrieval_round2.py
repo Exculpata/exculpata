@@ -72,6 +72,9 @@ def test_rerank_only_orders_lexical_matches(retrieval_environment, monkeypatch, 
         document = PilotDocument("synthetic-document", "Synthetic.txt", "synthetic.txt", "text/plain",
             len(text), "ready", "", [{"number": 1, "text": text}], version_id="synthetic-v1")
         candidate = bench._candidate(matter, document, document.parsed_units()[0], 1)
+        monkeypatch.setattr(bench.workspace, "model_grant_allows",
+                            lambda matter_id, dest: (matter_id, dest.capability, dest.endpoint, dest.model) ==
+                            (matter.matter_id, "reranking", url, "synthetic-reranker"))
         retriever = bench._retriever(matter)
         monkeypatch.setattr(retriever.backend, "lexical", lambda *a, **kw: (candidate,))
         monkeypatch.setattr(retriever.backend, "dense", lambda *a, **kw: pytest.fail("No embedding endpoint"))
