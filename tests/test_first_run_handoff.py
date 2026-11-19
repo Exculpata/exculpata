@@ -15,6 +15,7 @@ import subprocess
 import pytest
 
 from case_intelligence.local_accounts import LocalAccountRepository
+from case_intelligence.ocr_diagnostic import DISABLED as OCR_DISABLED, FAILED as OCR_FAILED
 from tests.test_oss_installer import installer
 
 ROOT = Path(__file__).parents[1]
@@ -493,6 +494,44 @@ def test_resume_keeps_a_safe_external_canonical_account_directory(tmp_path, monk
     assert args.account_root == external
     assert not paths["accounts"].exists()
     assert any("accounts" in command and "list" in command for command in commands)
+
+
+@pytest.mark.parametrize(("dry_run", "reply", "returncode", "expected"), [
+    (True, "", 0, "Local PDF OCR not checked (dry run)."),
+    (False, '{"ocr":"ok"}', 0, "local PDF OCR :: ok"),
+    (False, json.dumps({"ocr": OCR_DISABLED}), 0, f"local PDF OCR :: {OCR_DISABLED}"),
+    (False, json.dumps({"ocr": OCR_FAILED}), 0, f"[ WARN ] local PDF OCR :: {OCR_FAILED}"),
+    (False, '{"ocr":"synthetic-private-output"}', 0, "Local PDF OCR diagnostic unavailable"),
+    (False, '{"ocr":"ok","extra":"synthetic-private-output"}', 0, "Local PDF OCR diagnostic unavailable"),
+    (False, '{"ocr":[]}', 0, "Local PDF OCR diagnostic unavailable"),
+    (False, '{"ocr":"ok"}' + " " * 4096, 0, "Local PDF OCR diagnostic unavailable"),
+    (False, None, 0, "Local PDF OCR diagnostic unavailable"),
+    (False, "", 1, "Local PDF OCR diagnostic unavailable"),
+])
+def test_doctor_reports_local_pdf_ocr_on_node_without_models(tmp_path, monkeypatch, capsys,
+                                                            dry_run, reply, returncode, expected):
+    root, args, _ = configured_node(tmp_path)
+    args.dry_run = dry_run
+    commands = []
+
+    def probe(command, *, timeout):
+        commands.append(command)
+        if reply is None:
+            raise subprocess.TimeoutExpired(command, timeout, stderr="synthetic-private-timeout")
+        return subprocess.CompletedProcess(command, returncode, reply, "synthetic-private-error")
+
+    monkeypatch.setattr(installer, "_probe", probe)
+    monkeypatch.setattr(installer, "_run", lambda *a, **kw: None)
+    monkeypatch.setattr(installer, "_wait_health", lambda *a: None)
+    monkeypatch.setattr(installer, "_verify_installed_package", lambda *a: None)
+    installer._doctor(installer.Console(color=False), args, root)
+    output = capsys.readouterr().out
+    assert expected in output
+    assert "Node diagnostic complete" in output
+    assert "synthetic-private" not in output
+    expected_command = [*installer._compose(root, ()), "exec", "-T", "app",
+                        "python", "-m", "case_intelligence.ocr_diagnostic"]
+    assert commands == ([] if dry_run else [expected_command])
 
 
 @pytest.mark.parametrize('receipt', ['missing', 'previous-release'])

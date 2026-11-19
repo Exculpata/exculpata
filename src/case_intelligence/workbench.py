@@ -159,6 +159,7 @@ from .pilot_uploads import (
     canonical_media_type,
     is_media_type,
     maximum_file_bytes,
+    pdf_ocr_mode,
     securely_delete_owned_tree,
 )
 from .review_bench import RetrievalUnavailable
@@ -6302,7 +6303,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             "embedding_index_warning": index_status if index_status not in {"ready", "unavailable"} else "",
             "source_review": "ready",
             "ingestion": "background queue" if self.background_ingestion else "request-bound",
-            "ocr": os.getenv("CASE_INTELLIGENCE_OCR_MODE", "off") or "off",
+            "ocr": pdf_ocr_mode(),
             "malware_scan": (
                 "not required"
                 if self.malware_scan_mode == "disabled"

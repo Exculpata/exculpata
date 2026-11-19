@@ -23,6 +23,43 @@ read correctly. Review the original PDF and its
 [extraction coverage](PDF_OCR_COVERAGE.md), including when a search finds no
 matches. Historical extraction and citation identities are not silently replaced.
 
+## Check scanned PDF OCR on an installed node
+
+The model API migration keeps document OCR in the app. For scanned PDFs, Poppler
+renders selected pages and Tesseract recognizes their text on the node. An
+installation using `--models none` can use this path. It requires no provider
+URL, credential, matter grant or staged model service. Imported JPEG, PNG and
+TIFF images also use local recognition through the image extractor.
+
+The reference app image includes Poppler, Tesseract, and English and Spanish
+language data. The generated app environment uses the following settings for
+PDFs. On a new node the file is `<node-root>/config/exculpata.env`. Existing
+nodes retain their selected app environment file.
+
+```dotenv
+CASE_INTELLIGENCE_OCR_MODE=expanded
+CASE_INTELLIGENCE_OCR_LANGUAGE=eng
+CASE_INTELLIGENCE_MAX_OCR_PAGES=500
+```
+
+Choose `selective` to recognize only pages with no native text, up to 25 pages
+per PDF. Choose `expanded` to include pages with sparse text or evidence of
+scanned images, up to the configured page limit. Set `off` to use only native
+PDF text. The language setting also applies to standalone image recognition.
+
+Run `./install doctor --root <node-root>` against the running installation. To
+run just the PDF check inside the app container, use
+`python -m case_intelligence.ocr_diagnostic`. It uses a packaged synthetic PDF
+and a temporary directory. The result `{"ocr": "ok"}` means an exact phrase visible
+only in the scanned image was found on page 2 of the same source version. A disabled result
+reflects the running app's PDF OCR setting. If the check fails, verify the
+app's Poppler and Tesseract installation and the configured language data,
+then rerun the check. For a case document, its source status shows how many
+pages returned text. Review the original when assessing a missing term.
+[PDF extraction coverage](PDF_OCR_COVERAGE.md)
+
+## Audio and video
+
 Audio and video are playable even when transcription fails. Browser-incompatible
 video is prepared asynchronously with FFmpeg, using remux or audio-only
 conversion before full re-encoding when possible. Playback follows the active
