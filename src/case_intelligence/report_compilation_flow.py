@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 
+from .generation_matter import generation_matter_scope
 from .report_compilation import CompilationBudget, CompilationProblem, compilation_fingerprint, compile_report
 from .report_compilation_jobs import ReportCompilationCoordinator, ReportCompilationJobs
 from .report_materials import snapshot_report_materials, validate_compiled_material_citations
@@ -54,8 +55,9 @@ class ReportCompilationFlow:
                 _, materials = self._snapshot(job)
             fingerprint = compilation_fingerprint(job.kind, job.topic, materials, budget=self.budget, selections=job.selections)
             self.jobs.record_input_fingerprint(job, fingerprint)
-            return compile_report(job.kind, job.topic, materials, self.bench.generator,
-                                  budget=self.budget, selections=job.selections, cancelled=cancelled)
+            with generation_matter_scope(self.bench.workspace, job.matter_id):
+                return compile_report(job.kind, job.topic, materials, self.bench.generator,
+                                      budget=self.budget, selections=job.selections, cancelled=cancelled)
         except (WorkspaceProblem, ExportProblem) as exc:
             raise CompilationProblem(str(exc)) from exc
         except KeyError as exc:

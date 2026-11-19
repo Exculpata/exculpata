@@ -41,6 +41,8 @@ workbench_job_matter_schedule:queue_kind,matter_id,claim_sequence
 workbench_matter:matter_id,slug,display_name,descriptor,owner_id,created_at,updated_at
 workbench_matter_activity:activity_id,matter_id,principal_id,activity_kind,object_id,locator,created_at,updated_at
 workbench_matter_group_grant:matter_id,group_id,granted_by,created_at
+workbench_matter_model_grant:grant_id,matter_id,capability,endpoint,model,approved,configuration_id
+workbench_model_destination:capability,endpoint,model,configuration_id
 workbench_matter_lifecycle:matter_id,state,purge_id,requested_by,requested_at,finished_at,error_code,source_count,conversation_count,message_count,updated_at
 workbench_matter_membership:matter_id,principal_id,role,state,granted_by,created_at,updated_at,revoked_at
 workbench_matter_purpose:matter_id,objective,background,revision,updated_by,updated_at
@@ -114,6 +116,7 @@ SCHEMA = {name: tuple(columns.split(',')) for name, columns in
           (line.split(':') for line in _SCHEMA.strip().splitlines())}
 
 CASE_AUTHORIZATION_TABLES = frozenset({
+    'workbench_matter_model_grant', 'workbench_model_destination',
     'workbench_case_download_attempt',
     'workbench_case_download_coverage',
     'workbench_case_purge_authority',
@@ -129,6 +132,8 @@ EXCLUDED_TABLES = {
     'workbench_team_group': 'Global team identities',
     'workbench_team_group_member': 'Global team memberships',
     'workbench_matter_group_grant': 'Global authorization grants',
+    'workbench_matter_model_grant': 'External model permissions and deployment-specific destinations',
+    'workbench_model_destination': 'Last observed deployment-specific model destinations',
     'workbench_case_confirmation': 'One-use purge credentials and session bindings',
     'workbench_case_download_attempt': 'Operational download attempts, actor/session bindings and transfer generations; excluded from archive and content snapshot',
     'workbench_case_download_coverage': 'Operational byte-delivery receipts and actor bindings; excluded from archive and content snapshot',

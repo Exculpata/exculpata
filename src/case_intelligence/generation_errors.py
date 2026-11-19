@@ -6,6 +6,10 @@ class GenerationUnavailable(RuntimeError):
     """The configured local generator cannot currently answer."""
 
 
+class GenerationApprovalRequired(GenerationUnavailable):
+    """The active matter lacks a grant for the external model request."""
+
+
 class GenerationSchemaRejected(GenerationUnavailable):
     """A parsed object failed local validation; only explicit evaluation retains it."""
 

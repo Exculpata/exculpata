@@ -1,6 +1,5 @@
 """Explicit operator retrieval endpoints, with bounded, content-free failures."""
-from dataclasses import dataclass, replace
-import hashlib
+from dataclasses import replace
 import http.client
 import json
 import math
@@ -10,8 +9,7 @@ import urllib.error
 import urllib.request
 
 from .generator_transport import open_generator_request
-from .generator_config import generator_pins
-from .oidc_network_policy import validated_https_url
+from .retrieval_endpoint_config import Endpoint, configured_endpoint
 from .retrieval_limits import MAX_BODY_BYTES
 
 REBUILD = ("The embedding index must be rebuilt. Select a 768-dimensional model and stop app writers. "
@@ -19,43 +17,15 @@ REBUILD = ("The embedding index must be rebuilt. Select a 768-dimensional model 
            "endpoint, first save and review the output of --plan, then add --approved-plan FILE.")
 WRONG_DIMENSION = ("The endpoint returned vectors with the wrong dimension. Select a 768-dimensional "
                    "model. If you change models, the index must be rebuilt with the rebuild command.")
+INVALID_CONFIGURATION = "The retrieval endpoint configuration is invalid. Check the destination and model."
 
 
 class EndpointFailure(RuntimeError):
     """An actionable diagnostic containing no endpoint-supplied text."""
 
 
-@dataclass(frozen=True)
-class Endpoint:
-    role: str
-    url: str
-    model: str
-    timeout: float
-
-    @property
-    def identity(self):
-        return "endpoint:" + hashlib.sha256(self.url.encode()).hexdigest()
-
-
-def configured_endpoint(role, environment=None):
-    if role not in {"EMBEDDING", "RERANK"}:
-        raise ValueError("Unknown retrieval role")
-    environment = os.environ if environment is None else environment
-    prefix = f"CASE_INTELLIGENCE_{role}_"
-    url = environment.get(prefix + "URL", "").strip()
-    if not url:
-        return None
-    try:
-        url = validated_https_url(url, origin_only=True)
-        model = environment.get(prefix + "MODEL", "").strip()
-        timeout = float(environment.get(prefix + "TIMEOUT", "120"))
-        if (not model or len(model) > 200 or any(ord(c) < 32 for c in model)
-                or "$" in url + model or not math.isfinite(timeout) or not 0 < timeout <= 300):
-            raise ValueError
-        generator_pins(environment.get(prefix + "EGRESS_PINS", ""), url)
-    except ValueError:
-        raise ValueError(f"Invalid CASE_INTELLIGENCE_{role}_ configuration; check URL (HTTPS origin), MODEL, EGRESS_PINS and TIMEOUT.") from None
-    return Endpoint(role, url, model, timeout)
+class RetrievalGrantRequired(EndpointFailure):
+    """This matter has no approval for the dispatched external destination."""
 
 
 def relay_environment(environment):

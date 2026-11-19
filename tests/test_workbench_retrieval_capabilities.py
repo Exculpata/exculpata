@@ -5,11 +5,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from case_intelligence import embedding_index, retrieval_endpoints, review_bench_v2
+from case_intelligence.external_model_grants import configured_model_destination
 from case_intelligence.generation import UnavailableGenerator
 from case_intelligence.workbench import CaseIntelligenceWorkbench, create_workbench_app
 from tests.test_browser_local_accounts import ORIGIN, login
 from tests.test_evaluation_storage_banner import _app as local_admin_app
-from tests.test_milestone_a_workbench import _create_matter
+from tests.test_milestone_a_workbench import WEB_ACTOR, _create_matter
 from tests.test_retrieval_endpoints import endpoint as endpoint
 
 
@@ -119,6 +120,9 @@ def test_embedding_outage_during_intake_keeps_source_searchable(endpoint, monkey
         assert status["embedding"] == "endpoint verified"
         assert status["embedding_index"] == "ready"
         slug = _create_matter(client)
+        bench = client.app.state.workbench
+        bench.workspace.set_model_grant(bench.matter(slug, WEB_ACTOR).matter_id,
+                                        configured_model_destination("embedding"), WEB_ACTOR, approved=True)
         endpoint["status"] = 401
         client.post(f"/matters/{slug}/uploads", files={
             "files": ("Inventory.txt", b"Synthetic bicycle receipt.", "text/plain"),

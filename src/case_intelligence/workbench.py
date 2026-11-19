@@ -9,6 +9,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from .generation_errors import GenerationApprovalRequired
+from .generation_matter import generation_matter_scope
 from .review_budget import DEFAULT_REVIEW_BUDGET, ReviewBudget, validate_primary_limit
 from .investigation_planner import PLANNER_VERSION, initial_query, propose_searches, query_key, validate_proposal
 from time import monotonic
@@ -31,7 +33,6 @@ import uuid
 from contextlib import asynccontextmanager, closing
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
-from functools import cache
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Mapping, Sequence
 from urllib.parse import parse_qs, quote_plus, urlencode, urlparse
@@ -103,6 +104,7 @@ from .generation import (
     VerifiedAnswer,
     generator_from_environment,
 )
+from .workbench_retrieval import WorkbenchRetrieval
 from .answer_question_drafts import AnswerQuestionDrafts, register_answer_question_routes
 from .ingestion import IngestionCoordinator
 from .report_review_basis import research_sections, review_sections
@@ -161,7 +163,7 @@ from .pilot_uploads import (
 )
 from .review_bench import RetrievalUnavailable
 from .embedding_index import MISSING_EMBEDDINGS, note_populated_index
-from .retrieval_endpoints import EndpointFailure
+from .retrieval_endpoints import EndpointFailure, RetrievalGrantRequired
 from .retrieval_limits import INPUT_BLOCKED_STAGE, RetrievalInputProblem
 from .review_bench_v2 import (
     Candidate,
@@ -170,8 +172,6 @@ from .review_bench_v2 import (
     HybridRetriever,
     InMemoryHybridBackend,
     PostgresHybridBackend,
-    RemoteEmbeddingAdapter,
-    RemoteRerankerAdapter,
     apply_postgres_migrations,
     delete_postgres_document,
     delete_postgres_matter,
@@ -954,7 +954,7 @@ class AutomaticDiscoveryCoordinator:
         self._thread.join()
 
 
-class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
+class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
     """Matter-isolated Milestone A runtime behind an explicit actor boundary."""
 
     def __init__(
@@ -1005,6 +1005,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                 require_marker=True,
             )
         self.workspace = WorkspaceStore(self.runtime_dir / "workbench.sqlite", principal_enabled=principal_enabled)
+        self.workspace.observe_model_destinations()
         self.workspace.case_lifecycle.discard_confirmations_on_startup()
         from .entity_unit_reader import EntityUnitReader
         self.entity_unit_reader = EntityUnitReader()
@@ -1221,64 +1222,6 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             return psycopg.connect(dsn, connect_timeout=2, autocommit=True)
         except Exception:
             return None
-
-    def _configure_retrieval(self, embedding, reranker, enabled: bool | None) -> None:
-        from .retrieval_endpoints import configured_endpoint, probe_endpoint
-
-        worker_url = os.getenv("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", "").strip()
-
-        @cache
-        def worker_ready() -> bool:
-            return bool(worker_url and self._retrieval_worker_ready(worker_url))
-
-        def provider(role, supplied, adapter):
-            if enabled is False:
-                return None, "disabled", False
-            if supplied is not None:
-                return supplied, "provided by application", True
-            try:
-                endpoint = configured_endpoint(role)
-            except ValueError as exc:
-                return None, str(exc), False
-            if endpoint is not None:
-                result = probe_endpoint(endpoint)
-                if result == "ok":
-                    return adapter(""), "endpoint verified", True
-                return None, result, True
-            if worker_ready():
-                return adapter(worker_url), "bundled worker ready", True
-            return None, "bundled worker unavailable" if worker_url else "not configured", False
-
-        self.embedding, self.embedding_status, self._embedding_selected = provider(
-            "EMBEDDING", embedding, RemoteEmbeddingAdapter,
-        )
-        self.reranker, self.rerank_status, _ = provider("RERANK", reranker, RemoteRerankerAdapter)
-
-    def _retrieval_endpoint_failed(self, role: str, reason: str) -> None:
-        with self._postgres_lock:
-            if role == "EMBEDDING":
-                self.embedding, self.embedding_status = None, reason
-            elif role == "RERANK":
-                self.reranker, self.rerank_status = None, reason
-            else:
-                raise ValueError("Unknown retrieval role")
-
-    def _embedding_blocker(self) -> str:
-        from .retrieval_endpoints import require_index_identity
-
-        if self.embedding_index_warning:
-            return self.embedding_index_warning
-        try:
-            require_index_identity(require_record=True)
-        except RuntimeError as exc:
-            self.embedding_index_warning = str(exc)
-            return self.embedding_index_warning
-        return ""
-
-    def _active_embedding(self):
-        if self.learned_retrieval and self.embedding is not None and not self._embedding_blocker():
-            return self.embedding
-        return None
 
     @staticmethod
     def _retrieval_worker_ready(url: str) -> bool:
@@ -2549,7 +2492,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         document_ids: frozenset[str] | None = None,
     ) -> HybridRetriever:
         if self.learned_retrieval and self.postgres_ready and self.postgres_connection is not None:
-            reranker = self.reranker
+            reranker = self._matter_retrieval_provider(self.reranker, matter.matter_id)
             return HybridRetriever(
                 PostgresHybridBackend(
                     self.postgres_connection,
@@ -2557,7 +2500,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                     pilot_store_factory=lambda: self.source_store(matter),
                     document_ids=document_ids,
                 ),
-                self._active_embedding(),
+                self._matter_embedding(matter.matter_id),
                 reranker,
                 minimum_dense_score=0.72,
                 minimum_rerank_score=0.80 if reranker is not None else math.inf,
@@ -4454,17 +4397,18 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             )
 
         with self._postgres_lock:
-            embedder = self._active_embedding()
+            embedder = self._matter_embedding(matter.matter_id)
             try:
                 project(embedder)
+            except RetrievalGrantRequired:
+                embedder = None
+                project(None)
             except EndpointFailure as exc:
                 self._retrieval_endpoint_failed("EMBEDDING", str(exc))
                 embedder = None
                 project(None)
-            if units and embedder is not None:
-                self.embedding_index_warning = note_populated_index(populated=True)
-            elif units and not self.embedding_index_warning:
-                self.embedding_index_warning = MISSING_EMBEDDINGS
+            if units:
+                self._record_embedding_projection(embedder is not None)
 
     def _project_media_transcript(
         self,
@@ -4824,7 +4768,8 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         packet, windows = answer_evidence_packet(value, evidence, context=retrieval_query)
         history = tuple((message.role, message.content) for message in prior[-6:])
         try:
-            answer = self.generator.answer(value, packet, history=history)
+            with generation_matter_scope(self.workspace, matter.matter_id):
+                answer = self.generator.answer(value, packet, history=history)
         except GenerationGroundingRejected:
             answer = self._verification_abstention()
         payload = self._noted_answer_payload(answer, evidence)
@@ -5038,14 +4983,15 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                 report_stage(persisted_stage, ANSWER_STAGE_MESSAGES[stage_key])
 
             try:
-                answer = self.generator.answer(
-                    job.question,
-                    packet,
-                    history=history,
-                    working_context=notebook_context,
-                    stage_callback=generation_stage,
-                    **({"recorded_dispatch": recorded_dispatch} if recorded_dispatch is not None else {}),
-                )
+                with generation_matter_scope(self.workspace, job.matter_id):
+                    answer = self.generator.answer(
+                        job.question,
+                        packet,
+                        history=history,
+                        working_context=notebook_context,
+                        stage_callback=generation_stage,
+                        **({"recorded_dispatch": recorded_dispatch} if recorded_dispatch is not None else {}),
+                    )
             except GenerationGroundingRejected:
                 answer = self._verification_abstention()
             try:
@@ -5102,6 +5048,8 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             raise AnswerJobFailure(
                 "Search could not run. Your sources are still saved; try again in a moment."
             ) from exc
+        except GenerationApprovalRequired as exc:
+            raise AnswerJobFailure(str(exc)) from exc
         except GenerationUnavailable as exc:
             raise AnswerJobFailure(
                 "Answering is temporarily unavailable. Search and source review still work."
@@ -5371,8 +5319,9 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                     {**prepared, "hierarchical_synthesis": state}, expected_job=job,
                     validate_locked=validate_locked)
 
-        state = service.run(job.question, prepared, checkpoint, boundary,
-                            prepared.get("hierarchical_synthesis"))
+        with generation_matter_scope(self.workspace, job.matter_id):
+            state = service.run(job.question, prepared, checkpoint, boundary,
+                                prepared.get("hierarchical_synthesis"))
         answer = synthesis_answer(state, prepared["evidence"])
         payload = self._noted_answer_payload(answer, {f"S{number}": self._workflow_citation(source)
             for number, source in enumerate(prepared["evidence"], 1)})
@@ -5737,10 +5686,11 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             packet = packet_for(evidence)
             if packet:
                 try:
-                    answer = self.generator.answer(
-                        research_step_question(job.question, query),
-                        packet,
-                    )
+                    with generation_matter_scope(self.workspace, job.matter_id):
+                        answer = self.generator.answer(
+                            research_step_question(job.question, query),
+                            packet,
+                        )
                     payload = self._noted_answer_payload(answer, evidence)
                     pass_shape = modality_coverage(
                         job.question,
@@ -5869,9 +5819,10 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                     completed_steps=total_steps - 1, candidate_count=candidate_count,
                     evidence_count=len(citations))
 
-            hierarchy = run_synthesis(job.question, passes,
-                [self._workflow_citation_payload(item) for item in citations],
-                self.generator, save_synthesis, synthesis_boundary, saved_synthesis)
+            with generation_matter_scope(self.workspace, job.matter_id):
+                hierarchy = run_synthesis(job.question, passes,
+                    [self._workflow_citation_payload(item) for item in citations],
+                    self.generator, save_synthesis, synthesis_boundary, saved_synthesis)
             final_citations = citations
             final_evidence = {f"S{ordinal}": citation for ordinal, citation in enumerate(citations, 1)}
             final_packet = tuple(dict.fromkeys(token for node in hierarchy["issue"]
@@ -5900,10 +5851,11 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                 checkpoint = {**checkpoint, "budget": accounting(len(final_packet), stop_reason)}
                 self.workspace.checkpoint_research_job(job.job_id, checkpoint)
             try:
-                final_answer = self.generator.answer(
-                    research_synthesis_question(job.question),
-                    final_packet,
-                )
+                with generation_matter_scope(self.workspace, job.matter_id):
+                    final_answer = self.generator.answer(
+                        research_synthesis_question(job.question),
+                        final_packet,
+                    )
             except GenerationGroundingRejected:
                 final_answer = self._verification_abstention()
         if cancelled():
@@ -6096,12 +6048,13 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             for identifier, citation in evidence.items()
         )
         try:
-            classification = self.generator.classify_source(
-                criterion=version.instructions,
-                include_guidance=version.include_guidance,
-                exclude_guidance=version.exclude_guidance,
-                evidence=packet,
-            )
+            with generation_matter_scope(self.workspace, run.matter_id):
+                classification = self.generator.classify_source(
+                    criterion=version.instructions,
+                    include_guidance=version.include_guidance,
+                    exclude_guidance=version.exclude_guidance,
+                    evidence=packet,
+                )
         except (GenerationGroundingRejected, GenerationRejected):
             validated = tuple(
                 self._current_workflow_citation(matter, citation)
@@ -14283,6 +14236,10 @@ def create_workbench_app(
             return bench.matter(slug, current.principal_id, administrator=administrator_override)
         except KeyError as exc:
             raise _MatterAuthorityDenied(original) from exc
+    from .external_model_grant_routes import install_model_grants
+    install_model_grants(app, workspace=bench.workspace, templates=templates,
+        authorized_matter=authorized_matter, auth_context=auth_context,
+        refresh_authority=refresh_context_authority, require_csrf=require_csrf)
     from .matter_purpose_routes import install_matter_purpose
     install_matter_purpose(app, workspace=bench.workspace, authorized_matter=authorized_matter,
         auth_context=auth_context, refresh_authority=refresh_context_authority, require_csrf=require_csrf,

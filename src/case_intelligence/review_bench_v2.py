@@ -18,13 +18,15 @@ import urllib.request
 import urllib.error
 from contextlib import nullcontext
 from contextvars import ContextVar
+from copy import copy
 from dataclasses import dataclass, replace
+from functools import partial
 from importlib import resources
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Protocol, Sequence
 
 from .review_quality import rank_exact_record_candidates, rank_temporal_candidates
-from .retrieval_endpoints import EndpointFailure
+from .retrieval_endpoints import EndpointFailure, RetrievalGrantRequired
 from .retrieval_limits import (
     MAX_EMBEDDING_TEXTS, MAX_RERANK_TEXTS, RetrievalInputProblem, request_batches, text_fragments,
 )
@@ -326,16 +328,28 @@ class LazySentenceTransformerReranker:
         return tuple(sorted(ranked, key=lambda item: (-item.score, item.page_number, item.chunk_id)))
 
 
-class RemoteEmbeddingAdapter:
-    """Call a loopback model worker without importing Torch into the web process."""
-
+class _RemoteRetrievalAdapter:
     available = True
-    batch_limit = MAX_EMBEDDING_TEXTS
 
     def __init__(self, base_url: str, timeout: float = 120.0, *, request=None) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._custom_request = request
         self._request = request or _model_request
+        self._matter_id = None
+
+    def for_matter(self, matter_id, grant_allows):
+        bound = copy(self)
+        bound._matter_id = matter_id
+        bound._request = partial(_model_request, matter_id=matter_id, grant_allows=grant_allows,
+                                 custom_request=self._custom_request)
+        return bound
+
+
+class RemoteEmbeddingAdapter(_RemoteRetrievalAdapter):
+    """Embed through the configured retrieval service in bounded batches."""
+
+    batch_limit = MAX_EMBEDDING_TEXTS
 
     def embed(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
         # A single vector remains attached to the original evidence unit. Only
@@ -370,14 +384,30 @@ class RemoteEmbeddingAdapter:
         return tuple(vectors)
 
 
-def _model_request(base_url: str, operation: str, body: bytes, timeout: float):
-    from .retrieval_endpoints import configured_endpoint, endpoint_batch, require_index_identity
-    if operation == "embed":
-        require_index_identity(require_record=True)
-    config = configured_endpoint("EMBEDDING" if operation == "embed" else "RERANK")
+def _model_request(base_url: str, operation: str, body: bytes, timeout: float, *,
+                   matter_id=None, grant_allows=None, custom_request=None):
+    from .external_model_grants import model_destination
+    from .retrieval_endpoints import INVALID_CONFIGURATION, configured_endpoint, endpoint_batch, require_index_identity
+
+    try:
+        config = configured_endpoint("EMBEDDING" if operation == "embed" else "RERANK")
+        if config is None and not base_url and custom_request is None:
+            raise EndpointFailure("The external retrieval endpoint is no longer configured.")
+        if operation == "embed" and (config is not None or custom_request is None):
+            require_index_identity(require_record=True)
+        if config is not None:
+            capability = "embedding" if operation == "embed" else "reranking"
+            destination = model_destination(capability, config.url, config.model)
+    except ValueError:
+        raise EndpointFailure(INVALID_CONFIGURATION) from None
     if config is not None:
+        if not matter_id or grant_allows is None or grant_allows(matter_id, destination) is not True:
+            raise RetrievalGrantRequired("This matter requires approval for the external retrieval destination.")
+        if custom_request is not None:
+            return custom_request(config.url, operation, body, timeout)
         return endpoint_batch(config, operation, json.loads(body))
-    return _local_model_request(base_url, operation, body, timeout)
+    request = custom_request or _local_model_request
+    return request(base_url, operation, body, timeout)
 
 
 def _local_model_request(base_url, operation, body, timeout):
@@ -413,20 +443,16 @@ def _model_numbers(payload, key: str, count: int, *, vectors: bool = False):
         raise RuntimeError(f"model worker returned an invalid {label} batch") from None
 
 
-class RemoteRerankerAdapter:
+class RemoteRerankerAdapter(_RemoteRetrievalAdapter):
     """Rerank a bounded candidate set through the loopback model worker."""
 
-    available = True
-
-    def __init__(self, base_url: str, timeout: float = 120.0) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-
     def rerank(self, query: str, candidates: Sequence[Candidate]) -> tuple[Candidate, ...]:
+        if self._matter_id is not None and any(item.matter_id != self._matter_id for item in candidates):
+            raise RuntimeError("matter boundary violation before reranking")
         scores = [float("-inf")] * len(candidates)
         for batch, body in request_batches(text_fragments(item.text for item in candidates),
                                            maximum=MAX_RERANK_TEXTS, query=query):
-            payload = _model_request(self.base_url, "rerank", body, self.timeout)
+            payload = self._request(self.base_url, "rerank", body, self.timeout)
             values = _model_numbers(payload, "scores", len(batch))
             for (ordinal, _fragment), score in zip(batch, values):
                 scores[ordinal] = max(scores[ordinal], score)
@@ -655,6 +681,8 @@ class HybridRetriever:
             if self.embedder is not None:
                 try:
                     query_vector = self.embedder.embed([query])[0]
+                except RetrievalGrantRequired:
+                    pass
                 except EndpointFailure as exc:
                     if self.endpoint_failed is None:
                         raise
@@ -707,9 +735,10 @@ class HybridRetriever:
         try:
             reranked = self.reranker.rerank(query, candidates)
         except EndpointFailure as exc:
-            if self.endpoint_failed is None:
-                raise
-            self.endpoint_failed("RERANK", str(exc))
+            if not isinstance(exc, RetrievalGrantRequired):
+                if self.endpoint_failed is None:
+                    raise
+                self.endpoint_failed("RERANK", str(exc))
             reranked = DeterministicReranker().rerank(query, candidate_pool(lexical_keys))
         if any(item.matter_id != matter_id for item in reranked):
             raise RuntimeError("matter boundary violation after reranking")

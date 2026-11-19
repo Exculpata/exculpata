@@ -36,6 +36,7 @@ from .store import (
     _MEDIA_CLIP,
     _NOTEBOOK_ITEM,
 )
+from .store.model_grants import ModelGrantStoreMixin
 from .store.notebook import NotebookStoreMixin
 from .store.reports import ReportsStoreMixin
 # Re-export record types, exceptions, and the shared helper for existing importers.
@@ -166,7 +167,7 @@ _ANALYSIS_RESTART_MESSAGE = (
 )
 
 
-class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, KnowledgeServicesMixin):
+class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, KnowledgeServicesMixin):
     """Small SQLite control store; source bytes remain in per-matter stores."""
 
     def __init__(
@@ -273,7 +274,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                      '0046_discovery_review_identifier.sql', '0047_discovery_identifier_case_uniqueness.sql',
                      '0048_discovery_review_codes.sql',
                      '0049_discovery_review_index.sql',
-                     '0050_discovery_dat_opt.sql'):
+                     '0050_discovery_dat_opt.sql', '0051_external_model_grants.sql'):
             migration = resources.files("case_intelligence").joinpath("migrations/sqlite/" + name).read_text(encoding="utf-8")
             try:
                 self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
@@ -2268,6 +2269,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             self.connection.execute(
                 "DELETE FROM workbench_matter_activity WHERE matter_id=?", (matter_id,)
             )
+            self.connection.execute("DELETE FROM workbench_matter_model_grant WHERE matter_id=?", (matter_id,))
             self.connection.execute(
                 "DELETE FROM workbench_matter_group_grant WHERE matter_id=?", (matter_id,)
             )

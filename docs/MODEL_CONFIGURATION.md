@@ -307,6 +307,27 @@ and does not hide repair drafts. Ordinary generation validates and bounds repair
 attempts, and the workflow evaluator checks model identity around each actual
 request, including schema repairs.
 
+## Matter approval for external model services
+
+Installation settings establish which endpoints the app can contact. Before
+sending case material, open the matter's setup page and review the capability,
+endpoint and model. The matter owner or a workspace administrator can approve
+generation, embedding and reranking independently for that matter. New and
+upgraded matters start with no grants. Changing the endpoint or model requires
+fresh approval, including a change to the generation server's path prefix.
+Once Exculpata observes a change, restoring an earlier endpoint also requires
+fresh approval. Matter archives exclude these deployment-specific grants.
+
+Revoke approval in matter setup to stop subsequent requests to that destination.
+This includes requests made by a job queued before revocation. Intake, source
+review and word search remain available. An upload indexed without embeddings
+can be found by word search. To fill missing vectors later, use the separately
+approved installation-wide rebuild described below. The startup and diagnostic
+probes use synthetic inputs and can run before any matter has granted access.
+The standalone question-drafting and defense-workflow evaluations can send
+their verified, fixed synthetic corpora to the configured generator. Use a
+bundled generator for custom evaluation inputs that have no matter approval.
+
 ## Optional embedding and rerank endpoints
 
 The built-in retrieval worker remains the default. In the selected app env file,
@@ -335,9 +356,10 @@ Optional `_API_KEY` takes precedence over `_API_KEY_FILE`; use the existing
 read-only secrets mount for files. Keys stay in request headers, never index
 records or diagnostics. `_TIMEOUT` defaults to 120 seconds (maximum 300).
 The reference Compose file supplies `_PROXY`; direct deployments must supply
-an explicit CONNECT relay. There is no automatic remote fallback. Explicit
-remote configuration sends extracted text and/or queries and candidate passages
-to that operator-selected server; review its retention policy before enabling it.
+an explicit CONNECT relay. There is no automatic remote fallback. An approved
+embedding or reranking request can send extracted text, queries or candidate
+passages to the operator-selected server. Review its retention policy before
+granting access to a matter.
 
 Invalid saved retrieval settings leave Compose `ps`, `logs`, `stop` and `down`
 available with retrieval relay slots cleared. Commands that need egress settings

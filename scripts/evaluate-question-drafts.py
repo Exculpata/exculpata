@@ -15,7 +15,6 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from case_intelligence.generation import GroundedGenerationService, generator_from_environment
 from case_intelligence.question_draft_evaluation import DEFAULT_CASES, receipt, receipt_text, write_new_receipt
 
 
@@ -47,8 +46,7 @@ def main(argv=None):
             result = replay_receipt(args.replay, args.cases, explain=args.explain)
         else:
             runtime = json.loads(args.runtime_profile.read_text(encoding="utf-8")) if args.runtime_profile else None
-            result = receipt(GroundedGenerationService(generator_from_environment()), args.cases,
-                             profile=args.profile, runtime=runtime, explain=args.explain)
+            result = receipt(path=args.cases, profile=args.profile, runtime=runtime, explain=args.explain)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
     # The receipt is strict, ASCII-escaped JSON, published atomically at a new path:
