@@ -21,8 +21,8 @@ class Endpoint:
 
 
 def configured_endpoint(role, environment=None):
-    if role not in {"EMBEDDING", "RERANK"}:
-        raise ValueError("Unknown retrieval role")
+    if role not in {"EMBEDDING", "RERANK", "ASR"}:
+        raise ValueError("Unknown endpoint role")
     environment = os.environ if environment is None else environment
     prefix = f"CASE_INTELLIGENCE_{role}_"
     url = environment.get(prefix + "URL", "").strip()

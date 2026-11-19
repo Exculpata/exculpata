@@ -7879,3 +7879,34 @@ kind = "host"
 digest = "24d5f69bcfd1907cfb35c93d284fe7632e161c6751a8e100fa072ce546fc9598"
 detail = "attachment.txt"
 
+
+# The ASR check constructs a request for the existing HTTPS relay and reads a fixed package fixture.
+[[source]]
+path = "src/case_intelligence/speech_endpoint.py"
+kind = "client"
+digest = "48dc804dd6255688fd38f0ce0cfcca804e349d2d898a15fd41ad5e0ce51c1253"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/speech_endpoint.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/speech_endpoint.py"
+kind = "host"
+digest = "28b23e05eb2633a381398b2cbe776203d70ab70af85c8efbe312a61296f757b3"
+detail = "generated-speech.wav"
+
+[[source]]
+path = "src/case_intelligence/speech_endpoint.py"
+kind = "client"
+digest = "24273495e87f947bdd3fb7f7b3e066e20913df9b583df1d55cfefb1610f92ccf"
+detail = "urllib.request.Request"
+
+[[source]]
+path = "src/case_intelligence/speech_endpoint.py"
+kind = "client"
+digest = "9794fd4bffade444285152a875edb21c04c7b5f8c39ec6041fb0d542a7e51d36"
+detail = "http.client.HTTPException"

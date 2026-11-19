@@ -17,7 +17,7 @@ Accuracy and resource requirements depend on the selected models and inputs.
 | Answer generation | `CASE_INTELLIGENCE_GENERATOR_BACKEND` selects `ollama` or `openai`; `CASE_INTELLIGENCE_GENERATOR_URL` and `CASE_INTELLIGENCE_GENERATOR_MODEL` select an operator endpoint and model. `CASE_INTELLIGENCE_GENERATOR_SERVER` selects `ollama`, `llamacpp`, `lmstudio`, or `vllm` | The endpoint and model must satisfy the adapter contract in [existing answer endpoints](#existing-answer-endpoints). The installer wires bundled vLLM for `--models review` and `--models all`. `--external-generator` with `--models none` or `--models transcription` points at an operator server. A compatible-looking API is not automatically qualified. |
 | Embeddings | Local SentenceTransformer worker or [optional embedding endpoint](#optional-embedding-and-rerank-endpoints) | The index requires 768 dimensions and a matching recorded model identity. |
 | Reranking | Local CrossEncoder worker or [optional rerank endpoint](#optional-embedding-and-rerank-endpoints) | Ranking quality still needs evaluation for the selected model. |
-| Speech recognition | WhisperX/faster-whisper profiles use approved CTranslate2 snapshots | Version 2 inventories select exact compatible model identities for the existing profiles; [offline import](ASR_MODEL_IMPORT.md) copies prepared inventories to a new cache. Raw-model preparation and installer integration remain operator work. |
+| Speech recognition | WhisperX/faster-whisper profiles use approved CTranslate2 snapshots. Operators can also [check a speech API](#check-a-speech-recognition-api) using synthetic audio. | Version 2 inventories select exact compatible model identities for the existing profiles; [offline import](ASR_MODEL_IMPORT.md) copies prepared inventories to a new cache. Raw-model preparation and installer integration remain operator work. |
 | Word alignment | Manifest-approved English/Spanish Torchaudio checkpoints | Language-to-checkpoint bindings are currently fixed. Another language/checkpoint requires adapter and inventory support. |
 | Speaker diarization | Nemotron or Community-1 adapter selected during installation | These are separate implementations with their own artifact/runtime contracts. An unrelated diarization model cannot be substituted by changing a filename. |
 
@@ -327,6 +327,43 @@ probes use synthetic inputs and can run before any matter has granted access.
 The standalone question-drafting and defense-workflow evaluations can send
 their verified, fixed synthetic corpora to the configured generator. Use a
 bundled generator for custom evaluation inputs that have no matter approval.
+
+## Check a speech recognition API
+
+To check an operator-managed speech service, add its HTTPS origin and served
+model name to the selected app environment file. For example, a private speech
+service with a reviewed address could use the following settings. Replace the
+example values with your service's origin, model, host and pin.
+
+```dotenv
+CASE_INTELLIGENCE_ASR_URL=https://speech.example.test
+CASE_INTELLIGENCE_ASR_MODEL=synthetic-asr
+CASE_INTELLIGENCE_ASR_ALLOWED_HOSTS=speech.example.test
+CASE_INTELLIGENCE_ASR_EGRESS_PINS={"issuer":"https://speech.example.test","addresses":["<reviewed-private-IP>"]}
+```
+
+Replace `<reviewed-private-IP>` with the private IP reachable from the relay. For an operator-approved
+public service, set `CASE_INTELLIGENCE_ASR_REMOTE_CONFIRMED=1` and omit the private
+pin. If the service requires a bearer token, set `CASE_INTELLIGENCE_ASR_API_KEY_FILE`
+to the path of the credential in the app's read-only secrets mount. The app must
+trust the service's TLS certificate. Apply the settings to both the app and
+the egress proxy using the installer.
+
+Run `./install doctor --root <node-root>` or use the diagnostic directly inside the app container.
+
+```sh
+python -m case_intelligence.speech_endpoint
+```
+
+The check posts a short synthesized WAV to `/v1/audio/transcriptions` with the
+configured model and `response_format=verbose_json`. A compatible service returns
+source-language text and timed segments in seconds. The JSON result reports
+`{"transcription": "ok"}` when the contract passes. Use the returned diagnostic
+to correct the configuration, credentials or response format and retry.
+
+The command only takes its audio from the installed synthetic fixture. The
+private transcription job service continues to process matter recordings.
+Speech quality, speaker labels and word alignment require separate verification.
 
 ## Optional embedding and rerank endpoints
 

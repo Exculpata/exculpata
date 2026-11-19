@@ -11,6 +11,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+import ipaddress
 import json
 import os
 import re
@@ -50,8 +51,41 @@ def _proxy_destinations(oidc=("", ""), generator=("", "")):
         ("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"): generator,
     }
     pairs.update({(role + "_EGRESS_URL", role + "_EGRESS_PINS"): ("", "")
-                  for role in ("EMBEDDING", "RERANK")})
+                  for role in ("EMBEDDING", "RERANK", "ASR")})
     return {setting: value for settings, values in pairs.items() for setting, value in zip(settings, values)}
+
+
+def test_saved_speech_settings_select_only_the_exact_relay_destination(tmp_path):
+    root, _, _ = configured_node(tmp_path)
+    selected = installer._app_env(root)
+    speech = "https://speech.example.test:8443"
+    private_address = ipaddress.IPv4Address(bytes((10, 0, 0, 7)))
+    pins = json.dumps({"issuer": speech, "addresses": [str(private_address)]})
+    settings = {
+        "CASE_INTELLIGENCE_ASR_URL": speech,
+        "CASE_INTELLIGENCE_ASR_MODEL": "synthetic-speech",
+        "CASE_INTELLIGENCE_ASR_ALLOWED_HOSTS": "speech.example.test",
+        "CASE_INTELLIGENCE_ASR_EGRESS_PINS": pins,
+        "CASE_INTELLIGENCE_ASR_API_KEY_FILE": "/run/secrets/synthetic-asr",
+    }
+    # fixture-write: Select a synthetic private speech endpoint in the active app file.
+    selected.write_text(installer._env_text(settings, "Synthetic"))
+    command = installer._compose(root, (), release=ROOT, auth="local")
+    ambient = {"PATH": os.environ["PATH"], "ASR_EGRESS_URL": "https://unrelated.example.test"}
+    environment = installer._compose_environment(command, ambient)
+    resolved = subprocess.run([*command, "config", "--format", "json"], env=environment,
+                              capture_output=True, text=True, check=True)
+    services = json.loads(resolved.stdout)["services"]
+    expected = _proxy_destinations()
+    expected.update(ASR_EGRESS_URL=speech, ASR_EGRESS_PINS=pins)
+    assert services["egress-proxy"]["environment"] == expected
+    assert services["app"]["environment"]["CASE_INTELLIGENCE_ASR_API_KEY_FILE"] == settings["CASE_INTELLIGENCE_ASR_API_KEY_FILE"]
+    # fixture-write: Keep maintenance possible while a synthetic speech setting is repaired.
+    selected.write_text(installer._env_text(dict(settings, CASE_INTELLIGENCE_ASR_URL="http://invalid.example.test"), "Synthetic"))
+    with pytest.raises(RuntimeError, match="Invalid saved transcription"):
+        installer._compose_environment([*command, "up"], ambient)
+    maintenance = installer._compose_environment([*command, "down"], ambient)
+    assert maintenance["ASR_EGRESS_URL"] == maintenance["ASR_EGRESS_PINS"] == ""
 
 
 @pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])

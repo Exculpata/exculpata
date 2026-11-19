@@ -220,12 +220,13 @@ slots, operation timeouts and byte limits. The shared constants in
 | GENERATOR | 2 | 310 seconds | 32 MiB |
 | EMBEDDING | 4 | 310 seconds | 32 MiB |
 | RERANK | 4 | 310 seconds | 32 MiB |
+| ASR synthetic transcription check | 1 | 60 seconds | 2 MiB |
 
 Role slots are acquired after CONNECT validation and before DNS, and released
-on completion or failure. At most 16 connections, including header parsing,
+on completion or failure. At most 17 connections, including header parsing,
 are admitted. The separate pre-header budget (`RELAY_HEADER_CONNECTIONS`)
-covers a burst spanning all twelve role slots and shares the global cap of 16;
-`RELAY_ADMISSION_HEADROOM` remains four. A connection reserves that budget before
+covers a burst spanning all thirteen role slots. The four additional connections
+come from `RELAY_ADMISSION_HEADROOM`. A connection reserves that budget before
 starting a worker and releases it when it acquires a role slot, or on failure.
 Incomplete headers never acquire role slots. Busy model tunnels cannot use
 the two OIDC slots. Exhausted admission or role caps
@@ -242,7 +243,7 @@ slot, without increasing total admission or using the reserved OIDC slots.
 CONNECT identifies an authority, not the purpose of the encrypted request.
 An authority configured for both OIDC and a model therefore fails startup.
 Model roles sharing an authority and identical pins share the first configured
-role's pool in GENERATOR, EMBEDDING, RERANK order; conflicting pins still fail.
+role's pool in GENERATOR, EMBEDDING, RERANK, ASR order. Conflicting pins fail startup.
 
 DNS and all connection
 attempts share one five-second budget. Each address receives an equal share of

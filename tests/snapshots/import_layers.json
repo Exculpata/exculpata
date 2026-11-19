@@ -208,6 +208,7 @@
   "case_intelligence.source_locations": "core.sources",
   "case_intelligence.source_role_routes": "app_shell",
   "case_intelligence.source_roles": "core.sources",
+  "case_intelligence.speech_endpoint": "app_shell",
   "case_intelligence.sqlite_store": "core.storage",
   "case_intelligence.static_assets": "app_shell",
   "case_intelligence.store": "core.storage",

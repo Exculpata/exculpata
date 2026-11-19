@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient
 from tests.test_matter_media_workflow import ACTOR, ImmediateMediaProcessor, _matter
 from tests.case_lifecycle_web_helpers import prepare_preview_exit, preview_login
 
-SPEECH = Path(__file__).parent / "fixtures/media-preflight/generated-speech.wav"
+SPEECH = Path(__file__).parents[1] / "src/case_intelligence/config/generated-speech.wav"
 
 
 def silence(path: Path, seconds=2):

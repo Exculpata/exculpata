@@ -234,7 +234,7 @@ class Server(socketserver.ThreadingTCPServer):
 # Operator-configured relay destinations: (exact HTTPS URL setting, reviewed pins setting).
 # The OIDC issuer is handled first with its existing rules.
 OPERATOR_DESTINATIONS = tuple((role + "_EGRESS_URL", role + "_EGRESS_PINS")
-                              for role in ("GENERATOR", "EMBEDDING", "RERANK"))
+                              for role in ("GENERATOR", "EMBEDDING", "RERANK", "ASR"))
 
 
 class DestinationConfigurationError(Denied):
@@ -269,7 +269,7 @@ def configured_destinations(environment):
                     raise Denied(reason)
                 continue
             reason = "invalid HTTPS URL"
-            validated_https_url(url)
+            validated_https_url(url, origin_only=url_setting == "ASR_EGRESS_URL")
             destination = issuer_authority(url)
             reason = "invalid destination pins"
             destination_pins = issuer_pins(pin_value, url)

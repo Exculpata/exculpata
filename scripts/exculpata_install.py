@@ -266,6 +266,15 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
             raise RuntimeError(f"Invalid saved retrieval egress configuration: {exc}") from None
         retrieval = relay_environment({})
     result = dict(result, **retrieval)
+    from case_intelligence.speech_endpoint import configured_speech_endpoint
+    try:
+        speech = configured_speech_endpoint(application)
+    except ValueError:
+        if _compose_action(command) not in {"ps", "logs", "stop", "down"}:
+            raise RuntimeError("Invalid saved transcription settings. Check CASE_INTELLIGENCE_ASR_ configuration.") from None
+        speech = None
+    result["ASR_EGRESS_URL"] = speech.url if speech else ""
+    result["ASR_EGRESS_PINS"] = application.get("CASE_INTELLIGENCE_ASR_EGRESS_PINS", "") if speech else ""
     generator = application.get("CASE_INTELLIGENCE_GENERATOR_URL", "")
     pins = application.get("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", "")
     try:
@@ -4140,10 +4149,35 @@ def _wait_health(console: Console, root: Path, *, rollback: bool = False) -> Non
     raise RuntimeError(f"node did not reach health before timeout ({last}). {_startup_remedy(root)}")
 
 
+def _doctor_speech_in_app(console: Console, root: Path) -> None:
+    from case_intelligence.speech_endpoint import DIAGNOSTIC_MESSAGES
+
+    command = [*_compose(root, ()), "exec", "-T", "app", "python", "-m", "case_intelligence.speech_endpoint"]
+    try:
+        result = _probe(command, timeout=40)
+        if result.returncode or len(result.stdout) > 4096:
+            raise ValueError
+        payload = json.loads(result.stdout)
+        if not isinstance(payload, dict) or set(payload) != {"transcription"}:
+            raise ValueError
+        status = payload["transcription"]
+        if not isinstance(status, str) or status not in DIAGNOSTIC_MESSAGES:
+            raise ValueError
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        console.warn("Transcription endpoint diagnostic unavailable. Check saved settings and the running app.")
+        return
+    console.note(f"transcription endpoint :: {status}")
+
+
 def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
     _print_hardware_suggestion(console)
     app_env = _dotenv(_app_env(root))
     compose_env = _dotenv(root / "compose.env")
+    if app_env.get("CASE_INTELLIGENCE_ASR_URL", "").strip():
+        if dry_run:
+            console.note("Transcription endpoint not checked (dry run).")
+        else:
+            _doctor_speech_in_app(console, root)
     if any(app_env.get(f"CASE_INTELLIGENCE_{role}_URL") for role in ("EMBEDDING", "RERANK")):
         if dry_run:
             console.note("Retrieval endpoints not checked (dry run).")

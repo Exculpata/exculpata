@@ -329,7 +329,7 @@ def test_slot_exhaustion_and_failure_release_without_listener(monkeypatch):
 
 
 BUSY = b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-ROLES = ("OIDC", "GENERATOR", "EMBEDDING", "RERANK")
+ROLES = ("OIDC", "GENERATOR", "EMBEDDING", "RERANK", "ASR")
 
 
 class TunnelRequest:
@@ -402,7 +402,7 @@ def test_three_simultaneous_model_connects_succeed(monkeypatch, role):
 
     monkeypatch.setattr(proxy, "dial", lambda *a: io.BytesIO())
     monkeypatch.setattr(proxy, "relay", relay)
-    assert proxy.MAX_CONNECTIONS == 16
+    assert proxy.MAX_CONNECTIONS == 17
     assert proxy.RELAY_LIMITS["OIDC"].connections == 2
     try:
         for request in requests:
@@ -458,6 +458,11 @@ def test_role_and_global_slots_released_after_failure(monkeypatch, failure):
         assert slots._value == slots._initial_value
 
 
+def test_speech_relay_requires_an_https_origin():
+    with pytest.raises(proxy.DestinationConfigurationError, match="invalid HTTPS URL"):
+        proxy.configured_destinations({"ASR_EGRESS_URL": "https://speech.example.test/v1"})
+
+
 def test_shared_oidc_model_authority_rejected_without_values():
     with pytest.raises(proxy.Denied, match="OIDC.*model") as caught:
         proxy.configured_destinations({"OIDC_ISSUER": "https://shared.example.test",
@@ -481,14 +486,14 @@ def test_role_tunnel_deadline_and_late_model_response(monkeypatch, role):
         return ([upstream] if clock[0] >= 61 else []), [], []
     monkeypatch.setattr(proxy.select, "select", select)
     proxy.Handler(request, None, server)
-    if role == "OIDC":
+    if role in {"OIDC", "ASR"}:
         assert clock[0] <= 60
         assert b"synthetic response" not in request.sent
     else:
         assert b"synthetic response" in request.sent
     from case_intelligence.oidc_network_policy import RELAY_LIMITS
     limit = RELAY_LIMITS[role]
-    assert limit.seconds <= 60 if role == "OIDC" else limit.seconds >= 310
+    assert limit.seconds <= 60 if role in {"OIDC", "ASR"} else limit.seconds >= 310
     clock[0] = 0
     monkeypatch.setattr(proxy, "dial", lambda *a: io.BytesIO())
     def idle(readers, *args):
@@ -503,7 +508,12 @@ def test_role_tunnel_deadline_and_late_model_response(monkeypatch, role):
 def test_role_byte_cap_counts_both_directions(monkeypatch, role):
     from case_intelligence.oidc_network_policy import RELAY_LIMITS
     limit = RELAY_LIMITS[role]
-    assert limit.bytes == 8 * 1024 * 1024 if role == "OIDC" else limit.bytes >= 32 * 1024 * 1024
+    if role == "ASR":
+        assert limit.connections == 1 and limit.bytes == 2 * 1024 * 1024
+    elif role == "OIDC":
+        assert limit.bytes == 8 * 1024 * 1024
+    else:
+        assert limit.bytes >= 32 * 1024 * 1024
     class Stream:
         sent = 0
         def recv(self, size): return b"x" * size
@@ -714,4 +724,4 @@ def test_header_budget_is_shared_and_short():
     from case_intelligence import oidc_network_policy as policy
     assert proxy.RELAY_HEADER_SECONDS == policy.RELAY_HEADER_SECONDS == 10
     assert proxy.RELAY_ADMISSION_HEADROOM == policy.RELAY_ADMISSION_HEADROOM == 4
-    assert proxy.RELAY_HEADER_CONNECTIONS == policy.RELAY_HEADER_CONNECTIONS == 12
+    assert proxy.RELAY_HEADER_CONNECTIONS == policy.RELAY_HEADER_CONNECTIONS == 13

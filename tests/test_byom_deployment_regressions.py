@@ -74,6 +74,32 @@ def test_doctor_checks_server_in_existing_app_namespace(monkeypatch, tmp_path, u
     assert "running app schema enforcement :: verified" in output
 
 
+@pytest.mark.parametrize(("saved", "dry_run", "reply", "expected"), [
+    (False, False, {}, ""),
+    (True, True, {}, "dry run"),
+    (True, False, {"transcription": "ok"}, "transcription endpoint :: ok"),
+    (True, False, {"transcription": "synthetic-private-runtime-output"}, "diagnostic unavailable"),
+])
+def test_speech_doctor_runs_only_in_app_and_displays_known_messages(monkeypatch, tmp_path, saved, dry_run, reply, expected):
+    from tests.test_oss_installer import installer
+    app = {"CASE_INTELLIGENCE_ASR_URL": "https://speech.example.test"} if saved else {}
+    monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
+    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
+    monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
+    commands, output = [], []
+
+    def probe(command, **kwargs):
+        commands.append(command)
+        return SimpleNamespace(returncode=0, stdout=json.dumps(reply))
+
+    monkeypatch.setattr(installer, "_probe", probe)
+    installer._doctor_generator(SimpleNamespace(note=output.append, warn=output.append), tmp_path, dry_run=dry_run)
+    expected_commands = [["docker", "compose", "exec", "-T", "app", "python", "-m", "case_intelligence.speech_endpoint"]]
+    assert commands == (expected_commands if saved and not dry_run else [])
+    assert expected in " ".join(output)
+    assert "synthetic-private-runtime-output" not in " ".join(output)
+
+
 @pytest.mark.parametrize("dry_run", [True, False])
 def test_doctor_redacts_invalid_saved_url_before_display(monkeypatch, tmp_path, dry_run):
     from tests.test_oss_installer import installer
