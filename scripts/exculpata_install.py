@@ -273,8 +273,8 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
         if _compose_action(command) not in {"ps", "logs", "stop", "down"}:
             raise RuntimeError("Invalid saved transcription settings. Check CASE_INTELLIGENCE_ASR_ configuration.") from None
         speech = None
-    result["ASR_EGRESS_URL"] = speech.url if speech else ""
-    result["ASR_EGRESS_PINS"] = application.get("CASE_INTELLIGENCE_ASR_EGRESS_PINS", "") if speech else ""
+    result = dict(result, ASR_EGRESS_URL=speech.url if speech else "",
+                  ASR_EGRESS_PINS=application.get("CASE_INTELLIGENCE_ASR_EGRESS_PINS", "") if speech else "")
     generator = application.get("CASE_INTELLIGENCE_GENERATOR_URL", "")
     pins = application.get("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", "")
     try:
