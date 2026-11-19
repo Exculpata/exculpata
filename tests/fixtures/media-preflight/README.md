@@ -1,6 +1,6 @@
 # Synthetic recording fixture
 
-`generated-speech.wav` contains only invented software-test speech, synthesized
+The application fixture at `src/case_intelligence/config/generated-speech.wav` contains only invented software-test speech, synthesized
 offline with FFmpeg's [flite source](https://ffmpeg.org/ffmpeg-filters.html#flite),
 voice `slt`, then converted to mono 16 kHz PCM. It is not a recording of a person,
 client, case or imported record. Tests derive silence, offsets and reduced-volume
