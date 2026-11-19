@@ -1,0 +1,15 @@
+# Scanned documents during the model API migration
+
+## Kickoff
+
+Keep PDF OCR available on a node with zero configured model services. Let an operator verify from the installed app that a word visible only in a scanned page can be found at its original page. This addresses the OCR decision and part of the synthetic verification work in [issue 558](https://github.com/Exculpata/exculpata/issues/558).
+
+Expected changes cover the installed OCR diagnostic and its synthetic fixture, the node doctor, the model configuration and OCR guides, and focused tests for the app and installer.
+
+Acceptance requires a real Poppler and Tesseract run with a fixed image-only phrase, exact search with a source-version and page locator, an explicit disabled outcome, and a useful failure when recognition is unavailable. The check must operate without reading matter material, contacting a service, or retaining diagnostic source data.
+
+## Decision
+
+Retain the app's bounded local PDF extraction and OCR during the model migration. Native text, page selection, language settings and extraction limits already belong to ingestion. Keeping this path allows a team to review scans and run word searches without configuring a model provider. An external document processor would need a separate design for authorization and page-level provenance before receiving case material.
+
+Use a private temporary directory and a fixed synthetic scan for the operator check. The result describes this installation's ability to find the known phrase on its page. Reviewers still need the original document and its extraction coverage to assess a particular search result. Existing source versions and saved citations retain their extraction history.
