@@ -70,11 +70,13 @@ def test_only_pinned_standalone_corpora_can_send_without_a_matter(corpus, tmp_pa
     if corpus == "questions":
         data["cases"][0]["topic"] = "Synthetic private topic"
     else:
-        data["questions"][0]["text"] = "Synthetic private question"
+        data["questions"][0]["question"] = "Synthetic private question"
         data["fingerprint"] = defense_eval.suite_fingerprint(data)
     modified = tmp_path / "modified.json"
     # fixture-write: Build a synthetic evaluation manifest with changed input.
     modified.write_text(json.dumps(data), encoding="utf-8")
+    if corpus == "defense":
+        assert defense_eval.load_suite(modified).questions[0].text == "Synthetic private question"
     run(modified)
     assert requests == []
 
