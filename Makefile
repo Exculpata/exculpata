@@ -4,7 +4,7 @@ PUBLICATION_GUARD_ROOT ?= $(HOME)/.local/share/exculpata-publication-guard
 GITLEAKS ?= gitleaks
 .DEFAULT_GOAL := test
 
-.PHONY: bootstrap hooks check check-fast compile compose-check network-contract demo publication-check publication-candidate-check secret-check deployment-check test test-fast test-transcription test-postgres
+.PHONY: bootstrap hooks check check-fast compile compose-check network-contract demo publication-check publication-candidate-check secret-check deployment-check test test-fast application-shard-check test-transcription test-postgres
 
 bootstrap:
 	"$(SYSTEM_PYTHON)" scripts/bootstrap-dev.py
@@ -35,10 +35,13 @@ hooks:
 demo:
 	"$(PYTHON)" scripts/demo.py
 
-test:
+test: application-shard-check
 	"$(PYTHON)" -m pytest -q
 
-test-fast:
+application-shard-check:
+	"$(PYTHON)" scripts/application-test-shard.py --check
+
+test-fast: application-shard-check
 	CASE_REVIEW_POSTGRES_TEST_DSN= CASE_INTELLIGENCE_STORAGE_RESERVE_GIB=0 CASE_INTELLIGENCE_TEST_MODE=1 \
 		OMP_THREAD_LIMIT=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
 		"$(PYTHON)" -m pytest -n auto --dist loadgroup --max-worker-restart=0 -q -m "not postgres"

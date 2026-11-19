@@ -80,7 +80,7 @@ def test_reindex_database_cases_have_a_required_postgres_lane():
             assert "skipif" not in marks and "skip" not in marks
             assert ("postgres" in marks) == (name != "test_indexing_path_is_execute_only")
     assert any(mark.startswith("postgres:") for mark in tomllib.loads((root / "pyproject.toml").read_text())["tool"]["pytest"]["ini_options"]["markers"])
-    application = (root / "Makefile").read_text().split("\ntest-fast:\n")[1].split("\ntest-transcription:")[0]
+    application = (root / "Makefile").read_text().split("\ntest-fast:", 1)[1].split("\ntest-transcription:")[0]
     assert '-m "not postgres"' in application
     steps = yaml.safe_load((root / ".github/workflows/quality-gates.yml").read_text())["jobs"]["application-shards"]["steps"]
     assert '-m "not postgres"' in next(step["run"] for step in steps if step["name"] == "Run application suite")

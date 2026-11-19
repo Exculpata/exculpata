@@ -246,6 +246,10 @@ jobs:
       - name: Enforce repository network contract
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         run: make network-contract
+      - name: Verify application shard collection
+        if: ${{ needs.change-scope.outputs.docs_only != 'true' && matrix.shard == 0 }}
+        timeout-minutes: 10
+        run: .venv/bin/python scripts/application-test-shard.py --check
       - name: Select application test shard
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         run: .venv/bin/python scripts/application-test-shard.py ${{ matrix.shard }} > "$RUNNER_TEMP/application-test-files.txt"
