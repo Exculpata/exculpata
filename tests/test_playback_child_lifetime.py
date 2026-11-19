@@ -30,8 +30,33 @@ def _wait(predicate, seconds=5):
 def _alive(pid):
     try:
         return Path(f"/proc/{pid}/stat").read_text().split(")", 1)[1].split()[0] != "Z"
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return False
+
+
+def test_alive_when_child_exits_during_stat_read(monkeypatch):
+    with subprocess.Popen(["/usr/bin/cat"], stdin=subprocess.PIPE) as child:
+        assert _alive(child.pid)
+
+        def read_after_exit(path):
+            with path.open() as status:
+                child.stdin.close()
+                child.wait(timeout=2)
+                return status.read()
+
+        with monkeypatch.context() as patch:
+            patch.setattr(Path, "read_text", read_after_exit)
+            assert not _alive(child.pid)
+        assert not _alive(child.pid)
+
+
+def test_alive_propagates_unexpected_stat_errors(monkeypatch):
+    def denied(path):
+        raise PermissionError("Cannot inspect process status")
+
+    monkeypatch.setattr(Path, "read_text", denied)
+    with pytest.raises(PermissionError):
+        _alive(os.getpid())
 
 
 def _writers(directory):

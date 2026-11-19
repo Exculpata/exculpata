@@ -976,6 +976,12 @@
                   "run": "09342aee0463c050910b7676a5a8d6dd68de1136e16954d3434b05c349212f2d"
                 },
                 {
+                  "if": "${{ needs.change-scope.outputs.docs_only != 'true' && matrix.shard == 0 }}",
+                  "name": "Verify application shard collection",
+                  "run": "1cf6ea5f6197a270368d597520ef0349a7466857bbf4729fe8d1e8ad780892da",
+                  "timeout-minutes": 10
+                },
+                {
                   "if": "${{ needs.change-scope.outputs.docs_only != 'true' }}",
                   "name": "Select application test shard",
                   "run": "6d28697f42b1532efddcb9df7657aab3d75143c5858d0408758a7b5ac93d8439"
@@ -1722,6 +1728,11 @@
               {
                 "expected": null,
                 "name": "Enforce repository network contract",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Verify application shard collection",
                 "unavailable": null
               },
               {
@@ -2521,6 +2532,10 @@
             },
             {
               "state": "RUN",
+              "step": "Verify application shard collection"
+            },
+            {
+              "state": "RUN",
               "step": "Select application test shard"
             },
             {
@@ -2605,6 +2620,10 @@
             {
               "state": "RUN",
               "step": "Enforce repository network contract"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify application shard collection"
             },
             {
               "state": "RUN",
@@ -3163,6 +3182,10 @@
             },
             {
               "state": "RUN",
+              "step": "Verify application shard collection"
+            },
+            {
+              "state": "RUN",
               "step": "Select application test shard"
             },
             {
@@ -3247,6 +3270,10 @@
             {
               "state": "RUN",
               "step": "Enforce repository network contract"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify application shard collection"
             },
             {
               "state": "RUN",
@@ -3805,6 +3832,10 @@
             },
             {
               "state": "SKIP",
+              "step": "Verify application shard collection"
+            },
+            {
+              "state": "SKIP",
               "step": "Select application test shard"
             },
             {
@@ -3889,6 +3920,10 @@
             {
               "state": "SKIP",
               "step": "Enforce repository network contract"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify application shard collection"
             },
             {
               "state": "SKIP",
