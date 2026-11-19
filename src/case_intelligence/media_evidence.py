@@ -649,19 +649,19 @@ class MediaCoordinator:
 
     def _project_existing(
         self, job: MediaJobRecord, matter: MatterRecord, document: PilotDocument
-    ) -> bool:
+    ) -> MediaTranscriptRecord | None:
         store = self.resolve_store(matter)
         with store.mutation_guard():
             transcript = self.workspace.media_transcript(
                 job.matter_id, job.document_id, job.source_version_id
             )
             if transcript is None:
-                return False
+                return None
             segments = self.workspace.transcript_segments(
                 job.matter_id, job.document_id, job.source_version_id
             )
             self.project_transcript(matter, document, segments, bool(job.degraded))
-            return True
+            return transcript
 
     def _process_summary(self, summary: MediaSummaryRecord) -> None:
         if self._matter_cancelled(summary.matter_id):
@@ -774,6 +774,33 @@ class MediaCoordinator:
         external_id = job.external_job_id
         try:
             self._require_job_access(job)
+            if self._matter_cancelled(job.matter_id):
+                raise MediaProcessorError("Transcription cancelled because the matter is closing.")
+            matter = self.resolve_matter(job.matter_id)
+            store = self.resolve_store(matter)
+            document = store.get(job.document_id)
+            if (
+                document.version_id != job.source_version_id
+                or document.digest != job.source_sha256
+                or document.size != job.byte_size
+            ):
+                raise MediaProcessorError("The source version changed before transcription.")
+            transcript = self._project_existing(job, matter, document)
+            if transcript is not None:
+                self.workspace.finish_media_job(
+                    job.media_job_id,
+                    degraded=bool(job.degraded),
+                    message=document.message,
+                    warnings=transcript.warnings,
+                    quality=transcript.quality,
+                    provenance=transcript.provenance,
+                )
+                if external_id and self.processor is not None and self.processor.available:
+                    try:
+                        self.processor.delete(owner, external_id)
+                    except MediaProcessorError:
+                        pass
+                return
             known_hold = (
                 job.preflight.get("outcome") in {"no_audio", "no_speech", "uncertain", "failed"}
                 and job.preflight.get("continued") is False
@@ -790,36 +817,6 @@ class MediaCoordinator:
                         job.media_job_id, stage="Resuming transcription", progress=0.03,
                         external_job_id=external_id,
                     )
-            if self._matter_cancelled(job.matter_id):
-                raise MediaProcessorError("Transcription cancelled because the matter is closing.")
-            matter = self.resolve_matter(job.matter_id)
-            store = self.resolve_store(matter)
-            document = store.get(job.document_id)
-            if (
-                document.version_id != job.source_version_id
-                or document.digest != job.source_sha256
-                or document.size != job.byte_size
-            ):
-                raise MediaProcessorError("The source version changed before transcription.")
-            if self._project_existing(job, matter, document):
-                if self.processor is not None and external_id:
-                    try:
-                        self.processor.delete(owner, external_id)
-                    except MediaProcessorError:
-                        pass
-                transcript = self.workspace.media_transcript(
-                    job.matter_id, job.document_id, job.source_version_id
-                )
-                assert transcript is not None
-                self.workspace.finish_media_job(
-                    job.media_job_id,
-                    degraded=bool(job.degraded),
-                    message=document.message,
-                    warnings=transcript.warnings,
-                    quality=transcript.quality,
-                    provenance=transcript.provenance,
-                )
-                return
             self._require_job_access(job)
             source = store.source_path(job.document_id, verify_digest=True)
             if not external_id:
@@ -949,6 +946,7 @@ class MediaCoordinator:
                         transcript = self.workspace.import_media_transcript(
                             job.media_job_id,
                             segments=normalized,
+                            degraded=degraded,
                             warnings=(
                                 payload.get("warnings")
                                 if isinstance(payload.get("warnings"), list)

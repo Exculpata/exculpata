@@ -3593,7 +3593,9 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
             self.membership(matter_id, actor_id)
             changed = self.connection.execute(
                 "UPDATE workbench_media_job SET state='queued',stage='Queued',progress=0,"
-                "external_job_id=NULL,worker_id=NULL,degraded=0,message='',warnings_json='[]',"
+                "external_job_id=CASE WHEN EXISTS (SELECT 1 FROM workbench_media_transcript t "
+                "WHERE t.media_job_id=workbench_media_job.media_job_id) THEN external_job_id END,"
+                "worker_id=NULL,message='',warnings_json='[]',"
                 "quality_json='{}',provenance_json='{}',requested_by=?,started_at=NULL,finished_at=NULL,updated_at=? "
                 "WHERE matter_id=? AND document_id=? AND state='failed'",
                 (actor_id, now, matter_id, document_id),
@@ -3655,6 +3657,7 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
         media_job_id: str,
         *,
         segments: Sequence[Mapping[str, object]],
+        degraded: bool = False,
         warnings: Sequence[object],
         quality: Mapping[str, object],
         provenance: Mapping[str, object],
@@ -3765,6 +3768,10 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
         with self._lock, self.connection:
             self.connection.execute("BEGIN IMMEDIATE")
             self.membership(job.matter_id, job.requested_by)
+            self.connection.execute(
+                "UPDATE workbench_media_job SET degraded=? WHERE media_job_id=?",
+                (int(degraded), media_job_id),
+            )
             self.connection.execute(
                 "INSERT INTO workbench_media_transcript("
                 "transcript_id,matter_id,document_id,source_version_id,media_job_id,"
