@@ -415,7 +415,7 @@ def _matched_external_id(view: Mapping[str, object], job: MediaJobRecord) -> str
     if view.get("source_sha256") != job.source_sha256 or view.get("size_bytes") != job.byte_size:
         raise MediaProcessorError("The transcription service did not preserve the submitted source identity.")
     external_id = str(view.get("job_id") or view.get("id") or "")
-    if not external_id:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{8,100}", external_id):
         raise MediaProcessorError("The transcription service returned an invalid job identity.")
     return external_id
 
@@ -649,19 +649,19 @@ class MediaCoordinator:
 
     def _project_existing(
         self, job: MediaJobRecord, matter: MatterRecord, document: PilotDocument
-    ) -> bool:
+    ) -> MediaTranscriptRecord | None:
         store = self.resolve_store(matter)
         with store.mutation_guard():
             transcript = self.workspace.media_transcript(
                 job.matter_id, job.document_id, job.source_version_id
             )
             if transcript is None:
-                return False
+                return None
             segments = self.workspace.transcript_segments(
                 job.matter_id, job.document_id, job.source_version_id
             )
             self.project_transcript(matter, document, segments, bool(job.degraded))
-            return True
+            return transcript
 
     def _process_summary(self, summary: MediaSummaryRecord) -> None:
         if self._matter_cancelled(summary.matter_id):
@@ -774,6 +774,29 @@ class MediaCoordinator:
         external_id = job.external_job_id
         try:
             self._require_job_access(job)
+            if self._matter_cancelled(job.matter_id):
+                raise MediaProcessorError("Transcription cancelled because the matter is closing.")
+            matter = self.resolve_matter(job.matter_id)
+            store = self.resolve_store(matter)
+            document = store.get(job.document_id)
+            if (
+                document.version_id != job.source_version_id
+                or document.digest != job.source_sha256
+                or document.size != job.byte_size
+            ):
+                raise MediaProcessorError("The source version changed before transcription.")
+            transcript = self._project_existing(job, matter, document)
+            if transcript is not None:
+                self.workspace.finish_media_job(
+                    job.media_job_id,
+                    degraded=bool(job.degraded),
+                    message=document.message,
+                    warnings=transcript.warnings,
+                    quality=transcript.quality,
+                    provenance=transcript.provenance,
+                )
+                self.cancel_external(job)
+                return
             known_hold = (
                 job.preflight.get("outcome") in {"no_audio", "no_speech", "uncertain", "failed"}
                 and job.preflight.get("continued") is False
@@ -790,36 +813,6 @@ class MediaCoordinator:
                         job.media_job_id, stage="Resuming transcription", progress=0.03,
                         external_job_id=external_id,
                     )
-            if self._matter_cancelled(job.matter_id):
-                raise MediaProcessorError("Transcription cancelled because the matter is closing.")
-            matter = self.resolve_matter(job.matter_id)
-            store = self.resolve_store(matter)
-            document = store.get(job.document_id)
-            if (
-                document.version_id != job.source_version_id
-                or document.digest != job.source_sha256
-                or document.size != job.byte_size
-            ):
-                raise MediaProcessorError("The source version changed before transcription.")
-            if self._project_existing(job, matter, document):
-                if self.processor is not None and external_id:
-                    try:
-                        self.processor.delete(owner, external_id)
-                    except MediaProcessorError:
-                        pass
-                transcript = self.workspace.media_transcript(
-                    job.matter_id, job.document_id, job.source_version_id
-                )
-                assert transcript is not None
-                self.workspace.finish_media_job(
-                    job.media_job_id,
-                    degraded=bool(job.degraded),
-                    message=document.message,
-                    warnings=transcript.warnings,
-                    quality=transcript.quality,
-                    provenance=transcript.provenance,
-                )
-                return
             self._require_job_access(job)
             source = store.source_path(job.document_id, verify_digest=True)
             if not external_id:
@@ -949,6 +942,7 @@ class MediaCoordinator:
                         transcript = self.workspace.import_media_transcript(
                             job.media_job_id,
                             segments=normalized,
+                            degraded=degraded,
                             warnings=(
                                 payload.get("warnings")
                                 if isinstance(payload.get("warnings"), list)
@@ -1008,21 +1002,32 @@ class MediaCoordinator:
                 pass
 
     def cancel_external(self, media_job: MediaJobRecord) -> bool:
-        """Strictly remove processor-owned bytes for a matter purge."""
+        """Remove processor scratch, including jobs whose legacy retry lost the ID."""
 
-        if not media_job.external_job_id:
+        external_id = media_job.external_job_id
+        if not external_id and self.workspace.media_transcript(
+            media_job.matter_id, media_job.document_id, media_job.source_version_id
+        ) is None:
             return True
-        if self.processor is None:
+        if self.processor is None or not self.processor.available:
             return False
         owner = processor_owner(media_job.media_job_id)
+        if not external_id:
+            try:
+                match = self.processor.find_job(owner, media_job.source_sha256, media_job.byte_size)
+                if match is None:
+                    return True
+                external_id = _matched_external_id(match, media_job)
+            except MediaProcessorError:
+                return False
         try:
-            self.processor.cancel(owner, media_job.external_job_id)
+            self.processor.cancel(owner, external_id)
         except MediaProcessorError:
             # A completed processor job may no longer accept cancellation; an
             # independently successful delete is still sufficient.
             pass
         try:
-            self.processor.delete(owner, media_job.external_job_id)
+            self.processor.delete(owner, external_id)
         except MediaProcessorNotFound:
             return True
         except MediaProcessorError:

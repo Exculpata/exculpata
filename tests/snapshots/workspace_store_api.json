@@ -101,7 +101,7 @@
   ["get_matter", "(self, slug: 'str', principal_id: 'str') -> 'MatterRecord'"],
   ["get_matter_by_id", "(self, matter_id: 'str', principal_id: 'str | None' = None) -> 'MatterRecord'"],
   ["get_principal", "(self, principal_id: 'str') -> 'PrincipalRecord'"],
-  ["import_media_transcript", "(self, media_job_id: 'str', *, segments: 'Sequence[Mapping[str, object]]', warnings: 'Sequence[object]', quality: 'Mapping[str, object]', provenance: 'Mapping[str, object]') -> 'MediaTranscriptRecord'"],
+  ["import_media_transcript", "(self, media_job_id: 'str', *, segments: 'Sequence[Mapping[str, object]]', degraded: 'bool' = False, warnings: 'Sequence[object]', quality: 'Mapping[str, object]', provenance: 'Mapping[str, object]') -> 'MediaTranscriptRecord'"],
   ["ingest_counts", "(self) -> 'dict[str, int]'"],
   ["ingest_job", "(self, matter_id: 'str', document_id: 'str') -> 'IngestJobRecord | None'"],
   ["ingest_plan_items", "(self, matter_id: 'str', plan_id: 'str') -> 'tuple[IngestPlanItemRecord, ...]'"],

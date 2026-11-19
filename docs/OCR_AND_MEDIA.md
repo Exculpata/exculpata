@@ -40,6 +40,19 @@ states. Exculpata indexes timestamped segments and automatically generates a
 source summary after projection. Users can export transcripts, summaries,
 clips, citations, and reports.
 
+If transcription stops after Exculpata has imported a transcript, choose
+**Try again** on the failed source. Recovery rebuilds the source from its saved
+passages and speaker labels, even when the transcription service is offline.
+Corrections, citation timestamps, and the processor's recorded quality and
+provenance stay with the original source version. If the transcript has yet to
+be imported, recovery checks for an earlier processor job before resubmission.
+On older retries that lost the processor job ID, Exculpata uses the job owner,
+source digest, and byte count to locate temporary processor files. Source and
+matter deletion wait until the processor can confirm cleanup.
+Older releases recorded the degraded status only when the job finished. For a
+job interrupted between import and completion on those releases, consult the
+saved transcript warnings and quality details when reviewing the result.
+
 Speaker diarization produces anonymous clusters, not identities. Reviewers can
 open **Review speakers** beside the synchronized transcript or select a speaker
 label on any passage. A deliberately confirmed correction applies to every
