@@ -85,6 +85,7 @@ def _valid_transcript(response):
         start, end, text = segment.get("start"), segment.get("end"), segment.get("text")
         if (type(start) not in (float, int) or type(end) not in (float, int)
                 or not previous_start <= start < end <= _LAST_TIMESTAMP
+                or round(start * 1000) >= round(end * 1000)
                 or not isinstance(text, str) or not text.strip()):
             return False
         previous_start = start

@@ -79,6 +79,7 @@ def test_doctor_posts_only_packaged_audio(provider):
 
 @pytest.mark.parametrize("change", [
     {"segments": []}, {"text": ""}, {"language": ""}, {"segments": [{"text": "synthetic", "start": True, "end": 1}]},
+    {"segments": [{"text": "synthetic", "start": 1.0001, "end": 1.0002}]},
     {"segments": [{"text": "synthetic", "start": 1, "end": 0.8}]},
     {"segments": [{"text": "synthetic", "start": -1, "end": 0.8}]},
     {"segments": [{"text": "synthetic", "start": 3, "end": 30}]},
