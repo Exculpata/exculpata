@@ -4,11 +4,13 @@ import asyncio
 from contextlib import asynccontextmanager, suppress
 import hashlib
 import json
+import logging
 import mimetypes
 import os
 import re
 import secrets
 import shutil
+import sqlite3
 import threading
 import time
 from dataclasses import replace
@@ -54,6 +56,7 @@ from .domain import (
     SpeakerMapping,
     TranscriptSegment,
     TranscriptionOptions,
+    StoreError,
     TERMINAL_JOB_STATUSES,
     validate_batch_id,
 )
@@ -288,6 +291,9 @@ def _normalized_options(raw: str, settings: Settings) -> tuple[str, Transcriptio
     return profile, TranscriptionOptions.from_mapping(value)
 
 
+HISTORY_PURGE_SECONDS = 60
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     runtime = build_runtime(settings)
     profile_availability = ProfileAvailability(runtime.settings)
@@ -390,14 +396,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     history_only = os.getenv("TRANSCRIPTION_V2_HISTORY_ONLY", "0") != "0"
 
+    async def purge_history():
+        try:
+            await asyncio.to_thread(purge_retained_jobs)
+        except (OSError, sqlite3.OperationalError, StoreError):
+            logging.getLogger(__name__).warning("History cleanup deferred until its next scheduled attempt.")
+
     @asynccontextmanager
     async def history_lifespan(_app):
         async def expire_history():
             while True:
-                await asyncio.sleep(60)
-                await asyncio.to_thread(purge_retained_jobs)
+                await asyncio.sleep(HISTORY_PURGE_SECONDS)
+                await purge_history()
 
-        await asyncio.to_thread(purge_retained_jobs)
+        await purge_history()
         task = asyncio.create_task(expire_history())
         try:
             yield

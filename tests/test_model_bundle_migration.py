@@ -104,3 +104,22 @@ def test_private_history_client_never_submits_a_recording(tmp_path, monkeypatch)
     monkeypatch.setattr(client, "_request", lambda *a, **kw: pytest.fail("unexpected private upload"))
     with pytest.raises(MediaProcessorError, match="past jobs"):
         client.submit("synthetic-owner", tmp_path / "recording", "audio/wav", "a" * 64)
+
+
+def test_stopped_control_store_requires_active_media_to_finish(tmp_path):
+    from fastapi.testclient import TestClient
+    from tests.test_matter_media_workflow import _matter
+    from tests.test_media_preflight import ObservedProcessor, app_for, silence, upload
+
+    source = tmp_path / "synthetic.wav"
+    silence(source, 3)
+    with TestClient(app_for(tmp_path / "runtime", ObservedProcessor())) as client:
+        bench = client.app.state.workbench
+        bench.media.close()
+        slug = _matter(client)
+        upload(client, slug, source)
+        with pytest.raises(RuntimeError, match="Finish or cancel"):
+            installer.bundle_migration.require_idle_media(tmp_path)
+        job = bench.workspace.claim_media_job("synthetic-worker")
+        bench.workspace.fail_media_job(job.media_job_id, "Synthetic terminal result")
+    installer.bundle_migration.require_idle_media(tmp_path)

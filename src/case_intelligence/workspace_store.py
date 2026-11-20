@@ -36,6 +36,7 @@ from .store import (
     _MEDIA_CLIP,
     _NOTEBOOK_ITEM,
 )
+from .store.media_queue import ACTIVE_MEDIA_JOB
 from .store.model_grants import ModelGrantStoreMixin
 from .store.notebook import NotebookStoreMixin
 from .store.reports import ReportsStoreMixin
@@ -1996,7 +1997,7 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
             ),
             "media": (
                 "workbench_media_job",
-                "state IN ('queued','running')",
+                ACTIVE_MEDIA_JOB,
             ),
             "overviews": (
                 "workbench_media_summary",
