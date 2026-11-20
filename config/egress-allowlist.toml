@@ -7881,6 +7881,30 @@ detail = "attachment.txt"
 
 # The ASR doctor uses a fixed fixture. Case multipart uploads use the same reviewed relay with a live matter grant.
 [[source]]
+path = "src/case_intelligence/media_enrichment.py"
+kind = "client"
+digest = "48dc804dd6255688fd38f0ce0cfcca804e349d2d898a15fd41ad5e0ce51c1253"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/media_enrichment.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/media_enrichment.py"
+kind = "client"
+digest = "94428707863bfc7d1910240b3fa945f3952962261039e01c552e112f7c664e17"
+detail = "urllib.request.Request"
+
+[[source]]
+path = "src/case_intelligence/media_enrichment.py"
+kind = "client"
+digest = "1be124a1640e254e8df5e8497e2fcb47c09af66c73650af822e70e0184f04ad7"
+detail = "http.client.HTTPException"
+
+[[source]]
 path = "src/case_intelligence/speech_endpoint.py"
 kind = "client"
 digest = "48dc804dd6255688fd38f0ce0cfcca804e349d2d898a15fd41ad5e0ce51c1253"

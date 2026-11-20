@@ -479,6 +479,7 @@ class WorkerTests(unittest.TestCase):
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
             self.assertTrue(summary["degraded"])
             self.assertTrue(summary["provenance"]["mock"])
+            self.assertEqual(summary["quality"]["source_alignment_status"], "succeeded")
             self.assertFalse(summary["quality"]["diarization_requested"])
             self.assertEqual(summary["quality"]["diarization_status"], "skipped")
             self.assertIsNone(summary["provenance"]["diarization_model"])
