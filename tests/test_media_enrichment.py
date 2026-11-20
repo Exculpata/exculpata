@@ -70,3 +70,80 @@ def test_results_apply_only_the_requested_annotation():
     assert enrichment.apply_contract("translation", source, response) == [source[0] | {"translated_text": "Hello world."}]
     assert enrichment.apply_contract("speaker_labeling", source, response) == [
         source[0] | {"speaker": {"cluster_id": "SPEAKER_01"}}]
+
+
+@pytest.fixture
+def configured_translation(monkeypatch, tmp_path):
+    from case_intelligence.external_model_grants import configured_model_destination
+    from case_intelligence.workspace_store import WorkspaceStore
+
+    monkeypatch.setenv("CASE_INTELLIGENCE_TRANSLATION_URL", "https://translate.example.test")
+    monkeypatch.setenv("CASE_INTELLIGENCE_TRANSLATION_MODEL", "synthetic-translation")
+    workspace = WorkspaceStore(tmp_path / "workspace.sqlite")
+    owner = "principal-owner"
+    workspace.upsert_principal("test", "owner", "Owner", "owner", preferred_principal_id=owner)
+    matter = workspace.create_matter("Synthetic one", "", owner).matter_id
+    other = workspace.create_matter("Synthetic two", "", owner).matter_id
+    destination = configured_model_destination("translation")
+    workspace.set_model_grant(matter, destination, owner, approved=True)
+    try:
+        yield workspace, owner, matter, other, destination
+    finally:
+        workspace.close()
+
+
+def test_translation_checks_current_permission_and_never_sends_internal_fields(monkeypatch, configured_translation):
+    from io import BytesIO
+    import json
+    from types import SimpleNamespace
+
+    workspace, owner, matter, other, dest = configured_translation
+    original = {"segment_id": "private-original-id", "model_text": "Prueba.", "speaker": {"display_name": "Private label"},
+                "start": 0.0, "end": 1.7}
+    payload = {"segments": [original], "quality": {"detected_language": "es"}, "job_id": "private-job"}
+    calls = []
+
+    def respond(request, **kwargs):
+        calls.append((request.full_url, json.loads(request.data)))
+        return BytesIO(b'{"segments":[{"id":"segment-1","text":"A test."}]}')
+
+    monkeypatch.setattr(enrichment, "open_generator_request", respond)
+
+    def run(matter_id, check_access=lambda: None):
+        job = SimpleNamespace(matter_id=matter_id, duration_ms=2000)
+        return enrichment.enrich_transcript(workspace, job, None, payload, check_access=check_access)
+
+    assert run(other)["quality"]["translation_status"] == "denied"
+    translated = run(matter)
+    assert calls == [("https://translate.example.test/v1/translations", {
+        "model": "synthetic-translation", "source_language": "es", "target_language": "en",
+        "segments": [{"id": "segment-1", "text": "Prueba."}],
+    })]
+    assert translated["segments"] == [original | {"translated_text": "A test."}]
+    assert translated["provenance"]["translation"] == {"endpoint": dest.endpoint, "model": dest.model}
+    assert not translated["degraded"]
+    checks = []
+
+    def revoke_at_dispatch():
+        checks.append(True)
+        if len(checks) == 2:
+            workspace.set_model_grant(matter, dest, owner, approved=False)
+
+    denied = run(matter, revoke_at_dispatch)
+    assert len(checks) == 2 and len(calls) == 1
+    assert denied["degraded"] and denied["quality"]["translation_status"] == "denied"
+    assert denied["segments"] == [original]
+    assert payload["segments"] == [original]
+
+
+@pytest.mark.parametrize("metadata", [{"language": "English"}, {"quality": {"detected_language": "en-US"}},
+                                      {"review_state": "Human reviewed"}])
+def test_english_and_reviewed_sources_skip_translation(monkeypatch, configured_translation, metadata):
+    from types import SimpleNamespace
+
+    workspace, _, matter, _, _ = configured_translation
+    monkeypatch.setattr(enrichment, "open_generator_request", lambda *a, **kw: pytest.fail("unexpected dispatch"))
+    payload = {"segments": source_segments(), **metadata}
+    result = enrichment.enrich_transcript(workspace, SimpleNamespace(matter_id=matter), None, payload,
+                                          check_access=lambda: None)
+    assert result["segments"] == payload["segments"]
