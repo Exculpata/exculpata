@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Mapping
 
@@ -11,6 +12,7 @@ from .legacy_names import name_value
 DEFAULT_EMBEDDING_MODEL = "ibm-granite/granite-embedding-english-r2"
 DEFAULT_EMBEDDING_REVISION = "47ea694b257b703fee9253d75c2b1f2985180498"
 PROJECTION_FORMAT = "learned-or-null/v1"
+TRANSFER_FORMAT = "verified-bundled-transfer/v1"
 MISSING_EMBEDDINGS = "Some passages have no embeddings. Rebuild the embedding index to enable meaning search."
 WARNING = (
     "The embedding model or revision changed on an index that already has data. "
@@ -55,6 +57,11 @@ def embedding_change_warning(
         return UNKNOWN_WARNING
     if record.get("model") != model or record.get("revision") != revision:
         return WARNING if record["populated"] else UNKNOWN_WARNING
+    if record.get("projection_format") == TRANSFER_FORMAT:
+        fingerprint = record.get("synthetic_fingerprint")
+        if not isinstance(fingerprint, str) or not re.fullmatch("[a-f0-9]{64}", fingerprint):
+            return FORMAT_WARNING
+        return ""
     if record.get("projection_format") != PROJECTION_FORMAT:
         return FORMAT_WARNING
     return ""
@@ -66,7 +73,7 @@ def record_embedding_index(path: Path, *, model: str, revision: str, populated: 
     current = load_embedding_index(path)
     if populated:
         warning = embedding_change_warning(current, model=model, revision=revision, allow_empty=True)
-        if warning:
+        if warning or current["projection_format"] == TRANSFER_FORMAT:
             return warning
     document = {"model": model, "revision": revision, "populated": bool(populated),
                 "projection_format": PROJECTION_FORMAT}
@@ -78,7 +85,7 @@ def record_embedding_index(path: Path, *, model: str, revision: str, populated: 
 
 
 def configured_embedding() -> tuple[str, str]:
-    from .retrieval_endpoints import configured_endpoint
+    from .retrieval_endpoint_config import configured_endpoint
     endpoint = configured_endpoint("EMBEDDING")
     if endpoint is not None:
         return endpoint.model, endpoint.identity
