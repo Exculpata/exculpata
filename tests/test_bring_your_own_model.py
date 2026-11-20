@@ -569,9 +569,12 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     live_output = capsys.readouterr().out
     assert "schema enforcement :: verified" in live_output
     assert TOKEN not in live_output
-    assert len(commands) == 1
-    assert commands[0][-6:] == ["exec", "-T", "app", "python", "-m", "case_intelligence.generator_doctor"]
-    assert TOKEN not in ' '.join(commands[0])
+    assert "Local PDF OCR diagnostic unavailable" in live_output
+    assert [command[-6:] for command in commands] == [
+        ["exec", "-T", "app", "python", "-m", "case_intelligence.ocr_diagnostic"],
+        ["exec", "-T", "app", "python", "-m", "case_intelligence.generator_doctor"],
+    ]
+    assert all(TOKEN not in ' '.join(command) for command in commands)
 
     (root / "state").mkdir(exist_ok=True)
     # fixture-write: Seed synthetic data for this isolated regression.

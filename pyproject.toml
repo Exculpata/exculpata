@@ -53,6 +53,7 @@ where = ["src"]
 case_intelligence = [
   "config/model_qualifications*.json",
   "config/discovery_review_fields.json",
+  "config/generated-scan.pdf",
   "config/generated-speech.wav",
   "_idna/*.pyz",
   "_idna/*.json",

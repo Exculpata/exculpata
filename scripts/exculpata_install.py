@@ -4149,24 +4149,45 @@ def _wait_health(console: Console, root: Path, *, rollback: bool = False) -> Non
     raise RuntimeError(f"node did not reach health before timeout ({last}). {_startup_remedy(root)}")
 
 
+def _app_diagnostic_status(
+    compose: Sequence[str], module: str, key: str, messages: frozenset[str], *, timeout: int,
+) -> str | None:
+    command = [*compose, "exec", "-T", "app", "python", "-m", module]
+    try:
+        result = _probe(command, timeout=timeout)
+        if result.returncode or len(result.stdout) > 4096:
+            return None
+        payload = json.loads(result.stdout)
+        if not isinstance(payload, dict) or set(payload) != {key}:
+            return None
+        status = payload[key]
+        return status if isinstance(status, str) and status in messages else None
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        return None
+
+
 def _doctor_speech_in_app(console: Console, root: Path) -> None:
     from case_intelligence.speech_endpoint import DIAGNOSTIC_MESSAGES
 
-    command = [*_compose(root, ()), "exec", "-T", "app", "python", "-m", "case_intelligence.speech_endpoint"]
-    try:
-        result = _probe(command, timeout=40)
-        if result.returncode or len(result.stdout) > 4096:
-            raise ValueError
-        payload = json.loads(result.stdout)
-        if not isinstance(payload, dict) or set(payload) != {"transcription"}:
-            raise ValueError
-        status = payload["transcription"]
-        if not isinstance(status, str) or status not in DIAGNOSTIC_MESSAGES:
-            raise ValueError
-    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+    status = _app_diagnostic_status(_compose(root, ()), "case_intelligence.speech_endpoint",
+                                    "transcription", DIAGNOSTIC_MESSAGES, timeout=40)
+    if status is None:
         console.warn("Transcription endpoint diagnostic unavailable. Check saved settings and the running app.")
         return
     console.note(f"transcription endpoint :: {status}")
+
+
+def _doctor_ocr_in_app(console: Console, compose: Sequence[str]) -> None:
+    from case_intelligence.ocr_diagnostic import DIAGNOSTIC_MESSAGES, FAILED
+
+    status = _app_diagnostic_status(compose, "case_intelligence.ocr_diagnostic",
+                                    "ocr", DIAGNOSTIC_MESSAGES, timeout=120)
+    if status is None:
+        console.warn("Local PDF OCR diagnostic unavailable. Check the installed app version and running service.")
+    elif status == FAILED:
+        console.warn(f"local PDF OCR :: {status}")
+    else:
+        console.note(f"local PDF OCR :: {status}")
 
 
 def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
@@ -4298,8 +4319,10 @@ def _doctor(console: Console, args: argparse.Namespace, root: Path) -> None:
         _verify_installed_package(root)
         console.ok("Installed package trust :: non-root app user, read-only container root and protected root-owned package verified")
         _wait_health(console, root)
+        _doctor_ocr_in_app(console, compose)
     else:
         console.note("Dry run: installed package protection, running authentication mode, DNS boundary and live health are not verified")
+        console.note("Local PDF OCR not checked (dry run).")
     _doctor_generator(console, root, dry_run=args.dry_run)
     if not args.dry_run:
         installation, _ = _installed_release(root)

@@ -24,4 +24,6 @@ Current installations may use native Ollama, a bundled worker, or separate endpo
 
 Before retiring the default retrieval worker, provide a rebuild path for existing installations and verify existing vectors against a synthetic fingerprint. Bring per-matter authorization into interactive and background calls before expanding external case-data processing. Keep synthetic checks distinct from permission to send case content.
 
-For speech, retain the app's durable job service and configure its upstream transcription, alignment, translation, and diarization capabilities separately. Cover interrupted uploads and reviewer edits before retiring local engines. Decide explicitly how OCR for scanned evidence is provided. Remove staging, model profiles, and model services capability by capability after operators have a verified replacement. Preserve intake, manual review, and exact search throughout the migration.
+For speech, retain the app's durable job service and configure its upstream transcription, alignment, translation, and diarization capabilities separately. Cover interrupted uploads and reviewer edits before retiring local engines. Keep scanned-document OCR local and verify PDF recognition from the installed app. [OCR decision and acceptance check](scanned-document-ocr.md)
+
+Remove staging, model profiles, and model services capability by capability after operators have a verified replacement. Preserve intake, manual review, and exact search throughout the migration.

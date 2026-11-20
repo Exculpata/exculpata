@@ -447,6 +447,12 @@ def _confident_new_words(reading: _OcrReading, native_words: list[str]) -> int:
     return sum(confidence >= OCR_CONFIDENT_WORD for _, confidence in _new_ocr_words(reading, native_words))
 
 
+def pdf_ocr_mode() -> str:
+    configured = os.getenv("CASE_INTELLIGENCE_OCR_MODE", os.getenv("CASE_REVIEW_OCR_MODE", ""))
+    mode = configured.strip().casefold()
+    return mode if mode in {"expanded", "selective"} else "off"
+
+
 def _ocr_pdf_page(source: Path, page_number: int, *, native_text: str = "") -> PdfOcrResult:
     """Recognize a bounded page, retaining the reason no text was obtained."""
     environment = {
@@ -2216,10 +2222,7 @@ class PilotStore:
                 if "exceeds" in message or "timed out" in message or "could not start" in message:
                     raise UploadProblem(message) from exc
                 raise UploadProblem("That PDF is damaged or malformed. Check the file and try again.") from exc
-            ocr_mode = os.getenv(
-                "CASE_INTELLIGENCE_OCR_MODE", os.getenv("CASE_REVIEW_OCR_MODE", "")
-            ).strip().casefold()
-            ocr_enabled = ocr_mode in {"selective", "expanded"}
+            ocr_mode = pdf_ocr_mode()
             ocr_limit = MAX_OCR_PAGES if ocr_mode == "selective" else self._expanded_ocr_limit()
             attempted = 0
             native_pages = 0
@@ -2237,7 +2240,7 @@ class PilotStore:
                     or not getattr(page, "image_evidence_known", False)
                 )
                 if candidate:
-                    if not ocr_enabled:
+                    if ocr_mode == "off":
                         outcome = "disabled"
                     elif ocr_mode == "selective" and text:
                         outcome = "selection"
