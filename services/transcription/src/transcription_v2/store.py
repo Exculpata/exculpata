@@ -14,7 +14,7 @@ import re
 import secrets
 import sqlite3
 import uuid
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
@@ -129,6 +129,16 @@ class SQLiteJobStore:
     """Durable SQLite repository and atomic work queue."""
 
     SCHEMA_VERSION = 1
+
+    @staticmethod
+    def has_unfinished_jobs_offline(path: Path) -> bool:
+        """Inspect an existing store without running migrations or hardening files."""
+        terminal = tuple(status.value for status in TERMINAL_JOB_STATUSES)
+        slots = ",".join("?" for _ in terminal)
+        with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as connection:
+            return connection.execute(
+                f"SELECT 1 FROM jobs WHERE status NOT IN ({slots}) LIMIT 1", terminal
+            ).fetchone() is not None
 
     def __init__(
         self,

@@ -541,6 +541,7 @@ def test_measured_deleted_occurrences_have_no_remaining_findings(monkeypatch):
         ('scripts/exculpata_backup.py', 'backup-manifest.json', 1),
         ('scripts/exculpata_backup.py', 'compose.yaml', 1),
         ('scripts/exculpata_install.py', 'installation.json', 4),
+        ('scripts/model_bundle_migration.py', 'installation.json', 1),
         ('scripts/exculpata_install.py', 'backup.json', 1),
         ('scripts/exculpata_install.py', 'local-accounts.json', 5),
         ('scripts/exculpata_install.py', 'backup-unit.json', 1),
@@ -558,7 +559,7 @@ def test_measured_deleted_occurrences_have_no_remaining_findings(monkeypatch):
         ('src/case_intelligence/synthetic_corpus_gold.py', 'suite.json', 1),
         ('src/case_intelligence/synthetic_corpus_gold.py', 'manifest.json', 1),
     ]
-    assert sum(count for _, _, count in receiver_deletions) == 82
+    assert sum(count for _, _, count in receiver_deletions) == 83
     deleted.update({(path, "host", contract.fingerprint(literal), literal.lower()): count
                     for path, literal, count in receiver_deletions})
     observed = Counter((p, k, d, h) for p, _, k, d, h in contract.source_inventory(ROOT))
