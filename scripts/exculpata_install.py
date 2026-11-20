@@ -35,7 +35,6 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
-import model_bundle_migration as bundle_migration
 from installer_terminal import (
     C,
     Console,
@@ -48,8 +47,8 @@ from installer_terminal import (
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT / "src"))
-sys.path.insert(0, str(PROJECT / "services" / "transcription" / "src"))
+sys.path[:0] = [str(PROJECT / "src"), str(PROJECT / "services" / "transcription" / "src")]
+import model_bundle_migration as bundle_migration
 from case_intelligence.oidc_network_policy import issuer_pins as _oidc_issuer_pins, public_ip as _public_oidc_ip, validated_https_url
 from case_intelligence.compat_env import env as _env, required_env as _required_env
 from case_intelligence.legacy_names import (
@@ -85,7 +84,7 @@ from case_intelligence.generator_config import (
 from case_intelligence.hardware_profile import (
     HardwareReading, TierSuggestion, detect_hardware, load_profiles, parse_vram_bytes, suggest_tier,
 )
-sys.path.pop(0)
+del sys.path[:2]
 VERSION = "0.1.0-beta.1"
 STORAGE_MARKERS = (name_value("storage_marker", LEGACY_STEM), name_value("storage_marker", CURRENT_STEM))
 CONTAINER_DATA = name_value("container_data")
