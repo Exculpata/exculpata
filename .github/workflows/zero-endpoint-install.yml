@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      PRODUCT_SHA: 30c2f2586de023535579e0d8e985e5ca0b79dd19
+      PRODUCT_SHA: 2f8f7c5589dec2699d46b914083b1a5bb6f2843d
       HISTORICAL_SHA: 472f3bfecba3f6fbe37d15a6219c96a9b5c0f1d6
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
