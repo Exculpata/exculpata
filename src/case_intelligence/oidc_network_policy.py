@@ -36,6 +36,14 @@ RELAY_HEADER_CONNECTIONS = sum(limit.connections for limit in RELAY_LIMITS.value
 RELAY_HEADER_SECONDS = 10
 
 
+def shared_relay_limits(roles):
+    """A CONNECT authority shared by several roles must satisfy every role's ceiling."""
+    limits = [RELAY_LIMITS[role] for role in roles]
+    return RelayLimits(min(limit.connections for limit in limits),
+                       min(limit.seconds for limit in limits),
+                       min(limit.bytes for limit in limits))
+
+
 class Denied(ValueError):
     pass
 

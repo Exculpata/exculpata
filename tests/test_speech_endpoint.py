@@ -36,6 +36,8 @@ def provider(monkeypatch, tmp_path):
             message = BytesParser(policy=policy.default).parsebytes(wire + self.rfile.read(int(self.headers["Content-Length"])))
             parts = {part.get_param("name", header="Content-Disposition"): part for part in message.iter_parts()}
             state["requests"].append((self.path, self.headers["Authorization"], parts))
+            if callback := state.get("before_response"):
+                callback()
             self.send_response(state["status"])
             self.send_header("Content-Length", str(len(state["response"])))
             self.end_headers()
@@ -132,7 +134,7 @@ def test_unreadable_secret_and_unreachable_service(provider, monkeypatch, tmp_pa
     assert provider["requests"] == []
 
 
-@pytest.mark.parametrize("decision", ["approved", "missing", "revoked", "reconfigured"])
+@pytest.mark.parametrize("decision", ["approved", "missing", "revoked", "reconfigured", "in_flight", "at_import"])
 def test_queued_recording_checks_live_matter_grant_at_dispatch(provider, tmp_path, monkeypatch, decision):
     from fastapi.testclient import TestClient
     from case_intelligence.external_model_grants import configured_model_destination
@@ -152,6 +154,22 @@ def test_queued_recording_checks_live_matter_grant_at_dispatch(provider, tmp_pat
             bench.workspace.set_model_grant(matter.matter_id, target, ACTOR, approved=True)
         if decision == "revoked":
             bench.workspace.set_model_grant(matter.matter_id, target, ACTOR, approved=False)
+        if decision in {"in_flight", "at_import"}:
+            def revoke():
+                bench.workspace.set_model_grant(matter.matter_id, target, ACTOR, approved=False)
+
+            if decision == "in_flight":
+                provider["before_response"] = revoke
+            else:
+                allows = bench.workspace.model_grant_allows
+
+                def revoke_after_response_check(matter_id, destination):
+                    approved = allows(matter_id, destination)
+                    if destination == target and provider["requests"]:
+                        revoke()
+                    return approved
+
+                monkeypatch.setattr(bench.workspace, "model_grant_allows", revoke_after_response_check)
         if decision == "reconfigured":
             monkeypatch.setenv("CASE_INTELLIGENCE_ASR_MODEL", "another-synthetic-model")
         action = client.post(f"/matters/{slug}/sources/{token}/recording-check", data={
@@ -161,7 +179,8 @@ def test_queued_recording_checks_live_matter_grant_at_dispatch(provider, tmp_pat
         assert private.submissions == private.readiness_calls == 0
         if decision != "approved":
             assert job.state == "failed" and "approval" in job.message
-            assert provider["connections"] == []
+            assert len(provider["connections"]) == (1 if decision in {"in_flight", "at_import"} else 0)
+            assert bench.workspace.media_transcript(matter.matter_id, document.document_id, document.version_id) is None
             return
         assert job.state == "succeeded", job.message
         [(path, _, parts)] = provider["requests"]
@@ -199,3 +218,25 @@ def test_case_dispatch_rechecks_grant_after_verifying_source_and_discards_invali
     with pytest.raises(MediaProcessorError, match="recording changed"):
         speech_endpoint.transcribe_recording(workspace, job, source, endpoint, check_access=lambda: None)
     assert len(provider["connections"]) == 1
+
+
+def test_stream_never_sends_a_changed_block_after_initial_source_check(tmp_path):
+    from types import SimpleNamespace
+    from case_intelligence.media_processor_errors import MediaProcessorError
+
+    source = tmp_path / "source.wav"
+    original = b"first" * 120000
+    source.write_bytes(original)  # fixture-write: generated multi-block recording
+    job = SimpleNamespace(media_type="audio/wav", byte_size=len(original),
+                          source_sha256=hashlib.sha256(original).hexdigest())
+    with speech_endpoint.recording_request("https://speech.example.test", {}, source, job,
+                                           prefix="CASE_INTELLIGENCE_ASR") as request:
+        chunks = iter(request.data)
+        next(chunks)
+        first = next(chunks)
+        assert original.startswith(first)
+        with source.open("r+b") as writer:
+            writer.seek(len(first))
+            writer.write(b"changed")  # fixture-write: synthetic in-place correction during streaming
+        with pytest.raises(MediaProcessorError, match="changed"):
+            next(chunks)

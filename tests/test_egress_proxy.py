@@ -559,6 +559,24 @@ def test_shared_model_authority_uses_one_pool(monkeypatch):
     assert server.roles == {("generator.example.test", 443): "GENERATOR"}
 
 
+@pytest.mark.parametrize(("first", "second", "mib", "slots"), [
+    ("ASR", "GENERATOR", 32, 1), ("ASR", "TRANSLATION", 32, 1),
+    ("GENERATOR", "EMBEDDING", 32, 2), ("ASR", "ALIGNMENT", 5184, 1),
+])
+def test_shared_origin_enforces_intersection_on_the_wire(monkeypatch, first, second, mib, slots):
+    origin = "https://shared.example.test"
+    settings = {role + "_EGRESS_URL": origin for role in (first, second)}
+    server = relay_server(monkeypatch, proxy.configured_destinations(settings))
+    observed = []
+    monkeypatch.setattr(proxy, "dial", lambda *args: io.BytesIO())
+    monkeypatch.setattr(proxy, "relay", lambda client, upstream, limits: observed.append(limits))
+    proxy.Handler(TunnelRequest("shared"), None, server)
+    assert observed == [(slots, 310, mib * 1024**2)]
+    pool = server.roles[("shared.example.test", 443)]
+    assert server.role_slots[pool]._initial_value == slots
+
+
+
 def test_doctor_command_fails_loudly_on_timeout_drift():
     result = subprocess.run([sys.executable, "-m", "case_intelligence.generator_doctor"],
                             env={"PYTHONPATH": str(PATH.parents[2] / "src"),
