@@ -37,6 +37,8 @@ from .store import (
     _NOTEBOOK_ITEM,
 )
 from .store.model_grants import ModelGrantStoreMixin
+from .external_model_grants import ModelDestination
+from .media_processor_errors import TranscriptionApprovalRequired
 from .store.notebook import NotebookStoreMixin
 from .store.reports import ReportsStoreMixin
 # Re-export record types, exceptions, and the shared helper for existing importers.
@@ -3691,6 +3693,7 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
         warnings: Sequence[object],
         quality: Mapping[str, object],
         provenance: Mapping[str, object],
+        transcription_destination: ModelDestination | None = None,
     ) -> MediaTranscriptRecord:
         if not 0 < len(segments) <= 100_000:
             raise ValueError("transcript segment count is invalid")
@@ -3798,6 +3801,14 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
         with self._lock, self.connection:
             self.connection.execute("BEGIN IMMEDIATE")
             self.membership(job.matter_id, job.requested_by)
+            if job.dispatch_kind == "api" and (
+                not isinstance(transcription_destination, ModelDestination)
+                or transcription_destination.capability != "transcription"
+                or not self._model_grant_allows_locked(job.matter_id, transcription_destination)
+            ):
+                # Preserve any observed destination rotation and its grant-expiration audit.
+                self.connection.commit()
+                raise TranscriptionApprovalRequired()
             self.connection.execute(
                 "UPDATE workbench_media_job SET degraded=? WHERE media_job_id=?",
                 (int(degraded), media_job_id),
