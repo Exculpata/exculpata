@@ -5537,6 +5537,12 @@ detail = "generator:8000"
 [[source]]
 path = "scripts/exculpata_install.py"
 kind = "host"
+digest = "b701d986f1ab4387b63cc6e46a05e2e415643d3745599e7d27aa30ec1fa86e74"
+detail = "retrieval:8787"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
 digest = "6573734df9fc41c1c129c990d7c179058c7e416da2c071afdeffb3f92baf2450"
 detail = "install-progress.json"
 

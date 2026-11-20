@@ -507,7 +507,14 @@ configuration as supported. Free-space targets cover application images,
 models, temporary processing, and the configured safety reserve; matter
 contents require additional local or NAS capacity.
 
-The installer exposes four capability profiles:
+A fresh installation starts with no bundled models. The interactive installer
+offers to connect an answer server. Declining it leaves intake, local OCR, exact
+search, and review available. Endpoint-based nodes skip hardware tier selection
+and model staging. Operators can configure [model APIs](MODEL_CONFIGURATION.md)
+independently of the node's GPU.
+
+The explicit `--models` option remains available for reference and existing
+installations during migration:
 
 | CLI value | What it enables |
 | --- | --- |
