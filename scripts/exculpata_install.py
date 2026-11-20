@@ -251,6 +251,7 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     for key in tuple(result):
         if key.startswith((f"{LEGACY_ENV_PREFIX}", CURRENT_ENV_PREFIX)) or key in {"COMPOSE_PROJECT_NAME", "COMPOSE_PROFILES"}:
             result.pop(key)
+    result.pop("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", None)
     # Compose defaults changed for new checkouts; older nodes may omit these.
     for suffix in ("COMPOSE_PROJECT", "IMAGE_NAMESPACE"):
         result = dict(result, **{name_value("environment", suffix=suffix): _env(f"{LEGACY_ENV_PREFIX}{suffix}", f"{LEGACY_STEM}", environ=saved)})
@@ -426,7 +427,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--auth", choices=("local", "oidc", "kerberos"), default=None)
     parser.add_argument("--enable-account-management", action="store_true", help="enable browser account changes for an explicit --auth local installation")
-    parser.add_argument("--models", choices=("none", "review", "transcription", "all"), default=None)
+    parser.add_argument(
+        "--models", choices=("none", "review", "transcription", "all"), default=None,
+        help="default: no bundled models; select a legacy bundle explicitly for a reference installation",
+    )
     parser.add_argument(
         "--external-generator",
         choices=EXTERNAL_GENERATOR_SERVERS,
@@ -464,7 +468,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model-tier", type=lambda value: value.strip().casefold(), choices=tuple(p["id"] for p in load_profiles()["profiles"]),
-        help="record a hardware model tier; defaults to the detected recommendation",
+        help="record a hardware tier for compatibility; only bundled installations suggest one",
     )
     parser.add_argument("--generator-gpu-utilization", type=float)
     parser.add_argument("--transcription-min-free-vram-mib", type=int)
@@ -3218,7 +3222,7 @@ def _configure(
     gpu_devices: tuple[GpuDevice, ...],
 ) -> tuple[str, str, str, str | None, str | None]:
     console.phase(4, "IDENTITY + FRONT DOOR", "Sealing sessions, service credentials, and HTTPS coordinates")
-    if args.model_tier is None and not args.resume:
+    if args.models in {"review", "transcription", "all"} and args.model_tier is None and not args.resume:
         args.model_tier = _print_hardware_suggestion(console).profile_id
     names = _select_names(args, root)
     product = "Exculpata" if names == "exculpata" else f"{LEGACY_PRODUCT}"
@@ -3306,6 +3310,7 @@ def _configure(
         f"{LEGACY_ENV_PREFIX}TLS_KEY": tls_key,
         f"{LEGACY_ENV_PREFIX}GATEWAY_UPSTREAM": "app:8786",
         "COMPOSE_PROFILES": ",".join(profile_values),
+        "CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL": "http://retrieval:8787" if "ai" in profile_values else "",
         **gpu_plan.environment(),
         **review_model.environment(),
     }
@@ -3322,8 +3327,8 @@ def _configure(
         "CASE_INTELLIGENCE_AUTH_MODE": auth,
         "CASE_INTELLIGENCE_SECURE_COOKIE": 1,
         "CASE_INTELLIGENCE_GENERATOR_BACKEND": "openai" if models in {"all", "review"} else "",
-        "CASE_INTELLIGENCE_GENERATOR_URL": "http://generator:8000",
-        "CASE_INTELLIGENCE_GENERATOR_MODEL": review_model.served_name,
+        "CASE_INTELLIGENCE_GENERATOR_URL": "http://generator:8000" if "ai" in profile_values else "",
+        "CASE_INTELLIGENCE_GENERATOR_MODEL": review_model.served_name if "ai" in profile_values else "",
         "CASE_INTELLIGENCE_GENERATOR_TIMEOUT": 180,
         "CASE_INTELLIGENCE_GENERATION_CONCURRENCY": (
             review_model.generation_concurrency
@@ -3354,7 +3359,7 @@ def _configure(
             "",
             environ=_dotenv(root / "compose.env"),
         )
-        if saved_served:
+        if saved_served and "ai" in profile_values:
             compose_values = dict(compose_values, **{f"{LEGACY_ENV_PREFIX}GENERATOR_SERVED_NAME": saved_served})
             app_values = dict(app_values, CASE_INTELLIGENCE_GENERATOR_MODEL=saved_served)
     if storage_plan.profile == "evaluation":
@@ -3533,18 +3538,19 @@ def _configure(
         )
     console.ok(f"Admin account :: {auth}")
     console.ok(f"model payload   :: {models}")
-    console.ok(
-        "GPU topology    :: "
-        f"{gpu_plan.layout}; generator={','.join(gpu_plan.generator_gpus)}; "
-        f"transcription={gpu_plan.transcription_gpu}; "
-        f"retrieval={gpu_plan.retrieval_device}"
-        + (
-            f":{gpu_plan.retrieval_gpu}"
-            if gpu_plan.retrieval_device == "cuda"
-            else ""
+    if models != "none":
+        console.ok(
+            "GPU topology    :: "
+            f"{gpu_plan.layout}; generator={','.join(gpu_plan.generator_gpus)}; "
+            f"transcription={gpu_plan.transcription_gpu}; "
+            f"retrieval={gpu_plan.retrieval_device}"
+            + (
+                f":{gpu_plan.retrieval_gpu}"
+                if gpu_plan.retrieval_device == "cuda"
+                else ""
+            )
+            + f"; visible={len(gpu_devices)}"
         )
-        + f"; visible={len(gpu_devices)}"
-    )
     assigned = set(gpu_plan.generator_gpus)
     if models in {"transcription", "all"}:
         assigned.add(gpu_plan.transcription_gpu)
@@ -4246,7 +4252,6 @@ def _doctor_shared_media_limits(console: Console, app_env: Mapping[str, str]) ->
 
 
 def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
-    _print_hardware_suggestion(console)
     app_env = _dotenv(_app_env(root))
     compose_env = _dotenv(root / "compose.env")
     _doctor_shared_media_limits(console, app_env)
@@ -4284,8 +4289,6 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
             console.warn("schema enforcement :: not checked; the saved generator URL is invalid")
             return
     console.note(f"saved answer server :: {server} {model} at {url}")
-    device = compose_env.get(name_value("environment", LEGACY_STEM, suffix="RETRIEVAL_DEVICE")) or compose_env.get(name_value("environment", suffix="RETRIEVAL_DEVICE")) or "cpu"
-    console.note(f"embed and rerank :: configured worker or endpoint; worker device {device}")
     embedding = compose_env.get(name_value("environment", suffix="EMBEDDING_MODEL")) or compose_env.get(name_value("environment", LEGACY_STEM, suffix="EMBEDDING_MODEL")) or DEFAULT_EMBEDDING_MODEL
     revision = compose_env.get(name_value("environment", suffix="EMBEDDING_REVISION")) or compose_env.get(name_value("environment", LEGACY_STEM, suffix="EMBEDDING_REVISION")) or DEFAULT_EMBEDDING_REVISION
     index_warning = embedding_change_warning(
@@ -5244,17 +5247,13 @@ def main() -> int:
             _resume_node(console, args, root)
             _handoff(console, root, dry_run=args.dry_run)
             return 0
-        choose_models = args.models is None
-        if choose_models:
-            args.models = _choose(
-                "Capability profile",
-                ("none", "review", "transcription", "all"),
-                "none",
-                non_interactive=args.non_interactive,
-            )
-        if choose_models or any((args.external_generator, args.external_generator_url, args.external_generator_model)):
+        offer_answer_server = args.models is None and not (
+            args.password_stdin or args.hf_token_stdin or args.external_generator_api_key_stdin
+        )
+        models = args.models or "none"
+        args.models = models
+        if offer_answer_server or any((args.external_generator, args.external_generator_url, args.external_generator_model)):
             _collect_external_generator(console, args)
-        models = args.models
         if args.storage_root is None and not args.non_interactive:
             args.storage_root = Path(
                 _ask(
@@ -5272,7 +5271,8 @@ def main() -> int:
         # Reject an invalid hostname before asking unrelated identity questions.
         _valid_host(args.server_name)
         _collect_identity_choices(args)
-        _select_model_tier(console, args)
+        if models != "none":
+            _select_model_tier(console, args)
         args.root = args.root.expanduser()
         # Resolve storage, TLS and the complete hardware plan before creating
         # state. Dry-run discovery uses the same read-only prerequisite checks.

@@ -2261,6 +2261,17 @@
           "workflow_dispatch"
         ],
         "workflow": "stale-report"
+      },
+      {
+        "definition": null,
+        "jobs": [],
+        "reason": "not triggered by pull_request",
+        "triggered": false,
+        "triggers": [
+          "push",
+          "workflow_dispatch"
+        ],
+        "workflow": "zero-endpoint-install"
       }
     ]
   },

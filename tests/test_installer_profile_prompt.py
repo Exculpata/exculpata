@@ -97,8 +97,8 @@ def test_main_preserves_stdin_for_password_reader(
         "--storage-root", str(tmp_path / "matters"),
         "--bind-address", "127.0.0.1", "--server-name", "node.example.test",
         "--auth", "local", "--admin-username", "synthetic.admin",
-        "--admin-display-name", "Synthetic Administrator", "--models", "none",
-    ] + ([stdin_flag] if stdin_flag else []))
+        "--admin-display-name", "Synthetic Administrator",
+    ] + ([stdin_flag] if stdin_flag else ["--models", "none"]))
     seen = []
 
     def password_reader(args):
@@ -112,7 +112,8 @@ def test_main_preserves_stdin_for_password_reader(
     monkeypatch.setattr(installer, "_password", password_reader)
     monkeypatch.setattr(installer, "_prepare_directories", stop_before_writes)
     assert installer.main() == 1
-    assert seen == [("gpu-12", secret)]
+    assert seen == [(None, secret)]
+    assert not detected_gpu
     output = capsys.readouterr().out
     assert "synthetic stop after password input" in output
     assert "Hardware model tier (" not in output
@@ -163,38 +164,43 @@ def test_main_selects_tier_before_preflight(monkeypatch, tmp_path, detected_gpu)
     assert not (tmp_path / "node").exists()
 
 
-def test_main_collects_identity_before_tier(monkeypatch, tmp_path, detected_gpu):
+def test_default_collects_identity_without_selecting_a_bundle_or_tier(monkeypatch, tmp_path, detected_gpu):
     root = tmp_path / "node"
     monkeypatch.setattr(sys, "argv", ["install", "install", "--root", str(root),
                                     "--storage-root", str(tmp_path / "matters"),
                                     "--bind-address", "127.0.0.1", "--server-name", "node.example.test",
-                                    "--auth", "local", "--models", "none", "--dry-run"])
-    prompts = scripted_input(monkeypatch, ["synthetic.admin", "Synthetic Administrator", ""])
+                                    "--auth", "local", "--dry-run"])
+    prompts = scripted_input(monkeypatch, ["", "synthetic.admin", "Synthetic Administrator"])
     seen = []
 
     def preflight(console, *, args, **kwargs):
-        seen.append((args.admin_username, args.admin_display_name, args.model_tier))
+        seen.append((args.admin_username, args.admin_display_name, args.models, args.model_tier))
         raise RuntimeError("synthetic stop before provisioning")
 
     monkeypatch.setattr(installer, "_preflight", preflight)
     assert installer.main() == 1
-    assert seen == [("synthetic.admin", "Synthetic Administrator", "gpu-12")]
-    assert prompts[0].startswith("Initial administrator username")
-    assert prompts[1].startswith("Administrator display name")
-    assert prompts[2].startswith("Hardware model tier")
+    assert seen == [("synthetic.admin", "Synthetic Administrator", "none", None)]
+    assert not detected_gpu
+    assert len(prompts) == 3
+    assert prompts[0].startswith("Connect an answer server")
+    assert prompts[1].startswith("Initial administrator username")
+    assert prompts[2].startswith("Administrator display name")
     assert not root.exists()
 
 
 @pytest.mark.parametrize("tier", [None, "gpu-8"])
 def test_selected_tier_is_saved_and_preserved_on_resume(tmp_path, monkeypatch, detected_gpu, tier):
     _, root, _, _ = _configure_node(tmp_path, ["--model-tier", tier] if tier else [])
-    expected = tier or "gpu-12"
+    expected = tier
     path = root / "installation.json"
     original = path.read_bytes()
     record = json.loads(original)
-    assert record["model_tier"] == expected
+    assert record.get("model_tier") == expected
+    assert record["models"] == "none"
+    assert record["profiles"] == []
+    assert installer._dotenv(root / "compose.env")["CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL"] == ""
     assert "external_generator" not in record
-    assert len(detected_gpu) == (0 if tier else 1)
+    assert not detected_gpu
     seen = []
     monkeypatch.setattr(installer, "detect_hardware", lambda: pytest.fail("resume redetected hardware"))
     scripted_input(monkeypatch, [])
