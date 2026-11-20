@@ -28,7 +28,7 @@ Accept an `application/json` request. The application translates into English an
 {"model":"synthetic-translator","source_language":"es","target_language":"en","segments":[{"id":"segment-1","text":"Prueba uno."}]}
 ```
 
-Return a nonempty translated string of at most 20,000 characters per segment. The application stores the translation alongside the source-language passage.
+Return a nonempty translated string of at most 20,000 characters per segment. The synchronized transcript displays the English machine translation beneath the source-language passage at the same playback timestamp. The translation is tied to the original machine transcript and stays labeled as such when a reviewer corrects the passage.
 
 ```json
 {"segments":[{"id":"segment-1","text":"Test one."}]}

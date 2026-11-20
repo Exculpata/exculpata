@@ -163,3 +163,41 @@ def test_segment_request_limit_counts_encoded_bytes(monkeypatch):
     assert enrichment._serialized("á") == '"\\u00e1"'
     with pytest.raises(enrichment.MediaContractError, match="request limit"):
         enrichment._serialized(["á"])
+
+
+def test_review_shows_machine_translation_beside_the_cited_source_after_an_edit(tmp_path):
+    import re
+    from fastapi.testclient import TestClient
+    from tests.test_matter_media_workflow import ImmediateMediaProcessor, _matter, _upload_and_wait
+    from tests.test_media_preflight import app_for
+
+    class TranslatedRecording(ImmediateMediaProcessor):
+        def transcript(self, owner, external_job_id):
+            payload = super().transcript(owner, external_job_id)
+            payload["segments"][0].update(text="La caja roja.", model_text="La caja roja.",
+                                           translated_text="The red box.")
+            return payload
+
+    with TestClient(app_for(tmp_path / "runtime", TranslatedRecording(), background=True)) as client:
+        slug = _matter(client)
+        _, token = _upload_and_wait(client, slug)
+        path = f"/matters/{slug}/sources/{token}"
+        def passage(ordinal):
+            page = client.get(path)
+            assert page.status_code == 200
+            return page.text.split(f'<article id="segment-{ordinal}"', 1)[1].split("</article>", 1)[0]
+
+        first = passage(1)
+        assert "English machine translation of the original transcript" in first
+        assert '<span lang="en">The red box.</span>' in first
+        assert "<p>La caja roja.</p>" in first
+        assert "transcript-translation" not in passage(2)
+        segment_id = re.search(r'data-segment-id="([^"]+)"', first).group(1)
+        timed_anchor = re.search(r'data-start-ms="[^"]+" data-end-ms="[^"]+"', first).group()
+        edit = client.post(f"{path}/segments/{segment_id}",
+                           data={"expected_revision": 0, "text": "La caja es roja."}, follow_redirects=False)
+        assert edit.status_code == 303
+        reviewed = passage(1)
+        assert f'data-segment-id="{segment_id}"' in reviewed and timed_anchor in reviewed
+        assert "<p>La caja es roja.</p>" in reviewed
+        assert '<span lang="en">The red box.</span>' in reviewed
