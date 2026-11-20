@@ -35,7 +35,7 @@ def main():
     docker = ["docker", "--context", options.docker_context]
     project = "speech-contract-" + uuid.uuid4().hex[:10]
     app_image = options.app_image or project + "-app"
-    compose_path = ROOT / "compose.yaml"
+    compose_path = ROOT / "./compose.yaml"
     source = yaml.safe_load(compose_path.read_text())["services"]
     app = {key: source["app"][key] for key in ("user", "cap_drop", "read_only", "security_opt", "dns", "dns_search")}
     app.update(image=app_image, command=["sleep", "1800"], pull_policy="never",
@@ -58,7 +58,7 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix=project) as temporary:
         root = Path(temporary)
-        path = root / "compose.yaml"
+        path = root / compose_path.name
 
         def compose(*args, timeout=300, stdin=None):
             return subprocess.run([*docker, "compose", "-f", str(path), "-p", project, *args], check=True,
