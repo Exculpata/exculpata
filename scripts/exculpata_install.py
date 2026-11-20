@@ -80,9 +80,7 @@ from case_intelligence.generator_schema import SchemaProbe
 from case_intelligence.generator_config import (
     bundled_generator, generator_literal, generator_pins, validate_generator_url,
 )
-from case_intelligence.hardware_profile import (
-    HardwareReading, TierSuggestion, detect_hardware, load_profiles, parse_vram_bytes, suggest_tier,
-)
+from case_intelligence.hardware_profile import load_profiles, parse_vram_bytes
 sys.path.pop(0)
 VERSION = "0.1.0-beta.1"
 STORAGE_MARKERS = (name_value("storage_marker", LEGACY_STEM), name_value("storage_marker", CURRENT_STEM))
@@ -419,8 +417,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--auth", choices=("local", "oidc", "kerberos"), default=None)
     parser.add_argument("--enable-account-management", action="store_true", help="enable browser account changes for an explicit --auth local installation")
     parser.add_argument(
-        "--models", choices=("none", "review", "transcription", "all"), default=None,
-        help="default: no bundled models; select a legacy bundle explicitly for a reference installation",
+        "--models", choices=("none", "review", "transcription", "all"), default=None, metavar="none",
+        help="new nodes use none; resume and update retain the installed model profile",
     )
     parser.add_argument(
         "--external-generator",
@@ -438,31 +436,31 @@ def _parser() -> argparse.ArgumentParser:
         "--gpu-layout",
         choices=("auto", "shared", "split"),
         default="auto",
-        help="automatically pack or deliberately separate GPU workloads",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--generator-gpus",
-        help="comma-separated visible GPU indices for vLLM tensor parallelism",
+        help=argparse.SUPPRESS,
     )
-    parser.add_argument("--transcription-gpu", help="visible GPU index for WhisperX")
-    parser.add_argument("--retrieval-gpu", help="visible GPU index for learned retrieval")
+    parser.add_argument("--transcription-gpu", help=argparse.SUPPRESS)
+    parser.add_argument("--retrieval-gpu", help=argparse.SUPPRESS)
     parser.add_argument(
         "--retrieval-device",
         choices=("auto", "cpu", "cuda"),
-        default="auto",
+        default="auto", help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--review-model-profile",
         choices=("auto", "portable", "quality"),
         default="auto",
-        help="choose a pinned generator tier or let preflight select by topology",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--model-tier", type=lambda value: value.strip().casefold(), choices=tuple(p["id"] for p in load_profiles()["profiles"]),
-        help="record a hardware tier for compatibility; only bundled installations suggest one",
+        help=argparse.SUPPRESS,
     )
-    parser.add_argument("--generator-gpu-utilization", type=float)
-    parser.add_argument("--transcription-min-free-vram-mib", type=int)
+    parser.add_argument("--generator-gpu-utilization", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("--transcription-min-free-vram-mib", type=int, help=argparse.SUPPRESS)
     parser.add_argument("--server-name")
     parser.add_argument("--bind-address")
     parser.add_argument("--https-port", type=int, default=8443)
@@ -489,14 +487,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--transcription-languages",
         default="en",
-        help="comma-separated staged alignment languages: en and/or es",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--enable-diarization",
         action="store_true",
-        help="stage and enable speaker diarization (ungated Nemotron by default)",
+        help=argparse.SUPPRESS,
     )
-    parser.add_argument("--diarization-backend", choices=("nemotron", "community-1"), default="nemotron")
+    parser.add_argument("--diarization-backend", choices=("nemotron", "community-1"), default="nemotron", help=argparse.SUPPRESS)
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--json", action="store_true", help="emit a structured preflight result (preflight command only)")
@@ -518,46 +516,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--delete-data", action="store_true",
                         help="uninstall also removes this node's volumes, namespace images, and node data")
     return parser
-
-
-def _hardware_suggestion() -> TierSuggestion:
-    try:
-        return suggest_tier(detect_hardware())
-    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
-        return suggest_tier(HardwareReading(None, None, "none", None, False, ()))
-
-
-def _print_hardware_suggestion(console: Console) -> TierSuggestion:
-    suggestion = _hardware_suggestion()
-    for line in suggestion.lines():
-        if suggestion.fallback and line.startswith("hardware detection"):
-            console.warn(line)
-        else:
-            console.note(line)
-    return suggestion
-
-
-def _select_model_tier(console: Console, args: argparse.Namespace) -> str:
-    suggestion = _print_hardware_suggestion(console)
-    profiles = {p["id"]: p for p in load_profiles()["profiles"]}
-    chosen = args.model_tier
-    while chosen is None:
-        value = _ask(
-            f"Hardware model tier ({'/'.join(profiles)})", suggestion.profile_id,
-            non_interactive=args.non_interactive or args.password_stdin or args.hf_token_stdin or args.external_generator_api_key_stdin or not sys.stdin.isatty(),
-        ).strip().casefold()
-        if value in profiles:
-            chosen = value
-        else:
-            console.warn(f"Choose one of: {', '.join(profiles)}")
-    if chosen not in profiles:
-        raise RuntimeError("model tier is invalid; use a tier from config/model_profiles.json")
-    args.model_tier = chosen
-    console.note(f"chosen tier :: {chosen}; {profiles[chosen]['label']}")
-    if chosen != suggestion.profile_id:
-        console.note(f"tradeoff :: {profiles[chosen]['tradeoff']}")
-    console.note("Tier choice is guidance. Choose installed capabilities and any answer server separately.")
-    return chosen
 
 
 def _external_from_args(args: argparse.Namespace) -> GeneratorEndpoint | None:
@@ -3213,8 +3171,6 @@ def _configure(
     gpu_devices: tuple[GpuDevice, ...],
 ) -> tuple[str, str, str, str | None, str | None]:
     console.phase(4, "IDENTITY + FRONT DOOR", "Sealing sessions, service credentials, and HTTPS coordinates")
-    if args.models in {"review", "transcription", "all"} and args.model_tier is None and not args.resume:
-        args.model_tier = _print_hardware_suggestion(console).profile_id
     names = _select_names(args, root)
     product = "Exculpata" if names == "exculpata" else f"{LEGACY_PRODUCT}"
     auth = args.auth
@@ -3302,8 +3258,8 @@ def _configure(
         f"{LEGACY_ENV_PREFIX}GATEWAY_UPSTREAM": "app:8786",
         "COMPOSE_PROFILES": ",".join(profile_values),
         "CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL": "http://retrieval:8787" if "ai" in profile_values else "",
-        **gpu_plan.environment(),
-        **review_model.environment(),
+        **(gpu_plan.environment() if models != "none" else {}),
+        **(review_model.environment() if models != "none" else {}),
     }
     if names == "exculpata":
         compose_values = dict(compose_values, **{name_value("environment", suffix="APP_ENV_FILE"): name_value("app_env")})
@@ -3497,19 +3453,21 @@ def _configure(
                     "transcription_languages": list(transcription_languages),
                     "transcription_diarization": bool(args.enable_diarization),
                     "diarization_backend": args.diarization_backend,
-                    "gpu_layout": gpu_plan.layout,
-                    "gpu_topology": {
-                        "visible_devices": len(gpu_devices),
-                        "generator": list(gpu_plan.generator_gpus),
-                        "transcription": gpu_plan.transcription_gpu,
-                        "retrieval_device": gpu_plan.retrieval_device,
-                        "retrieval_gpu": (
-                            gpu_plan.retrieval_gpu
-                            if gpu_plan.retrieval_device == "cuda"
-                            else None
-                        ),
-                    },
-                    "review_model_profile": review_model.profile,
+                    **({
+                        "gpu_layout": gpu_plan.layout,
+                        "gpu_topology": {
+                            "visible_devices": len(gpu_devices),
+                            "generator": list(gpu_plan.generator_gpus),
+                            "transcription": gpu_plan.transcription_gpu,
+                            "retrieval_device": gpu_plan.retrieval_device,
+                            "retrieval_gpu": (
+                                gpu_plan.retrieval_gpu
+                                if gpu_plan.retrieval_device == "cuda"
+                                else None
+                            ),
+                        },
+                        "review_model_profile": review_model.profile,
+                    } if models != "none" else {}),
                     **(
                         {"external_generator": {
                             "server": external.server,
@@ -5114,6 +5072,28 @@ def _uninstall(console: Console, args: argparse.Namespace, root: Path) -> None:
     console.note("The service account and group were not changed")
 
 
+def _retired_bundle(profile: str) -> PreflightResult:
+    return PreflightResult((PreflightCheck(
+        "model-profile", "fail", f"The {profile} bundle is retired for new installations.",
+        "Install the workspace with operator-managed model APIs", True,
+        "Omit --models or choose --models none. Configure each API using docs/MODEL_CONFIGURATION.md. "
+        "For an existing installation use --resume with its saved root.",
+    ),))
+
+
+def _cli_preflight(args: argparse.Namespace) -> PreflightResult:
+    _select_names(args, args.root)
+    if args.resume and (args.root / "installation.json").is_file():
+        root = args.root.resolve(strict=False)
+        installation, release = _saved_node_arguments(args, root)
+        args.admin_username = args.admin_username or installation.get("initial_administrator")
+        args.admin_display_name = args.admin_display_name or installation.get("initial_administrator_display_name")
+        return _collect_preflight(args.models, args, needs_model_staging=not _saved_models_verified(args, root, release))
+    if args.models not in {None, "none"}:
+        return _retired_bundle(args.models)
+    return _collect_preflight("none", args)
+
+
 def main() -> int:
     args = _parser().parse_args()
     if args.enable_account_management and (args.command not in {"install", "preflight"} or args.auth != "local"):
@@ -5128,16 +5108,7 @@ def main() -> int:
     if args.command == "preflight":
         args.root = (args.root or _default_root()).expanduser()
         try:
-            _select_names(args, args.root)
-            needs_model_staging = True
-            if args.resume and (args.root / "installation.json").is_file():
-                root = args.root.resolve(strict=False)
-                installation, release = _saved_node_arguments(args, root)
-                args.admin_username = args.admin_username or installation.get("initial_administrator")
-                args.admin_display_name = args.admin_display_name or installation.get("initial_administrator_display_name")
-                needs_model_staging = not _saved_models_verified(args, root, release)
-            result = _collect_preflight(args.models or "none", args,
-                                        needs_model_staging=needs_model_staging)
+            result = _cli_preflight(args)
         except (OSError, RuntimeError, ValueError) as exc:
             result = PreflightResult((PreflightCheck(
                 "saved-node", "fail", str(exc) if isinstance(exc, NamingError) else "Saved node configuration or storage coordinates are unavailable or unsafe",
@@ -5190,6 +5161,9 @@ def main() -> int:
             _resume_node(console, args, root)
             _handoff(console, root, dry_run=args.dry_run)
             return 0
+        if args.models not in {None, "none"}:
+            _render_preflight(console, _retired_bundle(args.models))
+            return 1
         offer_answer_server = args.models is None and not (
             args.password_stdin or args.hf_token_stdin or args.external_generator_api_key_stdin
         )
@@ -5214,8 +5188,6 @@ def main() -> int:
         # Reject an invalid hostname before asking unrelated identity questions.
         _valid_host(args.server_name)
         _collect_identity_choices(args)
-        if models != "none":
-            _select_model_tier(console, args)
         args.root = args.root.expanduser()
         # Resolve storage, TLS and the complete hardware plan before creating
         # state. Dry-run discovery uses the same read-only prerequisite checks.

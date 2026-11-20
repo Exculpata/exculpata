@@ -29,7 +29,6 @@ def test_note_populated_index_and_read_only_status(tmp_path, monkeypatch):
     app_values = {"CASE_INTELLIGENCE_GENERATOR_BACKEND": "ollama"}
     compose_values = {"EXCULPATA_EMBEDDING_MODEL": "m", "EXCULPATA_EMBEDDING_REVISION": "r"}
     monkeypatch.setattr(installer, "_dotenv", lambda file: compose_values if file.name == "compose.env" else app_values)
-    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
     warnings = []
     console = SimpleNamespace(note=lambda message: None, warn=warnings.append)
     workbench = SimpleNamespace(postgres_ready=False)

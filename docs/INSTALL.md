@@ -488,7 +488,8 @@ the existing rollback path. Prepare-only and dry-run operations do not establish
 live package protection. These checks change no permissions or ownership. See the
 [installed package trust boundary](NETWORK_EGRESS.md), including the explicit
 parent-package bytecode limitation.
-The figures below are starting targets for alpha evaluation, not validated minimums:
+The CPU row describes a fresh endpoint-based workspace. The GPU rows describe
+earlier bundled reference nodes. These figures are planning estimates:
 
 | Intended use | CPU | RAM | NVIDIA GPU | Free SSD before matter data |
 | --- | ---: | ---: | --- | ---: |
@@ -513,21 +514,11 @@ search, and review available. Endpoint-based nodes skip hardware tier selection
 and model staging. Operators can configure [model APIs](MODEL_CONFIGURATION.md)
 independently of the node's GPU.
 
-The explicit `--models` option remains available for reference and existing
-installations during migration:
-
-| CLI value | What it enables |
-| --- | --- |
-| `none` | CPU evaluation with intake, extraction, OCR, word search, source review, and exports |
-| `review` | learned retrieval, reranking, and cited local generation |
-| `transcription` | media transcription without the review-model services |
-| `all` | document review plus transcription and optional diarization |
-
-GPU profiles require NVIDIA compute capability 7.5 or newer and the NVIDIA
-Container Toolkit. The intended deployment model supports one suitable GPU,
-with additional GPUs separating generation, transcription, and retrieval work.
-Each configuration still needs deployment validation. Advanced placement
-controls are documented in [Models](MODELS.md).
+Fresh installations accept `--models none` or no `--models` option.
+The former `review`, `transcription`, and `all` bundles can be resumed or
+updated from a saved installation. The installer keeps that node's GPU placement,
+model cache, and private service configuration. To reproduce the historical GPU
+beta, use the tagged release in the [beta reference guide](BETA_REFERENCE_INSTALL.md).
 
 The installer never opens a public port by default. Its initial listener is
 `127.0.0.1:8443`; a LAN bind requires an explicit address and an existing
@@ -542,10 +533,8 @@ organization-trusted certificate.
 3. Decide between local accounts, OIDC, or Kerberos/Windows Integrated
    Authentication.
 4. Obtain DNS and a trusted TLS certificate for staff access.
-5. Choose transcription modules. Ungated ASR and English/Spanish alignment can
-   be staged independently. `--enable-diarization` selects ungated Nemotron;
-   it needs no Hugging Face account or token. The optional legacy
-   `--diarization-backend community-1` still requires upstream access approval.
+5. Decide which model APIs to configure. Each external destination that handles
+   case content requires authorization for the specific matter and model.
 6. Decide where the encrypted restic repository and independent recovery key
    will live.
 
@@ -557,18 +546,16 @@ start containers, or change permissions:
 
 ```bash
 ./install preflight --root /srv/exculpata --models none --no-color
-./install preflight --root /srv/exculpata --models review --json
+./install preflight --root /srv/exculpata --resume --json
 ```
 
-Supply the same `--storage-root`, `--server-name`, `--bind-address`, TLS, model
-and GPU-selection options you intend to use for installation. Quote paths
+Supply the same `--storage-root`, `--server-name`, `--bind-address`, and TLS options you intend to use for installation. Quote paths
 containing spaces.
 Omitted options select `/srv/exculpata`, storage beneath it, CPU evaluation,
 and loopback HTTPS. Interactive installation collects the hostname before running
 these checks, so invalid answers also stop before creating node state. `none`
-enables intake, extraction, OCR, word search, direct source review and exports. `review` adds learned search and cited generated
-answers; `transcription` adds recording transcription; `all` selects both AI
-workflows. CPU evaluation does not require NVIDIA hardware.
+enables intake, extraction, OCR, word search, direct source review and exports.
+Use `preflight --resume` to check an existing node against its recorded bundle.
 
 Each checklist row reports what was observed, which task it enables, whether it
 blocks installation, and a next action. Resolve every `BLOCK` and rerun the same
@@ -652,7 +639,7 @@ For missing prerequisites:
   the same files; symbolic-link inputs remain rejected. Preflight does not
   certify the pair's matching keys, identity,
   expiry or trust chain. Verify those before staff access.
-- For AI tasks, install the NVIDIA driver and
+- For an existing node with a saved GPU bundle, install the NVIDIA driver and
   [Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
   The checklist checks registered Docker runtime support and the selected model
   plan against currently reported GPU capability and free memory. It also
@@ -874,13 +861,13 @@ refuses to silently record UID/GID 0 for application containers.
 
 The phases are deliberately explicit:
 
-1. host and GPU preflight;
+1. host preflight, including GPU checks when resuming a saved bundle;
 2. state/storage boundary creation;
 3. allowlisted release-capsule hashing and staging;
 4. authentication and TLS configuration;
 5. versioned container build;
 6. storage and administrator initialization;
-7. pinned model staging and offline manifest sealing;
+7. verification and staging for an existing bundled profile, skipped on new nodes;
 8. launch and health acceptance.
 
 Health and sign-in acceptance connect to the configured HTTPS bind address while
@@ -898,13 +885,15 @@ incompatible, undersized or currently occupied selected GPU hardware. Use
 
 ## Unattended local-account example
 
-Passwords and Hugging Face tokens are read only from standard input, never a
-command argument. Because both are needed, use separate controlled staging
-steps rather than concatenating secrets into a shell history. The interactive
+Supply a fresh node’s local administrator password through controlled standard input.
+A saved gated bundle may also require a read-only Hugging Face token when
+resuming an interrupted installation. Supply these credentials separately. The interactive
 installer is recommended for the initial release. Automation should invoke the
 same commands from a secret manager and inspect exit codes.
 
 ## Model staging
+
+This section applies to existing bundled installations. Fresh nodes use operator-managed APIs.
 
 The model vault uses exact revisions from `config/models.json`. It downloads to
 the selected model root, hashes the transcription artifacts, writes the
@@ -915,13 +904,10 @@ If a gated download fails, confirm the operator account accepted the model’s
 terms, create a read-only Hugging Face token, and rerun preparation. Never put a
 hub token in `.env`, Compose YAML, service environment, logs, or Git.
 
-Transcription defaults to ungated ASR plus English alignment. Add Spanish with
-`--transcription-languages en,es`. Add speaker clustering only with
-`--enable-diarization`; new installations stage the pinned Nemotron model
-without a token or access-approval prompt. To retain Community-1, explicitly use
-`--diarization-backend community-1 --accept-model-terms`; only that gated backend
-requests a one-time read-only hub token. Resume preserves the saved backend and
-never silently converts an existing installation. Whisper translation uses the staged ASR artifact
+The saved transcription profile selects its ASR model, alignment languages and
+optional speaker clustering backend. Nemotron can be staged without a token.
+A saved Community-1 selection requires accepted upstream terms and a one-time
+read-only token. Resume verifies the recorded backend before staging. Whisper translation uses the staged ASR artifact
 and does not add a separate model download. A deployment that omits diarization
 still produces transcripts and timestamps, with speaker separation explicitly
 reported as unavailable.
