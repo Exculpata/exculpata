@@ -7,6 +7,9 @@ import os
 import sqlite3
 import stat
 
+from case_intelligence.store.media_queue import has_active_media_jobs
+from transcription_v2.store import SQLiteJobStore
+
 
 JOURNAL = ".bundle-update-recovery.json"
 MAX_JOURNAL_BYTES = 8 * 1024 * 1024
@@ -14,9 +17,6 @@ _PHASE_RECEIPTS = {"state/provisioned.json", "state/install-progress.json"}
 
 
 def require_idle_media(root: Path) -> None:
-    from case_intelligence.store.media_queue import has_active_media_jobs
-    from transcription_v2.store import SQLiteJobStore
-
     for path, probe in ((root / "runtime/workbench.sqlite", has_active_media_jobs),
                         (root / "transcription/jobs.sqlite3", SQLiteJobStore.has_unfinished_jobs_offline)):
         if path.is_symlink() or (path.exists() and not path.is_file()):
