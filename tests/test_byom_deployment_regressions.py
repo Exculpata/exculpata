@@ -98,6 +98,37 @@ def test_speech_doctor_runs_only_in_app_and_displays_known_messages(monkeypatch,
     assert "synthetic-private-runtime-output" not in " ".join(output)
 
 
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_doctor_checks_configured_media_contracts_independently(monkeypatch, tmp_path, dry_run):
+    from tests.test_oss_installer import installer
+    app = {f"CASE_INTELLIGENCE_{role}_URL": f"https://{role.lower()}.example.test"
+           for role in ("ALIGNMENT", "TRANSLATION", "DIARIZATION")}
+    app.update({f"CASE_INTELLIGENCE_{role}_MODEL": "synthetic-model" for role in ("ALIGNMENT", "TRANSLATION", "DIARIZATION")})
+    monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
+    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
+    monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
+    commands, output = [], []
+    replies = {"alignment": {"alignment": "ok"}, "translation": {"translation": "unreachable"},
+               "speaker_labeling": {"speaker_labeling": "synthetic-private-runtime-output"}}
+
+    def probe(command, **kwargs):
+        commands.append(command)
+        return SimpleNamespace(returncode=0, stdout=json.dumps(replies[command[-1]]))
+
+    monkeypatch.setattr(installer, "_probe", probe)
+    installer._doctor_generator(SimpleNamespace(note=output.append, warn=output.append), tmp_path, dry_run=dry_run)
+    command = ["docker", "compose", "exec", "-T", "app", "python", "-m", "case_intelligence.media_endpoint_doctor"]
+    assert commands == ([] if dry_run else [[*command, capability] for capability in replies])
+    summary = " ".join(output)
+    assert "synthetic-private-runtime-output" not in summary
+    if dry_run:
+        assert "dry run" in summary
+    else:
+        assert "word alignment endpoint :: ok" in summary
+        assert "translation endpoint :: service unreachable" in summary
+        assert "speaker labeling endpoint diagnostic unavailable" in summary.lower()
+
+
 @pytest.mark.parametrize("dry_run", [True, False])
 def test_doctor_redacts_invalid_saved_url_before_display(monkeypatch, tmp_path, dry_run):
     from tests.test_oss_installer import installer

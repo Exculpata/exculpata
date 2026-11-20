@@ -292,3 +292,7 @@ publication, application, PostgreSQL, transcription, deployment and review gates
 
 Daily `hygiene-report` and weekly `flake-ledger` run only on schedule or manual dispatch, retaining reports for 14 days and updating publication-checked `automated-hygiene` issues. Workflow steps collect remote data and apply filing decisions; Python scripts read local files. J1 measures Python hygiene and local Markdown targets. J2 groups JUnit failures and later rerun passes; missing artifacts mean partial coverage, never a clean zero. Application artifacts expire after five days, so seven-day coverage may be partial.
 Regenerate tools with `uv pip compile requirements/hygiene.in --python-version 3.12 --python-platform x86_64-unknown-linux-gnu --generate-hashes --no-header --no-annotate -o requirements/hygiene.lock`.
+
+## Fresh zero-endpoint installation
+
+Run **Fresh zero-endpoint install** manually for the selected release branch, or push the candidate to a branch under `verify/zero-endpoint-install/`. Its Ubuntu runner provisions a new evaluation node using local administrator authentication and the default model selection. It checks the installer doctor, running PostgreSQL and antivirus, and then signs in through the HTTPS gateway. A generated CSV exercises antivirus-backed intake, original-byte retrieval, exact search, and review coding. The packaged scanned PDF must produce a page 2 citation for its image-only phrase. The workflow keeps the account password, TLS keys, node files and detailed installer logs on that disposable runner.

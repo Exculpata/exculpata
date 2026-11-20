@@ -5,6 +5,103 @@
 # Runtime exceptions: gateway ingress, operator model-stager, signature-only clamav-updater.
 # Proxy destination authority is supplied by the selected application configuration.
 
+# The hosted CPU installer client signs into its own loopback TLS gateway. Other literals are local paths or synthetic source names.
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "client"
+digest = "0fd860021be6ddf628bb397adb28dfd5db7b955c01ea3484a5d2caf7bb966098"
+detail = "network import"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "host"
+digest = "3a49f3f0d0c035495c0b0b6445d5141e6eb20c3e9d7f3c7abc64d059d5a5e3ca"
+detail = "synthetic-inventory.csv"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "host"
+digest = "f35ca241dd12a502efc3d1043496a3aed9dbc0135d060dc65184b3a2a29a4123"
+detail = "synthetic-scan.pdf"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "client"
+digest = "d0798e9e441098236325be6787164632bd368918d3bb75ba2a14a4a7c465bba2"
+detail = "urllib.request.build_opener"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "host"
+digest = "e8ac65dff94fbddef3d10053bae405d62aff8862886318ed532a60371c409fb5"
+detail = "localhost:"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "client"
+digest = "7c70c2089c4623e751dcdac41541b14bf5cd36b2d884d1c01e2f41cdc1fe4c89"
+detail = "urllib.request.ProxyHandler"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "client"
+digest = "8941111ce984c4d101973d443588e1595cc752e5414c778d7e659a274daa3cb4"
+detail = "urllib.request.HTTPCookieProcessor"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "client"
+digest = "6d3e872e078beee699c40a2e839f4d77e2327e010d5ee50aed5e73d1147ad1b1"
+detail = "urllib.request.HTTPSHandler"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "client"
+digest = "9692ed6c1b27c45a6ff3e3fa6465cb79589a998c31efaeb308087492e4de572a"
+detail = "urllib.request.build_opener.open"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "client"
+digest = "2a3f210db92d7505eb94a5ad5dd7c9a0d3477878cf2a875ec7c7834fbb4e9f84"
+detail = "urllib.request.Request"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "host"
+digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
+detail = "compose.env"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "host"
+digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
+detail = "compose.yaml"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "host"
+digest = "5b8ce5b79ad1ed0f968a7fbcea3ac4740014eb37c5b22ff2a5ddd346d787967c"
+detail = "compose.local-accounts.yaml"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/verify-zero-endpoint-install.py"
+kind = "host"
+digest = "dd573a076405ac7ffbcf984eb6bee992ad4914693d0c8c2797d4492d5bbccf88"
+detail = "tls.crt"
+
 # Disposable verification uses only an ephemeral loopback listener and HTTP client.
 [[source]]
 path = "scripts/verify-exculpata.py"
@@ -7886,6 +7983,30 @@ digest = "24d5f69bcfd1907cfb35c93d284fe7632e161c6751a8e100fa072ce546fc9598"
 detail = "attachment.txt"
 
 # The ASR doctor uses a fixed fixture. Case multipart uploads use the same reviewed relay with a live matter grant.
+[[source]]
+path = "src/case_intelligence/media_enrichment.py"
+kind = "client"
+digest = "48dc804dd6255688fd38f0ce0cfcca804e349d2d898a15fd41ad5e0ce51c1253"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/media_enrichment.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/media_enrichment.py"
+kind = "client"
+digest = "94428707863bfc7d1910240b3fa945f3952962261039e01c552e112f7c664e17"
+detail = "urllib.request.Request"
+
+[[source]]
+path = "src/case_intelligence/media_enrichment.py"
+kind = "client"
+digest = "1be124a1640e254e8df5e8497e2fcb47c09af66c73650af822e70e0184f04ad7"
+detail = "http.client.HTTPException"
+
 [[source]]
 path = "src/case_intelligence/speech_endpoint.py"
 kind = "client"

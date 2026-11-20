@@ -8,7 +8,10 @@ from .oidc_network_policy import issuer_authority, validated_https_url
 from .retrieval_endpoint_config import configured_endpoint
 
 
-ENDPOINT_ROLES = {"embedding": "EMBEDDING", "reranking": "RERANK", "transcription": "ASR"}
+ENDPOINT_ROLES = {
+    "embedding": "EMBEDDING", "reranking": "RERANK", "transcription": "ASR",
+    "alignment": "ALIGNMENT", "translation": "TRANSLATION", "speaker_labeling": "DIARIZATION",
+}
 CAPABILITIES = ("generation", *ENDPOINT_ROLES)
 
 
