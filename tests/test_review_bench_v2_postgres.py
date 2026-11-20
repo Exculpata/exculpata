@@ -721,3 +721,37 @@ def test_load_file_empty_projection_postgres(tmp_path, load_file_projection_uplo
         if matter_id is not None:
             with psycopg.connect(dsn) as cleanup:
                 delete_postgres_matter(cleanup, matter_id=matter_id)
+
+
+@pytest.mark.postgres
+def test_command_migrates_bundled_vectors_using_only_synthetic_fingerprints(endpoint, monkeypatch, capsys):
+    import sys
+    import psycopg
+    from case_intelligence import embedding_index, embedding_fingerprint, retrieval_endpoints, retrieval_rebuild
+    from tests.case_theory_db import isolated_database
+    from tests.test_embedding_fingerprint import synthetic_worker
+
+    model, revision = "synthetic-worker", "b" * 40
+    path = embedding_index.embedding_index_path()
+    for populated in (False, True):
+        assert not embedding_index.record_embedding_index(path, model=model, revision=revision, populated=populated)
+    embed = DeterministicEmbeddingAdapter().embed
+    endpoint["embedding_function"] = embed
+    worker_inputs = []
+    with isolated_database() as dsn, psycopg.connect(dsn, autocommit=True) as connection:
+        with connection.cursor() as cursor:
+            apply_postgres_migrations(cursor)
+        initialize_postgres_demo(connection, {"synthetic-matter": (PdfPage(1, "Synthetic case passage."),)})
+        query = "SELECT matter_id, document_id, chunk_id, source_version_id, text, embedding::text FROM review_chunk"
+        before = list(connection.execute(query))
+        assert len(before) == 1 and before[0][-1]
+        with synthetic_worker(model, revision, embed, worker_inputs) as worker:
+            monkeypatch.setenv("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", worker)
+            monkeypatch.setenv("CASE_INTELLIGENCE_POSTGRES_DSN", dsn)
+            monkeypatch.setattr(sys, "argv", ["retrieval_rebuild", "--confirm-stopped", "--verify-migration"])
+            retrieval_rebuild.main()
+        assert "retained the existing vectors" in capsys.readouterr().out
+        assert list(connection.execute(query)) == before
+        assert worker_inputs == [list(embedding_fingerprint.PROBES)]
+        assert [body["input"] for body in endpoint["bodies"]] == worker_inputs
+        assert retrieval_endpoints.doctor("EMBEDDING") == "ok"

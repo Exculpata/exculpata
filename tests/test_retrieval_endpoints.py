@@ -43,6 +43,9 @@ def endpoint(monkeypatch, tmp_path):
                      for i in range(len(body["input"]))] if "input" in body else
                     [{"index": 0 if state.get("repeat_index") else i, "relevance_score": state.get("component", 0.75)}
                      for i in range(len(body["documents"]))])
+            if "embedding_function" in state and "input" in body:
+                for row, vector in zip(rows, state["embedding_function"](body["input"]), strict=True):
+                    row["embedding"] = vector
             self.reply({"data" if "input" in body else "results": rows})
 
         def reply(self, value):

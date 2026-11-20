@@ -48,6 +48,7 @@
   "case_intelligence.stock_case_render": "evals",
   "case_intelligence.docx_extract": "core.sources",
   "case_intelligence.docx_extract_helper": "core.sources",
+  "case_intelligence.embedding_fingerprint": "core.contracts",
   "case_intelligence.embedding_index": "modules.retrieval",
   "case_intelligence.entity_discovery": "modules.insight",
   "case_intelligence.entity_extractor": "core.sources",

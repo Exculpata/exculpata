@@ -51,41 +51,59 @@ def _proxy_destinations(oidc=("", ""), generator=("", "")):
         ("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"): generator,
     }
     pairs.update({(role + "_EGRESS_URL", role + "_EGRESS_PINS"): ("", "")
-                  for role in ("EMBEDDING", "RERANK", "ASR")})
+                  for role in ("EMBEDDING", "RERANK", "ASR", "ALIGNMENT", "TRANSLATION", "DIARIZATION")})
     return {setting: value for settings, values in pairs.items() for setting, value in zip(settings, values)}
 
 
-def test_saved_speech_settings_select_only_the_exact_relay_destination(tmp_path):
+@pytest.mark.parametrize(("role", "capability"), [
+    ("ASR", "transcription"), ("ALIGNMENT", "alignment"),
+    ("TRANSLATION", "translation"), ("DIARIZATION", "speaker labeling"),
+])
+def test_saved_media_settings_select_only_the_exact_relay_destination(tmp_path, role, capability):
     root, _, _ = configured_node(tmp_path)
     selected = installer._app_env(root)
-    speech = "https://speech.example.test:8443"
-    private_address = ipaddress.IPv4Address(bytes((10, 0, 0, 7)))
-    pins = json.dumps({"issuer": speech, "addresses": [str(private_address)]})
-    settings = {
-        "CASE_INTELLIGENCE_ASR_URL": speech,
-        "CASE_INTELLIGENCE_ASR_MODEL": "synthetic-speech",
-        "CASE_INTELLIGENCE_ASR_ALLOWED_HOSTS": "speech.example.test",
-        "CASE_INTELLIGENCE_ASR_EGRESS_PINS": pins,
-        "CASE_INTELLIGENCE_ASR_API_KEY_FILE": "/run/secrets/synthetic-asr",
-    }
-    # fixture-write: Select a synthetic private speech endpoint in the active app file.
+    host = role.lower() + ".example.test"
+    origin = f"https://{host}:8443"
+    address = ipaddress.IPv4Address(bytes((10, 0, 0, 7)))
+    pins = json.dumps({"issuer": origin, "addresses": [str(address)]})
+    prefix = f"CASE_INTELLIGENCE_{role}_"
+    settings = {prefix + "URL": origin, prefix + "MODEL": "synthetic-model",
+                prefix + "ALLOWED_HOSTS": host, prefix + "EGRESS_PINS": pins,
+                prefix + "API_KEY_FILE": "/run/secrets/synthetic-key"}
+    # fixture-write: Select the synthetic private endpoint in the active app file.
     selected.write_text(installer._env_text(settings, "Synthetic"))
     command = installer._compose(root, (), release=ROOT, auth="local")
-    ambient = {"PATH": os.environ["PATH"], "ASR_EGRESS_URL": "https://unrelated.example.test"}
+    ambient = {"PATH": os.environ["PATH"], role + "_EGRESS_URL": "https://unrelated.example.test"}
     environment = installer._compose_environment(command, ambient)
     resolved = subprocess.run([*command, "config", "--format", "json"], env=environment,
                               capture_output=True, text=True, check=True)
     services = json.loads(resolved.stdout)["services"]
     expected = _proxy_destinations()
-    expected.update(ASR_EGRESS_URL=speech, ASR_EGRESS_PINS=pins)
+    expected.update({role + "_EGRESS_URL": origin, role + "_EGRESS_PINS": pins})
     assert services["egress-proxy"]["environment"] == expected
-    assert services["app"]["environment"]["CASE_INTELLIGENCE_ASR_API_KEY_FILE"] == settings["CASE_INTELLIGENCE_ASR_API_KEY_FILE"]
-    # fixture-write: Keep maintenance possible while a synthetic speech setting is repaired.
-    selected.write_text(installer._env_text(dict(settings, CASE_INTELLIGENCE_ASR_URL="http://invalid.example.test"), "Synthetic"))
-    with pytest.raises(RuntimeError, match="Invalid saved transcription"):
+    assert services["app"]["environment"][prefix + "API_KEY_FILE"] == settings[prefix + "API_KEY_FILE"]
+    assert services["app"]["environment"][prefix + "PROXY"] == "http://egress-proxy:3128"
+    # fixture-write: Keep maintenance possible while a synthetic setting is repaired.
+    selected.write_text(installer._env_text(settings | {prefix + "URL": "http://invalid.example.test"}, "Synthetic"))
+    with pytest.raises(RuntimeError, match=f"Invalid saved {capability}"):
         installer._compose_environment([*command, "up"], ambient)
     maintenance = installer._compose_environment([*command, "down"], ambient)
-    assert maintenance["ASR_EGRESS_URL"] == maintenance["ASR_EGRESS_PINS"] == ""
+    assert maintenance[role + "_EGRESS_URL"] == maintenance[role + "_EGRESS_PINS"] == ""
+
+
+def test_doctor_reports_shared_media_origin_budget(tmp_path, capsys):
+    root, _, _ = configured_node(tmp_path)
+    capsys.readouterr()
+    host = "https://speech.example.test"
+    settings = {"CASE_INTELLIGENCE_ASR_URL": host,
+                "CASE_INTELLIGENCE_GENERATOR_URL": host + "/v1",
+                "CASE_INTELLIGENCE_DIARIZATION_URL": "https://distinct.example.test"}
+    # fixture-write: Share a synthetic model authority on the saved node.
+    installer._app_env(root).write_text(installer._env_text(settings, "Synthetic"))
+    installer._doctor_generator(installer.Console(color=False), root, dry_run=True)
+    output = capsys.readouterr().out
+    assert "GENERATOR, ASR share a relay budget of 32 MiB, 310 seconds and 1 concurrent tunnel" in output
+    assert "GENERATOR, ASR, DIARIZATION share" not in output
 
 
 @pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
