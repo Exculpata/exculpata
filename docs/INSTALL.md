@@ -982,6 +982,34 @@ The capsule hash and copied files use the same generated-file exclusions:
 contributor tests or building Python packages must not change release identity; changes to included source files do. The source hash
 identifies capsule content, not the installed image or runtime dependencies.
 
+### Move an existing bundled node to model APIs
+
+After qualifying the replacement APIs, finish or cancel pending private
+transcription jobs. Verify the replacement embedding index or complete its
+approved rebuild while the original worker is still available. Check the model
+destinations and each matter's grants. The migration also supports operating
+with zero APIs.
+
+Run `./install update --root /srv/exculpata --retire-bundled-models` using the
+existing node's account and state root. The normal update backup policy applies.
+Use `--dry-run` to inspect the plan. The command also works when the node
+already runs the current release capsule.
+
+The installer stops the old node and checks both media queues before updating
+its saved selection to `none`. The replacement uses the same accounts, matter
+mounts and workbench database. Generation stops using the bundled server.
+Previously configured operator endpoints and grants remain available. For an
+existing media node a CPU-only private API can still read, cancel, or delete its
+old jobs. Its upload and retry routes are disabled. New case recordings require
+the authorized transcription API. Resume and future updates keep this layout.
+The original model cache stays on disk.
+
+If startup or acceptance fails, the installer restores the saved configuration
+and restarts the prior services. After a process interruption, rerun the same
+update command so it can recover the interrupted configuration. Run
+`./install doctor --root /srv/exculpata` and repeat a review, a timestamped
+playback citation, and exact search against the same source on the migrated node.
+
 An update requires a newly successful bundled encrypted backup unless no
 bundled backup is configured and the operator supplies `--no-backup`. Operators
 using their own backup method can use that flag after verifying their external

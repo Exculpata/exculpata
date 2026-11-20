@@ -210,7 +210,7 @@ services:
       start_period: 240s
 
   transcription-api:
-    profiles: [transcription]
+    profiles: [transcription, transcription-history]
     image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: services/transcription

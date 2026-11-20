@@ -7922,3 +7922,27 @@ path = "scripts/application-test-shard.py"
 kind = "host"
 digest = "71546855d6279ef70d20909b292c42c2dcb02cd06bde01485da52d13e304ebf4"
 detail = "::"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
+detail = "compose.env"
+
+[[source]]
+path = "scripts/model_bundle_migration.py"
+kind = "host"
+digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
+detail = "compose.env"
+
+[[source]]
+path = "scripts/model_bundle_migration.py"
+kind = "host"
+digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
+detail = "compose.env"
+
+[[source]]
+path = "scripts/model_bundle_migration.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"

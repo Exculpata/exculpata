@@ -1,8 +1,12 @@
 """Private job API for the isolated, ephemeral transcription service."""
 
+import asyncio
+from contextlib import asynccontextmanager, suppress
 import hashlib
 import json
 import mimetypes
+import os
+import re
 import secrets
 import shutil
 import threading
@@ -377,9 +381,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "jobs": projected_jobs,
         }
 
+    def purge_retained_jobs():
+        runtime.store.purge_expired(delete_files=runtime.storage.delete_job_tree, limit=100)
+        runtime.store.purge_stale_unfinished(
+            stale_before=datetime.now(timezone.utc) - timedelta(hours=runtime.settings.max_active_job_hours),
+            delete_files=runtime.storage.delete_job_tree, limit=100,
+        )
+
+    history_only = os.getenv("TRANSCRIPTION_V2_HISTORY_ONLY", "0") != "0"
+
+    @asynccontextmanager
+    async def history_lifespan(_app):
+        async def expire_history():
+            while True:
+                await asyncio.sleep(60)
+                await asyncio.to_thread(purge_retained_jobs)
+
+        await asyncio.to_thread(purge_retained_jobs)
+        task = asyncio.create_task(expire_history())
+        try:
+            yield
+        finally:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
     app = FastAPI(
         title="Exculpata Transcription v2",
         version="0.1.0",
+        lifespan=history_lifespan if history_only else None,
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -415,7 +445,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 # Missing, malformed, or streaming lengths cannot be rejected
                 # safely here; endpoint validation remains authoritative.
                 pass
-        if (
+        path = request.url.path
+        if history_only and not (
+            (request.method == "GET" and (path in {"/health", "/v1/jobs"}
+                or re.fullmatch(r"/v1/jobs/[A-Za-z0-9_-]+(?:/transcript)?", path)))
+            or (request.method == "DELETE" and re.fullmatch(r"/v1/jobs/[A-Za-z0-9_-]+", path))
+            or (request.method == "POST" and re.fullmatch(r"/v1/jobs/[A-Za-z0-9_-]+/cancel", path))
+        ):
+            response = JSONResponse(status_code=409, content={"code": "history_only"})
+        elif (
             declared_length is not None
             and declared_length
             > runtime.settings.max_batch_upload_bytes
@@ -692,13 +730,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/v1/jobs")
     def jobs(owner: Owner, limit: int = Query(default=100, ge=1, le=200)) -> dict[str, Any]:
         # Purge on reads as a backstop if the worker is temporarily stopped.
-        runtime.store.purge_expired(delete_files=runtime.storage.delete_job_tree, limit=100)
-        runtime.store.purge_stale_unfinished(
-            stale_before=datetime.now(timezone.utc)
-            - timedelta(hours=runtime.settings.max_active_job_hours),
-            delete_files=runtime.storage.delete_job_tree,
-            limit=100,
-        )
+        purge_retained_jobs()
         return {"jobs": [_job_view(runtime, job) for job in runtime.store.list_jobs(owner, limit=limit)]}
 
     @app.get("/v1/batches/{batch_id}")

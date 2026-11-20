@@ -13,7 +13,9 @@ tests for the normal update command. Verify old bundle services stop, the
 replacement omits them, the saved configuration selects no bundle on subsequent
 resume, and updated source and reviewer records remain accessible. Exercise a
 failed replacement and the existing rollback flow. Require unfinished private
-media jobs to be resolved before disabling their service.
+media jobs to be resolved before retiring the GPU worker. The saved media node
+keeps its CPU-only private API for importing or cleaning existing results. In
+this configuration the service refuses new uploads and retries.
 
 This migration follows qualification of the replacement APIs and is explicitly
 selected for one node. [Migration tracker](https://github.com/Exculpata/exculpata/issues/558)
