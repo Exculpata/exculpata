@@ -30,6 +30,7 @@ from .branding import PRODUCT_NAME
 from .derived_text import presentation_text
 from .generation import GenerationRejected, GenerationUnavailable
 from .pilot_uploads import PilotDocument, PilotStore, UploadProblem
+from .private_media_jobs import matched_external_id as _matched_external_id, processor_owner
 from .service_endpoints import validate_service_endpoint
 from .retrieval_endpoint_config import configured_endpoint
 from .media_segments import normalize_transcript_payload, transcript_speaker_labels
@@ -190,7 +191,8 @@ def _safe_endpoint(value: str) -> str:
 class TranscriptionV2Client:
     """Content-minimizing client for the private, ephemeral WhisperX v2 API."""
 
-    def __init__(self, endpoint: str, token_file: Path) -> None:
+    def __init__(self, endpoint: str, token_file: Path, *, history_only: bool = False) -> None:
+        self.history_only = history_only
         self.endpoint = _safe_endpoint(endpoint)
         self.token_file = Path(token_file)
 
@@ -201,7 +203,8 @@ class TranscriptionV2Client:
         if not endpoint or not token_file:
             return None
         try:
-            return cls(endpoint, Path(token_file))
+            history_only = os.getenv("CASE_INTELLIGENCE_TRANSCRIPTION_HISTORY_ONLY", "0") != "0"
+            return cls(endpoint, Path(token_file), history_only=history_only)
         except ValueError:
             return None
 
@@ -302,6 +305,8 @@ class TranscriptionV2Client:
 
     def ready(self, owner: str) -> bool:
         try:
+            if self.history_only:
+                return self._request("GET", "/health", owner=owner).get("status") == "ok"
             payload = self._request("GET", "/ready", owner=owner)
             checks = payload.get("checks")
             return payload.get("status") == "ready" or (
@@ -345,6 +350,8 @@ class TranscriptionV2Client:
     def submit(
         self, owner: str, source: Path, media_type: str, source_sha256: str
     ) -> Mapping[str, object]:
+        if self.history_only:
+            raise MediaProcessorError("The private service only retains past jobs. Configure the transcription API.")
         if not source.is_file() or source.is_symlink():
             raise MediaProcessorError("The stored recording is unavailable.")
         options = json.dumps(
@@ -415,19 +422,6 @@ class TranscriptionV2Client:
             return
 
 
-def _matched_external_id(view: Mapping[str, object], job: MediaJobRecord) -> str:
-    if view.get("source_sha256") != job.source_sha256 or view.get("size_bytes") != job.byte_size:
-        raise MediaProcessorError("The transcription service did not preserve the submitted source identity.")
-    external_id = str(view.get("job_id") or view.get("id") or "")
-    if not re.fullmatch(r"[A-Za-z0-9_-]{8,100}", external_id):
-        raise MediaProcessorError("The transcription service returned an invalid job identity.")
-    return external_id
-
-
-def processor_owner(media_job_id: str) -> str:
-    if not re.fullmatch(r"media-job-[0-9a-f]{32}", media_job_id or ""):
-        raise ValueError("invalid media job")
-    return "ci-" + media_job_id
 
 
 ProjectTranscript = Callable[
@@ -496,7 +490,8 @@ class MediaCoordinator:
                 return configured_endpoint("ASR") is not None
             except ValueError:
                 return False
-        return bool(self.processor is not None and self.processor.available)
+        return bool(self.processor is not None and self.processor.available
+                    and getattr(self.processor, "history_only", False) is not True)
 
     def notify(self) -> None:
         self._wake.set()
@@ -797,6 +792,10 @@ class MediaCoordinator:
                         "Earlier transcription work could not be checked. Try again when the service is available."
                     )
                 recovered = self.processor.find_job(owner, job.source_sha256, job.byte_size)
+                if (recovered is not None and getattr(self.processor, "history_only", False) is True
+                        and recovered.get("status") in self.TERMINAL_FAILED):
+                    self.processor.delete(owner, _matched_external_id(recovered, job))
+                    recovered = None
                 if recovered is not None:
                     external_id = _matched_external_id(recovered, job)
                     job = self.workspace.update_media_job(

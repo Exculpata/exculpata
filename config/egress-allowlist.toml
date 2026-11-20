@@ -8074,3 +8074,27 @@ path = "src/case_intelligence/retrieval_endpoints.py"
 kind = "client"
 digest = "c654ab4bdb9312f8aabfa05cfc2a7911c4b243b6398faf0b8b0a5b95ce8321d2"
 detail = "service_endpoints.open_service_request"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
+detail = "compose.env"
+
+[[source]]
+path = "scripts/model_bundle_migration.py"
+kind = "host"
+digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
+detail = "compose.env"
+
+[[source]]
+path = "scripts/model_bundle_migration.py"
+kind = "host"
+digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
+detail = "compose.env"
+
+[[source]]
+path = "scripts/model_bundle_migration.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
