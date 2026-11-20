@@ -12,7 +12,7 @@ from case_intelligence.external_model_grants import configured_model_destination
 from case_intelligence.matter_archive import build_matter_archive, cleanup_archive
 from case_intelligence.matter_archive_projection import portable
 from case_intelligence.matter_archive_verifier import verify_matter_archive
-from tests.test_matter_media_workflow import ACTOR, _matter
+from tests.test_matter_media_workflow import ACTOR, _matter, _wait_for_summary
 from tests.test_media_preflight import ObservedProcessor, app_for, silence, upload, wait_job
 from tests.test_speech_endpoint import provider as provider
 
@@ -58,6 +58,8 @@ def test_verified_copy_preserves_reviewed_and_enriched_recording(tmp_path, monke
         edited = client.post(route + "/segments/" + segment.segment_id,
                             data={"expected_revision": "0", "text": correction}, follow_redirects=False)
         assert edited.status_code == 303
+        # The edit can requeue the automatic overview after transcription completes.
+        _wait_for_summary(bench, matter, document, "ready", "failed")
         session = bench.workspace.create_session(ACTOR, "d"*64, "test",
                                                  "2099-01-01T00:00:00Z", "2099-01-02T00:00:00Z")
         bench.workspace.case_lifecycle.begin_exit(slug, ACTOR, session_id=session.session_id)
