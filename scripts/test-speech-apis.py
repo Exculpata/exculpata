@@ -35,7 +35,8 @@ def main():
     docker = ["docker", "--context", options.docker_context]
     project = "speech-contract-" + uuid.uuid4().hex[:10]
     app_image = options.app_image or project + "-app"
-    source = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
+    compose_path = ROOT / "compose.yaml"
+    source = yaml.safe_load(compose_path.read_text())["services"]
     app = {key: source["app"][key] for key in ("user", "cap_drop", "read_only", "security_opt", "dns", "dns_search")}
     app.update(image=app_image, command=["sleep", "1800"], pull_policy="never",
                tmpfs=["/tmp"], networks=["app-egress"], healthcheck={"disable": True},
