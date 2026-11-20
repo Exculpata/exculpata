@@ -37,6 +37,8 @@ from .store import (
     _NOTEBOOK_ITEM,
 )
 from .store.model_grants import ModelGrantStoreMixin
+from .external_model_grants import ModelDestination
+from .media_processor_errors import TranscriptionApprovalRequired
 from .store.notebook import NotebookStoreMixin
 from .store.reports import ReportsStoreMixin
 # Re-export record types, exceptions, and the shared helper for existing importers.
@@ -291,6 +293,34 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
                                if re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,19}[0-9]{1,12}", value) is None or counts[(matter_id, value.casefold())] > 1]
                     raise RuntimeError(f"Team ID upgrade refused; resolve conflicting or unsupported values: {invalid!r}") from exc
                 raise
+        with self.connection:
+            self.connection.execute("BEGIN IMMEDIATE")
+            needs_speech_grants = self.connection.execute(
+                "SELECT 1 FROM sqlite_schema WHERE name IN "
+                "('workbench_matter_model_grant','workbench_model_destination') "
+                "AND instr(sql, ?) = 0 LIMIT 1", ("'transcription'",),
+            ).fetchone()
+            if needs_speech_grants:
+                migration = resources.files("case_intelligence").joinpath(
+                    "migrations/sqlite/0052_speech_model_grants.sql"
+                ).read_text(encoding="utf-8")
+                statement = ""
+                for line in migration.splitlines(keepends=True):
+                    statement += line
+                    if sqlite3.complete_statement(statement):
+                        self.connection.execute(statement)
+                        statement = ""
+                if statement.strip():
+                    raise RuntimeError("Incomplete speech grant migration.")
+                if case_policy_exists:
+                    from .case_lifecycle_guards import install_content_guards
+                    install_content_guards(self.connection)
+            media_columns = {row[1] for row in self.connection.execute("PRAGMA table_info(workbench_media_job)")}
+            if "dispatch_kind" not in media_columns:
+                self.connection.execute(
+                    "ALTER TABLE workbench_media_job ADD COLUMN dispatch_kind TEXT DEFAULT 'private' "
+                    "CHECK(dispatch_kind IN ('private', 'api'))"
+                )
         from .appearance import migrate_appearance
         migrate_appearance(self.connection)
         from .source_roles import migrate_source_roles
@@ -3307,8 +3337,8 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
             self.connection.execute(
                 "INSERT INTO workbench_media_job("
                 "media_job_id,matter_id,document_id,source_version_id,requested_by,"
-                "source_sha256,byte_size,media_type,duration_ms,created_at,updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "source_sha256,byte_size,media_type,duration_ms,created_at,updated_at,dispatch_kind) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL)",
                 (
                     media_job_id,
                     matter_id,
@@ -3382,6 +3412,7 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
         stage: str,
         progress: float,
         external_job_id: str | None = None,
+        dispatch_kind: str | None = None,
         message: str = "",
     ) -> MediaJobRecord:
         if not _MEDIA_JOB.fullmatch(media_job_id or ""):
@@ -3404,12 +3435,13 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
         with self._lock, self.connection:
             changed = self.connection.execute(
                 "UPDATE workbench_media_job SET stage=?,progress=?,"
-                "external_job_id=COALESCE(?,external_job_id),message=?,updated_at=? "
+                "external_job_id=COALESCE(?,external_job_id),dispatch_kind=COALESCE(?,dispatch_kind),message=?,updated_at=? "
                 "WHERE media_job_id=? AND state='running'",
                 (
                     stage_value,
                     progress_value,
                     external,
+                    dispatch_kind,
                     message_value,
                     now,
                     media_job_id,
@@ -3487,7 +3519,7 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
             )
             changed = self.connection.execute(
                 "UPDATE workbench_media_job SET state='queued',stage=?,message='',"
-                "progress=0,quality_json=?,requested_by=?,started_at=NULL,finished_at=NULL,updated_at=? "
+                "progress=0,quality_json=?,requested_by=?,dispatch_kind=NULL,started_at=NULL,finished_at=NULL,updated_at=? "
                 "WHERE media_job_id=? AND state='cancelled'",
                 ("Checking recording" if retry else "Queued for transcription",
                  encoded, actor_id, now, job.media_job_id),
@@ -3661,6 +3693,7 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
         warnings: Sequence[object],
         quality: Mapping[str, object],
         provenance: Mapping[str, object],
+        transcription_destination: ModelDestination | None = None,
     ) -> MediaTranscriptRecord:
         if not 0 < len(segments) <= 100_000:
             raise ValueError("transcript segment count is invalid")
@@ -3768,6 +3801,14 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
         with self._lock, self.connection:
             self.connection.execute("BEGIN IMMEDIATE")
             self.membership(job.matter_id, job.requested_by)
+            if job.dispatch_kind == "api" and (
+                not isinstance(transcription_destination, ModelDestination)
+                or transcription_destination.capability != "transcription"
+                or not self._model_grant_allows_locked(job.matter_id, transcription_destination)
+            ):
+                # Preserve any observed destination rotation and its grant-expiration audit.
+                self.connection.commit()
+                raise TranscriptionApprovalRequired()
             self.connection.execute(
                 "UPDATE workbench_media_job SET degraded=? WHERE media_job_id=?",
                 (int(degraded), media_job_id),
