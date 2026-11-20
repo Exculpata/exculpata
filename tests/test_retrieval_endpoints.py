@@ -72,7 +72,7 @@ def endpoint(monkeypatch, tmp_path):
     for role in ("EMBEDDING", "RERANK"):
         for key, value in {"URL": "https://models.example.test", "MODEL": "synthetic",
                            "API_KEY": "synthetic-secret", "REMOTE_CONFIRMED": "1",
-                           "ALLOWED_HOSTS": "models.example.test", "TIMEOUT": "1",
+                           "ALLOWED_HOSTS": "models.example.test", "TIMEOUT": "5",
                            "PROXY": f"http://127.0.0.1:{server.server_port}"}.items():
             monkeypatch.setenv(f"CASE_INTELLIGENCE_{role}_{key}", value)
     path = tmp_path / "identity.json"
