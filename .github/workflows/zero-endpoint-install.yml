@@ -1,0 +1,29 @@
+name: Fresh zero-endpoint install
+
+on:
+  push:
+    branches: ['verify/zero-endpoint-install/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zero-endpoint-install-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fresh-install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Exercise the installer and local review through HTTPS
+        env:
+          COMPOSE_PARALLEL_LIMIT: '1'
+        run: |
+          umask 077
+          chmod go-rwx "$HOME"
+          python3 scripts/verify-zero-endpoint-install.py --root "$RUNNER_TEMP/synthetic-cpu-node"
