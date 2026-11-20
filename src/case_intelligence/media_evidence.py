@@ -29,6 +29,7 @@ from .branding import PRODUCT_NAME
 from .derived_text import presentation_text
 from .generation import GenerationRejected, GenerationUnavailable
 from .pilot_uploads import PilotDocument, PilotStore, PilotUnit, UploadProblem
+from .private_media_jobs import matched_external_id as _matched_external_id, processor_owner
 from .service_endpoints import validate_service_endpoint
 from .workspace_store import (
     MediaClipRecord,
@@ -415,21 +416,6 @@ class TranscriptionV2Client:
             self._request("POST", f"/v1/jobs/{external_job_id}/cancel", owner=owner)
         except MediaProcessorError:
             return
-
-
-def _matched_external_id(view: Mapping[str, object], job: MediaJobRecord) -> str:
-    if view.get("source_sha256") != job.source_sha256 or view.get("size_bytes") != job.byte_size:
-        raise MediaProcessorError("The transcription service did not preserve the submitted source identity.")
-    external_id = str(view.get("job_id") or view.get("id") or "")
-    if not re.fullmatch(r"[A-Za-z0-9_-]{8,100}", external_id):
-        raise MediaProcessorError("The transcription service returned an invalid job identity.")
-    return external_id
-
-
-def processor_owner(media_job_id: str) -> str:
-    if not re.fullmatch(r"media-job-[0-9a-f]{32}", media_job_id or ""):
-        raise ValueError("invalid media job")
-    return "ci-" + media_job_id
 
 
 def normalize_transcript_payload(
