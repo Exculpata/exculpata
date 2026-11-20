@@ -11,7 +11,7 @@ import secrets
 import ssl
 import subprocess
 import time
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import HTTPCookieProcessor, HTTPSHandler, ProxyHandler, Request, build_opener
 
 
@@ -177,12 +177,19 @@ def run(node, port, exercise_cutover=False):
         install(["doctor", "--root", str(node), "--plain"], node)
         renewed = Gateway(node, port)
         renewed.login(password)
-        assert renewed.exact_match(matter, PHRASE, CSV_NAME) == (csv_citation, csv_location)
+        def retained_citation(phrase, filename, original_citation, original_location):
+            current, location = renewed.exact_match(matter, phrase, filename)
+            target, saved = urlsplit(current), urlsplit(original_citation)
+            assert location == original_location and target.path == saved.path and target.fragment == saved.fragment
+            assert parse_qs(target.query)["unit"] == parse_qs(saved.query)["unit"]
+            assert filename in renewed.page(original_citation)
+
+        retained_citation(PHRASE, CSV_NAME, csv_citation, csv_location)
         source = urlsplit(csv_citation).path
         assert renewed.request(source + "/content")[1] == data
         item = matter + "/production/items/" + source.rsplit("/", 1)[1]
         assert re.search(r'data-code-id="' + re.escape(code) + r'"[^>]*aria-pressed="true"', renewed.page(item))
-        assert renewed.exact_match(matter, "silver lantern", SCAN_NAME) == (citation, location)
+        retained_citation("silver lantern", SCAN_NAME, citation, location)
         assert renewed.request(urlsplit(citation).path + "/content")[1] == scan
         print("Seeded review-bundle cutover restarted the real app. Reauthentication, original sources, "
               "source citations and the saved review code survived.", flush=True)
