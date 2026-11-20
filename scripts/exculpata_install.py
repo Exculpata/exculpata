@@ -49,6 +49,7 @@ from installer_terminal import (
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / "src"))
+sys.path.insert(0, str(PROJECT / "services" / "transcription" / "src"))
 from case_intelligence.oidc_network_policy import issuer_pins as _oidc_issuer_pins, public_ip as _public_oidc_ip, validated_https_url
 from case_intelligence.compat_env import env as _env, required_env as _required_env
 from case_intelligence.legacy_names import (

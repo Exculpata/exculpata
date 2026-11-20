@@ -1,5 +1,5 @@
 """Offline installation checks and configuration recovery for a bundle cutover."""
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 import fcntl
 from pathlib import Path
 import json
@@ -11,22 +11,20 @@ import stat
 JOURNAL = ".bundle-update-recovery.json"
 MAX_JOURNAL_BYTES = 8 * 1024 * 1024
 _PHASE_RECEIPTS = {"state/provisioned.json", "state/install-progress.json"}
-_APP_QUERY = "SELECT 1 FROM workbench_media_job WHERE state IN ('queued','running') LIMIT 1"
-_PROCESSOR_QUERY = "SELECT 1 FROM jobs WHERE status NOT IN ('succeeded','failed','canceled') LIMIT 1"
 
 
 def require_idle_media(root: Path) -> None:
-    # The old app and its private processor are stopped. Opening either store
-    # with its normal writer would run schema migrations on the rollback data.
-    for path, query in ((root / "runtime/workbench.sqlite", _APP_QUERY),
-                        (root / "transcription/jobs.sqlite3", _PROCESSOR_QUERY)):
+    from case_intelligence.store.media_queue import has_active_media_jobs
+    from transcription_v2.store import SQLiteJobStore
+
+    for path, probe in ((root / "runtime/workbench.sqlite", has_active_media_jobs),
+                        (root / "transcription/jobs.sqlite3", SQLiteJobStore.has_unfinished_jobs_offline)):
         if path.is_symlink() or (path.exists() and not path.is_file()):
             raise RuntimeError("Saved media job database is unsafe.")
         if not path.exists():
             continue
         try:
-            with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
-                active = db.execute(query).fetchone()
+            active = probe(path)
         except sqlite3.Error as exc:
             raise RuntimeError("Cannot verify the saved media queues before retiring their worker.") from exc
         if active:
