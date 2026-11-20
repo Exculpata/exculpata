@@ -94,7 +94,7 @@ def install(command, node, *, password=None):
                             input=(password + "\n").encode() if password else b"",
                             stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, check=False)
     if result.returncode:
-        progress_file = node / "state" / "install-progress.json"
+        progress_file = node / "state/install-progress.json"
         phases = json.loads(progress_file.read_text())["phases"] if progress_file.exists() else {}
         incomplete = [p for p, value in phases.items() if value == "checking"]
         stage = ", ".join(incomplete) or command[0]
