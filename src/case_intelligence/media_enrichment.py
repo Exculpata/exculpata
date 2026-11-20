@@ -5,6 +5,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
 import http.client
+from io import StringIO
 import json
 import re
 import unicodedata
@@ -96,10 +97,12 @@ def apply_contract(capability, segments, reply):
 
 
 def _serialized(value):
-    encoded = json.dumps(value, ensure_ascii=True, separators=(",", ":"))
-    if len(encoded) > _LIMIT:
-        raise MediaContractError("limit")
-    return encoded
+    encoded = StringIO()
+    for part in json.JSONEncoder(ensure_ascii=True, separators=(",", ":")).iterencode(value):
+        if encoded.tell() + len(part) > _LIMIT:
+            raise MediaContractError("limit")
+        encoded.write(part)
+    return encoded.getvalue()
 
 
 def _request(capability, endpoint, segments, language, source, job):
