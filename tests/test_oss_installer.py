@@ -99,6 +99,26 @@ def test_interrupted_provisioning_resume_retains_canonical_account_profile(tmp_p
     assert calls == [True]
 
 
+@pytest.mark.parametrize("profile", ["review", "transcription", "all"])
+@pytest.mark.parametrize("resume", [False, True])
+def test_fresh_node_rejects_retired_bundle_before_provisioning(tmp_path, monkeypatch, capsys, profile, resume):
+    root = tmp_path / "new-node"
+    flags = ["--root", str(root), "--models", profile, "--non-interactive", "--password-stdin"]
+    if resume:
+        flags.append("--resume")
+    for command in (["preflight", "--json"], ["install"]):
+        monkeypatch.setattr(sys, "argv", ["install", *command, *flags])
+        assert installer.main() == 1
+        out = capsys.readouterr().out
+        if command[0] == "preflight":
+            result = json.loads(out)
+            assert result["ready"] is False
+            assert result["checks"][0]["name"] == "model-profile"
+            assert result["checks"][0]["blocking"] is True
+        assert "operator-managed" in out
+        assert not root.exists()
+
+
 @pytest.mark.parametrize("prepare_only", [False, True])
 def test_installer_dry_run_has_real_phases_and_writes_nothing(tmp_path, ready_host, monkeypatch, capsys, prepare_only) -> None:
     node = tmp_path.resolve() / "node"
@@ -1547,7 +1567,7 @@ def test_fresh_diarization_dry_run_never_consumes_credentials(tmp_path, ready_ho
     monkeypatch.setattr(installer, "_password", lambda *a: pytest.fail("dry-run consumed a password"))
     monkeypatch.setattr(sys, "argv", ["install", "--root", str(node), "--models", "transcription", "--enable-diarization",
                                      "--non-interactive", "--accept-model-terms", "--hf-token-stdin", "--dry-run"])
-    assert installer.main() == 0
+    assert installer.main() == 1
     assert not node.exists()
 
 

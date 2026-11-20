@@ -107,15 +107,6 @@ def test_probe_rejects_unusable_device_memory(tool, bad, mixed):
     assert_devices(hardware.suggest_tier(synthetic_detection(tool, values)), mixed, tool)
 
 
-@pytest.mark.parametrize("tool", TOOLS)
-@pytest.mark.parametrize("bad", BAD_MEMORY)
-@pytest.mark.parametrize("mixed", [False, True], ids=["invalid-only", "valid-neighbors"])
-def test_installer_rejects_unusable_device_memory(installer, monkeypatch, tool, bad, mixed):
-    values = ["8192", bad, "24576"] if mixed else [bad]
-    monkeypatch.setattr(installer, "detect_hardware", lambda **kwargs: synthetic_detection(tool, values))
-    assert_devices(installer._hardware_suggestion(), mixed, tool)
-
-
 @pytest.mark.parametrize("bad", BAD_MEMORY)
 @pytest.mark.parametrize("mixed", [False, True], ids=["invalid-only", "valid-neighbors"])
 def test_installer_inventory_rejects_unusable_device_memory(installer, bad, mixed):

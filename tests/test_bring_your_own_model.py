@@ -527,7 +527,9 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     assert application["CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE"] == f"/run/{LEGACY_STEM}-secrets/generator-api-key"
     assert compose["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] == "synthetic-answers"
     assert "RECORDBENCH_GENERATOR_ALLOWED_HOSTS" not in compose
-    assert compose["RECORDBENCH_RETRIEVAL_DEVICE"] == "cpu"
+    assert "RECORDBENCH_RETRIEVAL_DEVICE" not in compose
+    assert "gpu_topology" not in record
+    assert "review_model_profile" not in record
     assert record["external_generator"] == {
         "server": "ollama",
         "url": "https://synthetic-answers:11434",

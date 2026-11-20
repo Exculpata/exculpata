@@ -58,7 +58,6 @@ def test_doctor_checks_server_in_existing_app_namespace(monkeypatch, tmp_path, u
            "CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE": "/run/secrets/generator-api-key",
            "CASE_INTELLIGENCE_GENERATOR_MODEL": "synthetic"}
     monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
-    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
     monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
     commands, output = [], []
     def probe(command, **kwargs):
@@ -84,7 +83,6 @@ def test_speech_doctor_runs_only_in_app_and_displays_known_messages(monkeypatch,
     from tests.test_oss_installer import installer
     app = {"CASE_INTELLIGENCE_ASR_URL": "https://speech.example.test"} if saved else {}
     monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
-    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
     monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
     commands, output = [], []
 
@@ -107,7 +105,6 @@ def test_doctor_checks_configured_media_contracts_independently(monkeypatch, tmp
            for role in ("ALIGNMENT", "TRANSLATION", "DIARIZATION")}
     app.update({f"CASE_INTELLIGENCE_{role}_MODEL": "synthetic-model" for role in ("ALIGNMENT", "TRANSLATION", "DIARIZATION")})
     monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
-    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
     monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
     commands, output = [], []
     replies = {"alignment": {"alignment": "ok"}, "translation": {"translation": "unreachable"},
@@ -137,7 +134,6 @@ def test_doctor_redacts_invalid_saved_url_before_display(monkeypatch, tmp_path, 
     app = {"CASE_INTELLIGENCE_GENERATOR_BACKEND": "vllm",
            "CASE_INTELLIGENCE_GENERATOR_URL": "https://synthetic-key@answers.example.test"}
     monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
-    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
     monkeypatch.setattr(installer, "_probe", lambda *a, **k: pytest.fail("invalid endpoint was probed"))
     output = []
     installer._doctor_generator(SimpleNamespace(note=output.append, warn=output.append), tmp_path, dry_run=dry_run)
@@ -164,7 +160,6 @@ def test_bundled_doctor_timeout_drift_fails_only_for_rc_one(monkeypatch, tmp_pat
     app = {"CASE_INTELLIGENCE_GENERATOR_BACKEND": "vllm",
            "CASE_INTELLIGENCE_GENERATOR_URL": "http://generator:8000"}
     monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
-    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
     monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
     commands, output = [], []
 
