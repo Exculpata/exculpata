@@ -183,9 +183,9 @@ def enrich_transcript(workspace, job, source, payload, *, check_access):
         return payload
     originals = payload["segments"]
     segments = None
-    quality = dict(payload.get("quality", {}))
-    warnings = list(payload.get("warnings", []))
-    provenance = dict(payload.get("provenance", {}))
+    quality = dict(payload["quality"]) if isinstance(payload.get("quality"), dict) else {}
+    warnings = list(payload["warnings"]) if isinstance(payload.get("warnings"), list) else []
+    provenance = dict(payload["provenance"]) if isinstance(payload.get("provenance"), dict) else {}
     language = payload.get("language") or quality.get("detected_language") or "und"
     if not isinstance(language, str) or not re.fullmatch(r"[A-Za-z][A-Za-z _-]{0,63}", language):
         language = "und"
@@ -195,6 +195,9 @@ def enrich_transcript(workspace, job, source, payload, *, check_access):
         try:
             endpoint = _configured(capability)
             if not endpoint:
+                continue
+            if capability == "alignment" and quality.get("source_alignment_status") == "succeeded":
+                quality[status_key] = "completed_locally"
                 continue
             if capability == "translation" and language.casefold().replace("_", "-").split("-")[0] in {"en", "english"}:
                 quality[status_key] = "skipped"

@@ -18,7 +18,7 @@ Accept multipart form fields `model`, `language`, `segments` (a serialized JSON 
 {"segments":[{"id":"segment-1","words":[{"word":"Prueba","start":0.12,"end":0.5},{"word":"uno.","start":0.55,"end":1.2}]}]}
 ```
 
-Within each segment, words must appear in source order, account for the original text including punctuation (ignoring whitespace), span at least one rounded millisecond and stay inside the original range without overlap. The first and last aligned word refine the segment citation boundaries. The application retains the original source text and segment identity. The application stores citations at segment precision.
+Within each segment, words must appear in source order, account for the original text including punctuation (ignoring whitespace), span at least one rounded millisecond and stay inside the original range without overlap. The first and last aligned word refine the segment citation boundaries. The application retains the original source text and segment identity. The application stores citations at segment precision. When the retained private processor already reports successful forced word alignment, the worker uses those segment boundaries and omits the external alignment request.
 
 ## Translation
 

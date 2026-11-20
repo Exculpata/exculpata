@@ -147,3 +147,12 @@ def test_english_and_reviewed_sources_skip_translation(monkeypatch, configured_t
     result = enrichment.enrich_transcript(workspace, SimpleNamespace(matter_id=matter), None, payload,
                                           check_access=lambda: None)
     assert result["segments"] == payload["segments"]
+
+
+def test_completed_private_alignment_uses_existing_segment_boundaries(monkeypatch):
+    monkeypatch.setenv("CASE_INTELLIGENCE_ALIGNMENT_URL", "https://alignment.example.test")
+    monkeypatch.setenv("CASE_INTELLIGENCE_ALIGNMENT_MODEL", "synthetic-aligner")
+    payload = {"quality": {"source_alignment_status": "succeeded"}, "segments": source_segments()}
+    result = enrichment.enrich_transcript(None, None, None, payload, check_access=lambda: pytest.fail("dispatch"))
+    assert result["quality"]["alignment_status"] == "completed_locally"
+    assert result["segments"] == payload["segments"]
