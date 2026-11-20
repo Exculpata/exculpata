@@ -1079,6 +1079,12 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
                 self.postgres_connection.rollback()
                 self.learned_retrieval = False
         self.embedding_index_warning = self._embedding_index_warning() if self._embedding_selected else ""
+        if self.embedding_status == "endpoint verified" and not self.embedding_index_warning:
+            from .retrieval_endpoints import require_index_identity
+            try:
+                require_index_identity(require_record=True, check_fingerprint=True)
+            except RuntimeError as exc:
+                self.embedding_index_warning = str(exc)
         if self.embedding_index_warning:
             LOGGER.warning("%s", self.embedding_index_warning)
         self._rebuild_all_indexes()
