@@ -1,29 +1,52 @@
-name: Seeded review bundle cutover
+name: Final release seeded review bundle cutover
 
 on:
   push:
-    branches: ['verify/zero-endpoint-install/**']
-  workflow_dispatch:
+    branches: ['verify/zero-endpoint-install/final-seeded-558']
 
 permissions:
   contents: read
 
-concurrency:
-  group: zero-endpoint-install-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  fresh-install:
+  seeded-cutover:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      PRODUCT_SHA: 30c2f2586de023535579e0d8e985e5ca0b79dd19
+      HISTORICAL_SHA: 472f3bfecba3f6fbe37d15a6219c96a9b5c0f1d6
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Check out verification driver
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          path: harness
           persist-credentials: false
-      - name: Exercise the installer and local review through HTTPS
+      - name: Check out merged product release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: product
+          ref: ${{ env.PRODUCT_SHA }}
+          persist-credentials: false
+      - name: Check out installer that generated saved review configurations
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: historical
+          ref: ${{ env.HISTORICAL_SHA }}
+          persist-credentials: false
+      - name: Verify source revisions and installed release across cutover
         env:
           COMPOSE_PARALLEL_LIMIT: '1'
         run: |
           umask 077
           chmod go-rwx "$HOME"
-          python3 scripts/verify-zero-endpoint-install.py --root "$RUNNER_TEMP/synthetic-cpu-node" --exercise-cutover
+          test "$(git -C harness rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C product rev-parse HEAD)" = "$PRODUCT_SHA"
+          test "$(git -C historical rev-parse HEAD)" = "$HISTORICAL_SHA"
+          test -z "$(git -C product status --porcelain)"
+          test -z "$(git -C historical status --porcelain)"
+          export PRODUCT_ROOT="$GITHUB_WORKSPACE/product"
+          export HISTORICAL_ROOT="$GITHUB_WORKSPACE/historical"
+          export PRODUCT_CAPSULE_DIGEST="$(cd product && python3 -Bc 'import sys; sys.path.insert(0, "scripts"); import exculpata_install as i; print(i._release_digest())')"
+          python3 -B harness/scripts/verify-zero-endpoint-install.py --root "$RUNNER_TEMP/synthetic-cpu-node" --exercise-cutover
+          test -z "$(git -C product status --porcelain)"
+          test -z "$(git -C historical status --porcelain)"

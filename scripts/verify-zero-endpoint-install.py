@@ -5,6 +5,7 @@ import hashlib
 import html
 from http.cookiejar import CookieJar
 import json
+import os
 from pathlib import Path
 import re
 import secrets
@@ -15,7 +16,10 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import HTTPCookieProcessor, HTTPSHandler, ProxyHandler, Request, build_opener
 
 
-ROOT = Path(__file__).resolve().parents[1]
+HARNESS = Path(__file__).resolve().parents[1]
+ROOT = Path(os.environ["PRODUCT_ROOT"]).resolve()
+HISTORICAL = Path(os.environ["HISTORICAL_ROOT"]).resolve()
+assert len({ROOT, HISTORICAL, HARNESS}) == 3
 ADMIN = "synthetic-owner"
 PHRASE = "synthetic indigo inventory marker"
 CSV_NAME = "synthetic-inventory.csv"
@@ -121,11 +125,22 @@ def run(node, port, exercise_cutover=False):
     install(["doctor", "--root", str(node), "--plain"], node)
     record = json.loads((node / "installation.json").read_text())
     assert record["models"] == "none" and not record["profiles"] and record["auth"] == "local"
+    expected = os.environ["PRODUCT_CAPSULE_DIGEST"]
+    assert re.fullmatch("[a-f0-9]{64}", expected)
+    def verify_capsule(receipt):
+        manifest = json.loads((Path(receipt["release_path"]) / "RELEASE_MANIFEST.json").read_text())
+        assert manifest["source_sha256"] == expected
+        assert manifest["release_id"] == receipt["release_id"]
+        assert receipt["release_id"].endswith(expected[:12])
+    verify_capsule(record)
+    print("Installed capsule matches product", os.environ["PRODUCT_SHA"], "digest", expected, flush=True)
     compose = ["docker", "compose", "--env-file", str(node / "compose.env"),
                "-f", str(Path(record["release_path"]) / "compose.yaml"),
                "-f", str(Path(record["release_path"]) / "compose.local-accounts.yaml")]
-    services = set(subprocess.check_output([*compose, "ps", "--status", "running", "--services"],
-                                          text=True).splitlines())
+    def running_services():
+        return set(subprocess.check_output([*compose, "ps", "--status", "running", "--services"],
+                                           text=True).splitlines())
+    services = running_services()
     assert {"app", "gateway", "postgres", "clamav", "clamav-updater", "egress-proxy"} <= services
     assert services.isdisjoint({"generator", "retrieval", "transcription-api", "transcription-worker"})
     subprocess.run([*compose, "exec", "-T", "postgres", "sh", "-c",
@@ -168,15 +183,25 @@ def run(node, port, exercise_cutover=False):
             ).strip()
 
         before_start = app_started_at()
-        subprocess.run(["python3", str(ROOT / "tests/seed_review_bundle_acceptance.py"), str(node)], cwd=ROOT, check=True)
+        subprocess.run(["python3", str(HARNESS / "tests/seed_review_bundle_acceptance.py"), str(node)],
+                       cwd=HISTORICAL, check=True)
         install(["update", "--root", str(node), "--retire-bundled-models", "--no-backup", "--plain"], node)
         after = json.loads((node / "installation.json").read_text())
+        verify_capsule(after)
         assert after["bundled_models_retired"] is True and after["models"] == "none" and after["profiles"] == []
         assert after["storage_root"] == record["storage_root"] and after["release_id"] == record["release_id"]
         assert app_started_at() != before_start
         install(["doctor", "--root", str(node), "--plain"], node)
+        assert running_services() == services
+        subprocess.run([*compose, "exec", "-T", "postgres", "sh", "-c",
+                        'pg_isready -q -U "$POSTGRES_USER" -d "$POSTGRES_DB"'], check=True)
         renewed = Gateway(node, port)
         renewed.login(password)
+        final_health = json.loads(renewed.page("/health"))
+        assert final_health["storage"]["status"] == "ready"
+        assert final_health["capabilities"]["search"] == "word search only"
+        assert final_health["capabilities"]["malware_scan"] == "ready"
+        assert final_health["capabilities"]["embedding"] == final_health["capabilities"]["reranking"] == "not configured"
         def retained_citation(phrase, filename, original_citation, original_location):
             current, location = renewed.exact_match(matter, phrase, filename)
             target, saved = urlsplit(current), urlsplit(original_citation)
