@@ -8,7 +8,8 @@ from .oidc_network_policy import issuer_authority, validated_https_url
 from .retrieval_endpoint_config import configured_endpoint
 
 
-CAPABILITIES = ("generation", "embedding", "reranking")
+ENDPOINT_ROLES = {"embedding": "EMBEDDING", "reranking": "RERANK", "transcription": "ASR"}
+CAPABILITIES = ("generation", *ENDPOINT_ROLES)
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,7 @@ def configured_model_destination(capability: str) -> ModelDestination | None:
             return None
         model = os.getenv("CASE_INTELLIGENCE_GENERATOR_MODEL", "").strip()
         return model_destination(capability, url, model)
-    if capability not in {"embedding", "reranking"}:
+    if capability not in ENDPOINT_ROLES:
         raise ValueError("Unknown model capability.")
-    endpoint = configured_endpoint("EMBEDDING" if capability == "embedding" else "RERANK")
+    endpoint = configured_endpoint(ENDPOINT_ROLES[capability])
     return model_destination(capability, endpoint.url, endpoint.model) if endpoint else None

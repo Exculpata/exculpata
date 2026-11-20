@@ -4,6 +4,8 @@ import sqlite3
 
 import pytest
 
+from tests.fixture_write import fixture_write
+
 from case_intelligence.external_model_grants import configured_model_destination, model_destination
 from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
 
@@ -164,3 +166,39 @@ def test_observing_new_config_expires_all_matters_before_switching_back(tmp_path
         assert not store.model_grant_allows(bravo, original)
     finally:
         store.close()
+
+
+def test_speech_upgrade_preserves_existing_grants_and_configuration_identity(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_URL", "https://index.example.test")
+    monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_MODEL", "synthetic-embedding")
+    monkeypatch.setenv("CASE_INTELLIGENCE_ASR_URL", "https://speech.example.test")
+    monkeypatch.setenv("CASE_INTELLIGENCE_ASR_MODEL", "synthetic-asr")
+    path = tmp_path / "matter.sqlite"
+    store = WorkspaceStore(path)
+    owner = "principal-owner"
+    store.upsert_principal("test", owner, "Owner", "owner", preferred_principal_id=owner)
+    matter = store.create_matter("Synthetic migration", "", owner).matter_id
+    embedding = configured_model_destination("embedding")
+    schema = Path(__file__).resolve().parents[1] / "migrations/sqlite/0051_external_model_grants.sql"
+    with fixture_write(store) as legacy:
+        legacy.executescript("DROP TABLE workbench_matter_model_grant; DROP TABLE workbench_model_destination;")
+        legacy.executescript(schema.read_text(encoding="utf-8"))
+        legacy.execute("INSERT INTO workbench_model_destination VALUES (?,?,?,?)",
+                       ("embedding", embedding.endpoint, embedding.model, "synthetic-configuration"))
+        legacy.execute("INSERT INTO workbench_matter_model_grant VALUES (?,?,?,?,?,?,?)", (
+            "synthetic-grant", matter, "embedding", embedding.endpoint, embedding.model, 1, "synthetic-configuration",
+        ))
+    store.close()
+    speech = configured_model_destination("transcription")
+    restored = WorkspaceStore(path)
+    try:
+        assert (embedding, True, "synthetic-configuration") in restored.model_grant_review(matter)
+        assert not restored.model_grant_allows(matter, speech)
+        restored.set_model_grant(matter, speech, owner, approved=True)
+    finally:
+        restored.close()
+    reopened = WorkspaceStore(path)
+    try:
+        assert set(reopened.model_grants(matter)) == {embedding, speech}
+    finally:
+        reopened.close()

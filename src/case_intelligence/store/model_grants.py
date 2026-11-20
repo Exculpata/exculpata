@@ -46,14 +46,15 @@ class ModelGrantStoreMixin:
                 self._observe_model_destination_locked(capability)
 
     def model_grant_allows(self, matter_id: str, destination: ModelDestination) -> bool:
-        if not isinstance(destination, ModelDestination):
-            return False
         with self._lock, self.connection:
             self.connection.execute("BEGIN IMMEDIATE")
-            current, configuration_id = self._observe_model_destination_locked(destination.capability)
-            if current != destination:
-                return False
-            return self._model_grant_active_locked(matter_id, destination, configuration_id)
+            return self._model_grant_allows_locked(matter_id, destination)
+
+    def _model_grant_allows_locked(self, matter_id, destination):
+        if not isinstance(destination, ModelDestination):
+            return False
+        current, configuration_id = self._observe_model_destination_locked(destination.capability)
+        return current == destination and self._model_grant_active_locked(matter_id, destination, configuration_id)
 
     def _model_grant_active_locked(self, matter_id, destination, configuration_id):
         return self.connection.execute(

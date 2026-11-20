@@ -121,6 +121,7 @@
   "case_intelligence.media_playback": "modules.transcription",
   "case_intelligence.media_preflight": "core.sources",
   "case_intelligence.media_processor_errors": "core.contracts",
+  "case_intelligence.media_segments": "modules.transcription",
   "case_intelligence.model_export_notes": "modules.deliverables",
   "case_intelligence.model_portfolio": "modules.workflows",
   "case_intelligence.model_portfolio_gold": "evals",
