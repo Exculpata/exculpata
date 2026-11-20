@@ -105,7 +105,6 @@ def test_doctor_checks_configured_media_contracts_independently(monkeypatch, tmp
            for role in ("ALIGNMENT", "TRANSLATION", "DIARIZATION")}
     app.update({f"CASE_INTELLIGENCE_{role}_MODEL": "synthetic-model" for role in ("ALIGNMENT", "TRANSLATION", "DIARIZATION")})
     monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
-    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
     monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
     commands, output = [], []
     replies = {"alignment": {"alignment": "ok"}, "translation": {"translation": "unreachable"},
