@@ -351,7 +351,7 @@ class TranscriptionV2Client:
             {
                 "profile": "high_accuracy",
                 "source_language": "auto",
-                "diarize_speakers": True,
+                "diarize_speakers": not bool(os.getenv("CASE_INTELLIGENCE_DIARIZATION_URL", "").strip()),
                 "translate_to_english": False,
                 "retention_hours": 4,
             },
@@ -450,6 +450,7 @@ class MediaCoordinator:
         resolve_store: Callable[[MatterRecord], PilotStore],
         project_transcript: ProjectTranscript,
         transcribe_recording: Callable,
+        enrich_transcript: Callable,
         summarize_transcript: Callable[
             [PilotDocument, Sequence[TranscriptSegmentRecord]], TranscriptSummaryResult
         ]
@@ -462,6 +463,7 @@ class MediaCoordinator:
         self.resolve_store = resolve_store
         self.project_transcript = project_transcript
         self.transcribe_recording = transcribe_recording
+        self.enrich_transcript = enrich_transcript
         self.summarize_transcript = summarize_transcript
         self.poll_seconds = max(float(poll_seconds), 0.05)
         self._stop = threading.Event()
@@ -682,8 +684,27 @@ class MediaCoordinator:
         except KeyError as exc:
             raise MediaProcessorError("Matter access was removed; transcription stopped.") from exc
 
+    def _require_dispatch_access(self, job):
+        self._require_job_access(job)
+        if self._stop.is_set() or self._matter_cancelled(job.matter_id):
+            raise MediaProcessorError("Transcription stopped before dispatch.")
+
     def _import_transcript(self, job, matter, document, store, payload, *, degraded, cleanup,
                            transcription_destination=None):
+        def check_access():
+            self._require_dispatch_access(job)
+            if transcription_destination is not None and not self.workspace.model_grant_allows(
+                job.matter_id, transcription_destination
+            ):
+                raise TranscriptionApprovalRequired()
+            current = store.get(job.document_id)
+            if current.version_id != job.source_version_id or current.digest != job.source_sha256:
+                raise MediaProcessorError("The source version changed during transcription.")
+
+        payload = self.enrich_transcript(
+            self.workspace, job, store.source_path(job.document_id), payload, check_access=check_access,
+        )
+        degraded = degraded or bool(payload.get("degraded"))
         normalized = normalize_transcript_payload(
             payload, duration_ms=job.duration_ms
         )
@@ -691,10 +712,7 @@ class MediaCoordinator:
             job.media_job_id, stage="Importing transcript", progress=0.98
         )
         with store.mutation_guard():
-            self._require_job_access(job)
-            current = store.get(job.document_id)
-            if current.version_id != job.source_version_id or current.digest != job.source_sha256:
-                raise MediaProcessorError("The source version changed during transcription.")
+            check_access()
             store.source_path(job.document_id, verify_digest=True)
             transcript = self.workspace.import_media_transcript(
                 job.media_job_id,
@@ -836,9 +854,7 @@ class MediaCoordinator:
                     store.mark_media_processing(job.document_id, stage="Transcribing")
 
                     def check_access():
-                        self._require_job_access(job)
-                        if self._stop.is_set() or self._matter_cancelled(job.matter_id):
-                            raise MediaProcessorError("Transcription stopped before dispatch.")
+                        self._require_dispatch_access(job)
 
                     payload = self.transcribe_recording(self.workspace, job, source, endpoint, check_access=check_access)
                     if self._stop.is_set():

@@ -4165,9 +4165,9 @@ def _wait_health(console: Console, root: Path, *, rollback: bool = False) -> Non
 
 
 def _app_diagnostic_status(
-    compose: Sequence[str], module: str, key: str, messages: frozenset[str], *, timeout: int,
+    compose: Sequence[str], module: str, key: str, messages: frozenset[str], *, timeout: int, arguments: Sequence[str] = (),
 ) -> str | None:
-    command = [*compose, "exec", "-T", "app", "python", "-m", module]
+    command = [*compose, "exec", "-T", "app", "python", "-m", module, *arguments]
     try:
         result = _probe(command, timeout=timeout)
         if result.returncode or len(result.stdout) > 4096:
@@ -4190,6 +4190,31 @@ def _doctor_speech_in_app(console: Console, root: Path) -> None:
         console.warn("Transcription endpoint diagnostic unavailable. Check saved settings and the running app.")
         return
     console.note(f"transcription endpoint :: {status}")
+
+
+def _doctor_media_enrichment(console: Console, root: Path, app_env: Mapping[str, str], *, dry_run: bool) -> None:
+    from case_intelligence.media_endpoint_doctor import CHECKS, STATUS_MESSAGES
+    from case_intelligence.retrieval_endpoint_config import configured_endpoint
+
+    for capability, (role, label, inputs) in CHECKS.items():
+        if not app_env.get(f"CASE_INTELLIGENCE_{role}_URL", "").strip():
+            continue
+        try:
+            endpoint = configured_endpoint(role, app_env)
+        except ValueError:
+            console.warn(f"Invalid saved {label} settings. Check CASE_INTELLIGENCE_{role}_ configuration.")
+            continue
+        console.note(f"{label} destination :: {endpoint.model} at {endpoint.url} receives {inputs} with matter approval.")
+        console.note(f"If {label} fails, review continues with the source transcript.")
+        if dry_run:
+            console.note(f"{label} endpoint not checked (dry run).")
+            continue
+        status = _app_diagnostic_status(_compose(root, ()), "case_intelligence.media_endpoint_doctor",
+                                        capability, frozenset(STATUS_MESSAGES), timeout=40, arguments=(capability,))
+        if status is None:
+            console.warn(f"{label} endpoint diagnostic unavailable. Check the running app.")
+        else:
+            console.note(f"{label} endpoint :: {STATUS_MESSAGES[status]}")
 
 
 def _doctor_ocr_in_app(console: Console, compose: Sequence[str]) -> None:
@@ -4235,6 +4260,7 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
             console.note("Transcription endpoint not checked (dry run).")
         else:
             _doctor_speech_in_app(console, root)
+    _doctor_media_enrichment(console, root, app_env, dry_run=dry_run)
     if any(app_env.get(f"CASE_INTELLIGENCE_{role}_URL") for role in ("EMBEDDING", "RERANK")):
         if dry_run:
             console.note("Retrieval endpoints not checked (dry run).")

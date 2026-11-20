@@ -8,6 +8,9 @@ from .workspace_store import WorkspaceProblem
 
 _CAPABILITIES = {
     "generation": ("Answer generation and extraction", "May send questions, review instructions and source text."),
+    "alignment": ("Word alignment", "May send recordings, source text, language and segment times."),
+    "translation": ("English translation", "May send source text and language to translate transcript passages."),
+    "speaker_labeling": ("Speaker labeling", "May send recordings and segment times to group voices."),
     "embedding": ("Embedding", "May send extracted passages for indexing and search queries for matching."),
     "transcription": ("Transcription", "May send the original audio or video recording to produce a timed transcript."),
     "reranking": ("Reranking", "May send search queries and candidate passages to rank search results."),

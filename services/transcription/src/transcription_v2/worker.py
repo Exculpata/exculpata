@@ -509,6 +509,7 @@ class JobWorker:
             "warnings": warnings,
             "quality": {
                 "detected_language": result.source_language,
+                "source_alignment_status": result.stage("source_alignment").status.value,
                 "language_confidence": result.source_language_confidence,
                 "diarization_requested": result.diarization.get("requested", True),
                 "diarization_status": result.diarization.get("status"),
