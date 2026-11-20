@@ -25,6 +25,7 @@ _RECORDING_DIGEST = "325e73ecfff901a056d8e08ea55d7222e77ace5b2058459f0d25ae2b344
 _LAST_TIMESTAMP = 5.52
 _MAX_RESPONSE = 64 * 1024
 _MAX_CASE_RESPONSE = 64 * 1024 * 1024
+_RECORDING_BLOCK_BYTES = 256 * 1024
 
 UNCONFIGURED = "No external transcription endpoint configured."
 INVALID_CONFIGURATION = "Invalid transcription configuration. Check the HTTPS origin, model, credential and relay settings."
@@ -108,20 +109,30 @@ def recording_request(url, fields, source, job, *, prefix):
     descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
     with os.fdopen(descriptor, "rb") as stream:
         metadata = os.fstat(descriptor)
-        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_size != job.byte_size
-                or hashlib.file_digest(stream, "sha256").hexdigest() != job.source_sha256):
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size != job.byte_size:
+            raise MediaProcessorError("The stored recording changed before processing.")
+        digest = hashlib.sha256()
+        blocks = []
+        remaining = job.byte_size
+        while remaining:
+            size = min(remaining, _RECORDING_BLOCK_BYTES)
+            block = stream.read(size)
+            if len(block) != size:
+                raise MediaProcessorError("The stored recording changed before processing.")
+            digest.update(block)
+            blocks.append((size, hashlib.sha256(block).digest()))
+            remaining -= size
+        if digest.hexdigest() != job.source_sha256:
             raise MediaProcessorError("The stored recording changed before processing.")
         stream.seek(0)
 
         def chunks():
             yield before
-            remaining = job.byte_size
-            while remaining:
-                chunk = stream.read(min(remaining, 256 * 1024))
-                if not chunk:
+            for size, expected in blocks:
+                block = stream.read(size)
+                if len(block) != size or hashlib.sha256(block).digest() != expected:
                     raise MediaProcessorError("The stored recording changed during processing.")
-                remaining -= len(chunk)
-                yield chunk
+                yield block
             yield after
 
         yield urllib.request.Request(url, data=chunks(), headers=headers, method="POST")
