@@ -611,14 +611,15 @@ against suppressed occurrences from the real repository inventory.
 | 1261 | `scripts/run-browser-acceptance.py` | `482b31b2820c4cac4c563e4d13f4d3a4431b5e70623f07c28c4856a3dce3b908` | `navigation-timeouts.json` | json | division |
 | 1352 | `scripts/defense-eval-ci.py` | `c7bc716846e7756cc4fcd87f70ef5d8b78a49ee24d100510dc872f105635e459` | `provenance.json` | json | division |
 
-Additional local parity occurrences introduced after the baseline are numbered
-separately below. These Path divisions read development requirements, read the
-expected-skip data, and write synthetic event and replay report files. They do not
-name network destinations; the same exact multiset test verifies their exclusion.
+Additional local paths introduced after the baseline are numbered separately
+below. The parity tools read development requirements and expected-skip data
+and write synthetic event and replay reports. The OCR diagnostic reads its
+packaged synthetic PDF. The same test verifies the count for each local path.
 
-| Parity occurrence | Path | Digest | Detail | Extension | Context |
+| Additional occurrence | Path | Digest | Detail | Extension | Context |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `scripts/ci_parity_environment.py` | `50c86b7ed8ac2cf95bd48334961bf0530cdc77b5a56f852c5c61b89d735fd711` | `pyproject.toml` | toml | division |
 | 2 | `scripts/ci_parity_plan.py` | `c53b3d28d865bd84a336bece60274b6a01fc4a899cf0514ba42a7112d8b1671c` | `ci-parity-expected-skips.toml` | toml | division |
 | 3 | `scripts/ci_parity_runner.py` | `6ffa4ae6c03880f53aab1689dbb5bf3aaf3d2cbbfb3a8004366c88e8b668bcee` | `event.json` | json | division |
 | 4 | `scripts/ci_parity_runner.py` | `f78f32472473425c803a088f85a18951151cc20da828b30bd2e5948b1ce327b3` | `replay.json` | json | division |
+| 5 | `src/case_intelligence/ocr_diagnostic.py` | `4b1cf3b856566ce3e34c2135456706399fa4c6706d8d903e8045702000e9bc5b` | `generated-scan.pdf` | pdf | division |
