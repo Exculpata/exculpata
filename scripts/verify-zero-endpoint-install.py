@@ -86,6 +86,7 @@ class Gateway:
         code = re.search(r'data-code-id="([^"]+)"', page).group(1)
         self.request(item + "/codes/" + code, fields={"action": "apply"})
         assert re.search(r'data-code-id="' + re.escape(code) + r'"[^>]*aria-pressed="true"', self.page(item))
+        return code
 
 
 def install(command, node, *, password=None):
@@ -101,7 +102,7 @@ def install(command, node, *, password=None):
         raise RuntimeError(f"Installer exited {result.returncode} during {stage}")
 
 
-def run(node, port):
+def run(node, port, exercise_cutover=False):
     if node.exists():
         raise ValueError("A fresh, nonexistent node root is required")
     password = secrets.token_urlsafe(36)
@@ -147,8 +148,8 @@ def run(node, port):
 
     data = ("item,description\n1," + PHRASE + "\n").encode()
     client.upload(matter, CSV_NAME, "text/csv", data)
-    citation, _ = client.exact_match(matter, PHRASE, CSV_NAME)
-    client.review(matter, citation, data)
+    csv_citation, csv_location = client.exact_match(matter, PHRASE, CSV_NAME)
+    code = client.review(matter, csv_citation, data)
     print("Antivirus-backed CSV import, exact search, original bytes and persistent review code passed.", flush=True)
 
     scan = (ROOT / "src/case_intelligence/config/generated-scan.pdf").read_bytes()
@@ -158,11 +159,39 @@ def run(node, port):
     original = client.request(urlsplit(citation).path + "/content")[1]
     assert hashlib.sha256(original).digest() == hashlib.sha256(scan).digest()
     print("Local OCR found the image-only phrase on page 2 of the original PDF.", flush=True)
+    if exercise_cutover:
+        def app_started_at():
+            container = subprocess.check_output([*compose, "ps", "-q", "app"], text=True).strip()
+            assert container
+            return subprocess.check_output(
+                ["docker", "inspect", "--format", "{{.State.StartedAt}}", container], text=True,
+            ).strip()
+
+        before_start = app_started_at()
+        subprocess.run(["python3", str(ROOT / "tests/seed_review_bundle_acceptance.py"), str(node)], cwd=ROOT, check=True)
+        install(["update", "--root", str(node), "--retire-bundled-models", "--no-backup", "--plain"], node)
+        after = json.loads((node / "installation.json").read_text())
+        assert after["bundled_models_retired"] is True and after["models"] == "none" and after["profiles"] == []
+        assert after["storage_root"] == record["storage_root"] and after["release_id"] == record["release_id"]
+        assert app_started_at() != before_start
+        install(["doctor", "--root", str(node), "--plain"], node)
+        renewed = Gateway(node, port)
+        renewed.login(password)
+        assert renewed.exact_match(matter, PHRASE, CSV_NAME) == (csv_citation, csv_location)
+        source = urlsplit(csv_citation).path
+        assert renewed.request(source + "/content")[1] == data
+        item = matter + "/production/items/" + source.rsplit("/", 1)[1]
+        assert re.search(r'data-code-id="' + re.escape(code) + r'"[^>]*aria-pressed="true"', renewed.page(item))
+        assert renewed.exact_match(matter, "silver lantern", SCAN_NAME) == (citation, location)
+        assert renewed.request(urlsplit(citation).path + "/content")[1] == scan
+        print("Seeded review-bundle cutover restarted the real app. Reauthentication, original sources, "
+              "source citations and the saved review code survived.", flush=True)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--port", type=int, default=18443)
+    parser.add_argument("--exercise-cutover", action="store_true")
     args = parser.parse_args()
-    run(args.root.resolve(), args.port)
+    run(args.root.resolve(), args.port, args.exercise_cutover)

@@ -1,4 +1,4 @@
-name: Fresh zero-endpoint install
+name: Seeded review bundle cutover
 
 on:
   push:
@@ -26,4 +26,4 @@ jobs:
         run: |
           umask 077
           chmod go-rwx "$HOME"
-          python3 scripts/verify-zero-endpoint-install.py --root "$RUNNER_TEMP/synthetic-cpu-node"
+          python3 scripts/verify-zero-endpoint-install.py --root "$RUNNER_TEMP/synthetic-cpu-node" --exercise-cutover
