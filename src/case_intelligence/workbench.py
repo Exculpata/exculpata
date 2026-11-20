@@ -111,6 +111,7 @@ from .report_review_basis import research_sections, review_sections
 from .local_account_admin import register_local_account_routes
 from .report_compilation import CompilationProblem
 from .report_compilation_flow import ReportCompilationFlow
+from .media_enrichment import enrich_transcript
 from .speech_endpoint import transcribe_recording
 from .media_evidence import (
     MediaCoordinator,
@@ -1099,6 +1100,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             resolve_store=self.source_store,
             project_transcript=self._project_media_transcript,
             transcribe_recording=transcribe_recording,
+            enrich_transcript=enrich_transcript,
             summarize_transcript=self._summarize_media_transcript,
             poll_seconds=media_poll_seconds,
         )
