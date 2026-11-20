@@ -15,7 +15,7 @@ import threading
 import time
 from case_intelligence.oidc_network_policy import (
     Denied, authority, issuer_authority, issuer_pins, pinnable, public_ip,
-    validated_https_url, MEDIA_ROLES, RELAY_LIMITS, RELAY_ADMISSION_HEADROOM, RELAY_HEADER_CONNECTIONS, RELAY_HEADER_SECONDS,
+    validated_https_url, shared_relay_limits, MEDIA_ROLES, RELAY_LIMITS, RELAY_ADMISSION_HEADROOM, RELAY_HEADER_CONNECTIONS, RELAY_HEADER_SECONDS,
 )
 
 
@@ -175,7 +175,7 @@ class Handler(socketserver.BaseRequestHandler):
             with dial(*destination, pins) as upstream:
                 client.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 established = True
-                relay(client, upstream, RELAY_LIMITS[role])
+                relay(client, upstream, self.server.limits[role])
         except HeaderTimeout:
             reject(client, b"408 Request Timeout")
         except (OSError, ValueError):
@@ -195,9 +195,15 @@ class Server(socketserver.ThreadingTCPServer):
     def __init__(self, address, allowed, pins=frozenset()):
         self.allowed = allowed
         self.pins = pins
-        self.roles = dict(allowed.roles) if isinstance(allowed, Destinations) else {}
+        self.roles = {}
+        self.limits = dict(RELAY_LIMITS)
+        if isinstance(allowed, Destinations):
+            for destination, roles in allowed.roles.items():
+                pool = roles[0]
+                self.roles[destination] = pool
+                self.limits[pool] = shared_relay_limits(roles)
         self.role_slots = {role: threading.BoundedSemaphore(limit.connections)
-                           for role, limit in RELAY_LIMITS.items()}
+                           for role, limit in self.limits.items()}
         self.slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
         self.header_slots = threading.BoundedSemaphore(RELAY_HEADER_CONNECTIONS)
         super().__init__(address, Handler)
@@ -255,7 +261,7 @@ def configured_destinations(environment):
     destinations = Destinations()
     if allowed is not None:
         destinations[allowed] = pins
-        destinations.roles[allowed] = "OIDC"
+        destinations.roles[allowed] = ["OIDC"]
     for url_setting, pins_setting in OPERATOR_DESTINATIONS:
         role = url_setting.removesuffix("_EGRESS_URL")
         url = environment.get(url_setting, "")
@@ -283,7 +289,7 @@ def configured_destinations(environment):
         except ValueError:
             raise DestinationConfigurationError(f"{url_setting}/{pins_setting}: {reason}") from None
         destinations[destination] = destination_pins
-        destinations.roles.setdefault(destination, role)
+        destinations.roles.setdefault(destination, []).append(role)
     return destinations
 
 

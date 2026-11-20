@@ -4199,10 +4199,32 @@ def _doctor_ocr_in_app(console: Console, compose: Sequence[str]) -> None:
         console.note(f"local PDF OCR :: {status}")
 
 
+def _doctor_shared_media_limits(console: Console, app_env: Mapping[str, str]) -> None:
+    from case_intelligence.oidc_network_policy import MEDIA_ROLES, RELAY_LIMITS, issuer_authority, shared_relay_limits
+
+    groups = {}
+    for role in RELAY_LIMITS:
+        if role == "OIDC":
+            continue
+        try:
+            authority = issuer_authority(app_env.get(f"CASE_INTELLIGENCE_{role}_URL", ""))
+        except ValueError:
+            continue
+        if authority:
+            groups.setdefault(authority, []).append(role)
+    for roles in groups.values():
+        if len(roles) > 1 and any(role in MEDIA_ROLES for role in roles):
+            limit = shared_relay_limits(roles)
+            console.note(f"{', '.join(roles)} share a relay budget of {limit.bytes // 1024**2} MiB, "
+                         f"{limit.seconds} seconds and {limit.connections} concurrent tunnel. "
+                         "Use separate HTTPS authorities for independent budgets.")
+
+
 def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
     _print_hardware_suggestion(console)
     app_env = _dotenv(_app_env(root))
     compose_env = _dotenv(root / "compose.env")
+    _doctor_shared_media_limits(console, app_env)
     if app_env.get("CASE_INTELLIGENCE_ASR_URL", "").strip():
         if dry_run:
             console.note("Transcription endpoint not checked (dry run).")
