@@ -368,7 +368,9 @@ displayed origin and model in matter setup. The queued worker checks that grant
 and the requesting member's access immediately before it streams the original
 audio or video. It sends a generic filename and the model settings. The response
 must contain source-language text and timed segments within the recording. The app
-assigns the citation IDs and keeps imported transcripts and reviewer edits.
+checks the grant again before storing the response. Revocation during processing
+leaves the recording available for retry. The app assigns the citation IDs and
+keeps imported transcripts and reviewer edits.
 
 When an approved API is unreachable, the job records a retryable failure. Restore
 the endpoint or grant, then choose **Try again**. An interrupted request can

@@ -24,14 +24,16 @@ from .media_preflight import (
     REVISION as PREFLIGHT_REVISION,
     inspect_recording,
 )
-from .media_processor_errors import MediaProcessorError, MediaProcessorNotFound
+from .media_processor_errors import MediaProcessorError, MediaProcessorNotFound, TranscriptionApprovalRequired
+from .external_model_grants import model_destination
 from .branding import PRODUCT_NAME
 from .derived_text import presentation_text
 from .generation import GenerationRejected, GenerationUnavailable
 from .pilot_uploads import PilotDocument, PilotStore, UploadProblem
 from .service_endpoints import validate_service_endpoint
 from .retrieval_endpoint_config import configured_endpoint
-from .media_segments import normalize_transcript_payload, transcript_speaker_labels, transcript_units
+from .media_segments import normalize_transcript_payload, transcript_speaker_labels
+from .media_segments import transcript_units as transcript_units
 from .workspace_store import (
     MediaClipRecord,
     MediaJobRecord,
@@ -680,7 +682,8 @@ class MediaCoordinator:
         except KeyError as exc:
             raise MediaProcessorError("Matter access was removed; transcription stopped.") from exc
 
-    def _import_transcript(self, job, matter, document, store, payload, *, degraded, cleanup):
+    def _import_transcript(self, job, matter, document, store, payload, *, degraded, cleanup,
+                           transcription_destination=None):
         normalized = normalize_transcript_payload(
             payload, duration_ms=job.duration_ms
         )
@@ -696,6 +699,7 @@ class MediaCoordinator:
             transcript = self.workspace.import_media_transcript(
                 job.media_job_id,
                 segments=normalized,
+                transcription_destination=transcription_destination,
                 degraded=degraded,
                 warnings=(
                     payload.get("warnings")
@@ -840,7 +844,11 @@ class MediaCoordinator:
                     if self._stop.is_set():
                         return
                     check_access()
-                    self._import_transcript(job, matter, document, store, payload, degraded=False, cleanup=None)
+                    destination = model_destination("transcription", endpoint.url, endpoint.model)
+                    if not self.workspace.model_grant_allows(job.matter_id, destination):
+                        raise TranscriptionApprovalRequired()
+                    self._import_transcript(job, matter, document, store, payload, degraded=False, cleanup=None,
+                                            transcription_destination=destination)
                     return
                 if job.dispatch_kind == "api":
                     raise MediaProcessorError("The configured transcription API is unavailable. Restore it and try again.")

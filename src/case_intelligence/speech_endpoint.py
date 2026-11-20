@@ -13,7 +13,7 @@ import urllib.request
 from .external_generator import DestinationRejected
 from .external_model_grants import model_destination
 from .generator_transport import open_generator_request
-from .media_processor_errors import MediaProcessorError
+from .media_processor_errors import MediaProcessorError, TranscriptionApprovalRequired
 from .pilot_uploads import MEDIA_TYPES
 from .retrieval_endpoint_config import configured_endpoint
 
@@ -145,7 +145,7 @@ def transcribe_recording(workspace, job, source, endpoint, *, check_access):
         with recording_request(url, _transcription_fields(endpoint.model), source, job, prefix=_PREFIX) as request:
             check_access()
             if not workspace.model_grant_allows(job.matter_id, target):
-                raise MediaProcessorError("Transcription requires matter approval for the configured endpoint and model.")
+                raise TranscriptionApprovalRequired()
             with open_generator_request(request, timeout=endpoint.timeout, environment_prefix=_PREFIX) as response:
                 raw = response.read(_MAX_CASE_RESPONSE + 1)
     except urllib.error.HTTPError as exc:
