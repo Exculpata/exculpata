@@ -41,7 +41,7 @@ def test_installer_omits_obsolete_answer_thinking_opt_out(tmp_path, models):
     assert environment["CASE_INTELLIGENCE_GENERATOR_URL"] == ("http://generator:8000" if bundled else "")
     assert bool(environment["CASE_INTELLIGENCE_GENERATOR_MODEL"]) == bundled
     compose = installer._dotenv(root / "compose.env")
-    assert compose[f"{LEGACY_ENV_PREFIX}RETRIEVAL_WORKER_URL"] == ("http://retrieval:8787" if bundled else "")
+    assert compose["CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL"] == ("http://retrieval:8787" if bundled else "")
     assert "CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING" not in environment
 
 

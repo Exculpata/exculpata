@@ -235,6 +235,7 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     for key in tuple(result):
         if key.startswith((f"{LEGACY_ENV_PREFIX}", CURRENT_ENV_PREFIX)) or key in {"COMPOSE_PROJECT_NAME", "COMPOSE_PROFILES"}:
             result.pop(key)
+    result.pop("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", None)
     # Compose defaults changed for new checkouts; older nodes may omit these.
     for suffix in ("COMPOSE_PROJECT", "IMAGE_NAMESPACE"):
         result = dict(result, **{name_value("environment", suffix=suffix): _env(f"{LEGACY_ENV_PREFIX}{suffix}", f"{LEGACY_STEM}", environ=saved)})
@@ -3300,7 +3301,7 @@ def _configure(
         f"{LEGACY_ENV_PREFIX}TLS_KEY": tls_key,
         f"{LEGACY_ENV_PREFIX}GATEWAY_UPSTREAM": "app:8786",
         "COMPOSE_PROFILES": ",".join(profile_values),
-        f"{LEGACY_ENV_PREFIX}RETRIEVAL_WORKER_URL": "http://retrieval:8787" if "ai" in profile_values else "",
+        "CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL": "http://retrieval:8787" if "ai" in profile_values else "",
         **gpu_plan.environment(),
         **review_model.environment(),
     }
@@ -4231,9 +4232,6 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
             console.warn("schema enforcement :: not checked; the saved generator URL is invalid")
             return
     console.note(f"saved answer server :: {server} {model} at {url}")
-    device = compose_env.get(name_value("environment", LEGACY_STEM, suffix="RETRIEVAL_DEVICE")) or compose_env.get(name_value("environment", suffix="RETRIEVAL_DEVICE")) or "cpu"
-    if "ai" in compose_env.get("COMPOSE_PROFILES", "").split(","):
-        console.note(f"bundled retrieval worker device :: {device}")
     embedding = compose_env.get(name_value("environment", suffix="EMBEDDING_MODEL")) or compose_env.get(name_value("environment", LEGACY_STEM, suffix="EMBEDDING_MODEL")) or DEFAULT_EMBEDDING_MODEL
     revision = compose_env.get(name_value("environment", suffix="EMBEDDING_REVISION")) or compose_env.get(name_value("environment", LEGACY_STEM, suffix="EMBEDDING_REVISION")) or DEFAULT_EMBEDDING_REVISION
     index_warning = embedding_change_warning(

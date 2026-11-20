@@ -8,7 +8,6 @@ import sys
 
 import pytest
 
-from case_intelligence.legacy_names import LEGACY_ENV_PREFIX
 from case_intelligence.hardware_profile import HardwareReading, load_profiles
 from tests.test_oss_installer import ROOT, installer
 from tests.test_bring_your_own_model import _configure_node
@@ -199,7 +198,7 @@ def test_selected_tier_is_saved_and_preserved_on_resume(tmp_path, monkeypatch, d
     assert record.get("model_tier") == expected
     assert record["models"] == "none"
     assert record["profiles"] == []
-    assert installer._dotenv(root / "compose.env")[f"{LEGACY_ENV_PREFIX}RETRIEVAL_WORKER_URL"] == ""
+    assert installer._dotenv(root / "compose.env")["CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL"] == ""
     assert "external_generator" not in record
     assert not detected_gpu
     seen = []
