@@ -5,7 +5,7 @@ import math
 import os
 
 from .generator_config import generator_pins
-from .oidc_network_policy import validated_https_url
+from .oidc_network_policy import MEDIA_ROLES, validated_https_url
 
 
 @dataclass(frozen=True)
@@ -21,7 +21,7 @@ class Endpoint:
 
 
 def configured_endpoint(role, environment=None):
-    if role not in {"EMBEDDING", "RERANK", "ASR"}:
+    if role not in ("EMBEDDING", "RERANK", *MEDIA_ROLES):
         raise ValueError("Unknown endpoint role")
     environment = os.environ if environment is None else environment
     prefix = f"CASE_INTELLIGENCE_{role}_"

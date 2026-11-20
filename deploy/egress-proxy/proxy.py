@@ -15,7 +15,7 @@ import threading
 import time
 from case_intelligence.oidc_network_policy import (
     Denied, authority, issuer_authority, issuer_pins, pinnable, public_ip,
-    validated_https_url, RELAY_LIMITS, RELAY_ADMISSION_HEADROOM, RELAY_HEADER_CONNECTIONS, RELAY_HEADER_SECONDS,
+    validated_https_url, MEDIA_ROLES, RELAY_LIMITS, RELAY_ADMISSION_HEADROOM, RELAY_HEADER_CONNECTIONS, RELAY_HEADER_SECONDS,
 )
 
 
@@ -234,7 +234,7 @@ class Server(socketserver.ThreadingTCPServer):
 # Operator-configured relay destinations: (exact HTTPS URL setting, reviewed pins setting).
 # The OIDC issuer is handled first with its existing rules.
 OPERATOR_DESTINATIONS = tuple((role + "_EGRESS_URL", role + "_EGRESS_PINS")
-                              for role in ("GENERATOR", "EMBEDDING", "RERANK", "ASR"))
+                              for role in ("GENERATOR", "EMBEDDING", "RERANK", *MEDIA_ROLES))
 
 
 class DestinationConfigurationError(Denied):
@@ -257,6 +257,7 @@ def configured_destinations(environment):
         destinations[allowed] = pins
         destinations.roles[allowed] = "OIDC"
     for url_setting, pins_setting in OPERATOR_DESTINATIONS:
+        role = url_setting.removesuffix("_EGRESS_URL")
         url = environment.get(url_setting, "")
         pin_value = environment.get(pins_setting, "")
         reason = "destination interpolation denied"
@@ -269,7 +270,7 @@ def configured_destinations(environment):
                     raise Denied(reason)
                 continue
             reason = "invalid HTTPS URL"
-            validated_https_url(url, origin_only=url_setting == "ASR_EGRESS_URL")
+            validated_https_url(url, origin_only=role in MEDIA_ROLES)
             destination = issuer_authority(url)
             reason = "invalid destination pins"
             destination_pins = issuer_pins(pin_value, url)
@@ -282,7 +283,7 @@ def configured_destinations(environment):
         except ValueError:
             raise DestinationConfigurationError(f"{url_setting}/{pins_setting}: {reason}") from None
         destinations[destination] = destination_pins
-        destinations.roles.setdefault(destination, url_setting.removesuffix("_EGRESS_URL"))
+        destinations.roles.setdefault(destination, role)
     return destinations
 
 

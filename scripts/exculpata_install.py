@@ -224,6 +224,22 @@ def _write_env_values(path: Path, values: Mapping[str, object], heading: str) ->
         _private_write(path, _env_text(values, heading))
 
 
+def _media_relay_environment(application: Mapping[str, str], *, maintenance: bool) -> dict[str, str]:
+    from case_intelligence.retrieval_endpoint_config import configured_endpoint
+    result = {}
+    for role, capability in (("ASR", "transcription"), ("ALIGNMENT", "alignment"),
+                             ("TRANSLATION", "translation"), ("DIARIZATION", "speaker labeling")):
+        try:
+            endpoint = configured_endpoint(role, application)
+        except ValueError:
+            if not maintenance:
+                raise RuntimeError(f"Invalid saved {capability} settings. Check CASE_INTELLIGENCE_{role}_ configuration.") from None
+            endpoint = None
+        result[role + "_EGRESS_URL"] = endpoint.url if endpoint else ""
+        result[role + "_EGRESS_PINS"] = application.get(f"CASE_INTELLIGENCE_{role}_EGRESS_PINS", "") if endpoint else ""
+    return result
+
+
 def _compose_environment(command: Sequence[str], environment: Mapping[str, str] | None = None) -> dict[str, str] | None:
     """Saved node coordinates must beat unrelated shell naming overrides."""
     if list(command[:2]) != ["docker", "compose"] or "--env-file" not in command:
@@ -266,15 +282,8 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
             raise RuntimeError(f"Invalid saved retrieval egress configuration: {exc}") from None
         retrieval = relay_environment({})
     result = dict(result, **retrieval)
-    from case_intelligence.speech_endpoint import configured_speech_endpoint
-    try:
-        speech = configured_speech_endpoint(application)
-    except ValueError:
-        if _compose_action(command) not in {"ps", "logs", "stop", "down"}:
-            raise RuntimeError("Invalid saved transcription settings. Check CASE_INTELLIGENCE_ASR_ configuration.") from None
-        speech = None
-    result = dict(result, ASR_EGRESS_URL=speech.url if speech else "",
-                  ASR_EGRESS_PINS=application.get("CASE_INTELLIGENCE_ASR_EGRESS_PINS", "") if speech else "")
+    media = _media_relay_environment(application, maintenance=_compose_action(command) in {"ps", "logs", "stop", "down"})
+    result = dict(result, **media)
     generator = application.get("CASE_INTELLIGENCE_GENERATOR_URL", "")
     pins = application.get("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", "")
     try:
