@@ -14,7 +14,7 @@ Accuracy and resource requirements depend on the selected models and inputs.
 
 | Component | Existing integration | Current limit |
 |---|---|---|
-| Answer generation | `CASE_INTELLIGENCE_GENERATOR_BACKEND` selects `ollama` or `openai`; `CASE_INTELLIGENCE_GENERATOR_URL` and `CASE_INTELLIGENCE_GENERATOR_MODEL` select an operator endpoint and model. `CASE_INTELLIGENCE_GENERATOR_SERVER` selects `ollama`, `llamacpp`, `lmstudio`, or `vllm` | The endpoint and model must satisfy the adapter contract in [existing answer endpoints](#existing-answer-endpoints). The installer wires bundled vLLM for `--models review` and `--models all`. `--external-generator` with `--models none` or `--models transcription` points at an operator server. A compatible-looking API is not automatically qualified. |
+| Answer generation | `CASE_INTELLIGENCE_GENERATOR_BACKEND` selects `ollama` or `openai`; `CASE_INTELLIGENCE_GENERATOR_URL` and `CASE_INTELLIGENCE_GENERATOR_MODEL` select an operator endpoint and model. `CASE_INTELLIGENCE_GENERATOR_SERVER` selects `ollama`, `llamacpp`, `lmstudio`, or `vllm` | The endpoint and model must satisfy the adapter contract in [existing answer endpoints](#existing-answer-endpoints). On fresh nodes, `--external-generator` connects an operator server. Existing bundled installations retain their saved vLLM service. A compatible-looking API is not automatically qualified. |
 | Embeddings | Local SentenceTransformer worker or [optional embedding endpoint](#optional-embedding-and-rerank-endpoints) | The index requires 768 dimensions and a matching recorded model identity. |
 | Reranking | Local CrossEncoder worker or [optional rerank endpoint](#optional-embedding-and-rerank-endpoints) | Ranking quality still needs evaluation for the selected model. |
 | Scanned documents | The app runs Poppler and Tesseract locally for scanned PDFs, including on installations with zero model endpoints. | Exact search covers recognized text on the selected pages. [Local setup and verification](OCR_AND_MEDIA.md#check-scanned-pdf-ocr-on-an-installed-node) |
@@ -67,17 +67,12 @@ lines 14–17:
 - A response larger than 1 MiB is rejected.
 - Question drafting uses `CASE_INTELLIGENCE_GENERATOR_QUESTION_PROFILE` and is a separate policy. See [question drafts](QUESTION_DRAFTS.md).
 
-The bundled installer can point this client at an existing server.
-[`scripts/exculpata_install.py`](../scripts/exculpata_install.py) accepts
-`--models none|review|transcription|all`. `none` writes an empty backend unless
-`--external-generator ollama|llamacpp|lmstudio|vllm` is set with
-`--external-generator-url` and `--external-generator-model`. `review` and `all`
-write `CASE_INTELLIGENCE_GENERATOR_BACKEND=openai`,
-`CASE_INTELLIGENCE_GENERATOR_URL=http://generator:8000`, the pinned served model
-name and a 180-second timeout. Ordinary answers think on; extraction always
-sends thinking false. That URL is the vLLM service
-in [`compose.yaml`](../compose.yaml) (the `generator` service). They cannot be
-combined with an external server.
+Fresh installs leave generation disabled until an operator configures an answer
+server. Use `--external-generator ollama|llamacpp|lmstudio|vllm` with
+`--external-generator-url` and `--external-generator-model`. Omit `--models`
+or use `--models none`. Existing nodes with the historical review bundle keep
+their saved private vLLM origin and model when resumed or updated.
+[Installer](../scripts/exculpata_install.py)
 
 Compose sets `CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS` from
 `EXCULPATA_GENERATOR_ALLOWED_HOSTS`, falling back to an older

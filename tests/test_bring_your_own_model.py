@@ -527,7 +527,9 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     assert application["CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE"] == f"/run/{LEGACY_STEM}-secrets/generator-api-key"
     assert compose["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] == "synthetic-answers"
     assert "RECORDBENCH_GENERATOR_ALLOWED_HOSTS" not in compose
-    assert compose["RECORDBENCH_RETRIEVAL_DEVICE"] == "cpu"
+    assert "RECORDBENCH_RETRIEVAL_DEVICE" not in compose
+    assert "gpu_topology" not in record
+    assert "review_model_profile" not in record
     assert record["external_generator"] == {
         "server": "ollama",
         "url": "https://synthetic-answers:11434",
@@ -543,9 +545,8 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     dry = installer._parser().parse_args(["doctor", "--root", str(root), "--dry-run"])
     installer._doctor(installer.Console(color=False), dry, root)
     dry_output = capsys.readouterr().out
-    assert "hardware ::" in dry_output
-    assert "suggested tier ::" in dry_output
-    assert "model download :: not started" in dry_output
+    assert "hardware ::" not in dry_output
+    assert "suggested tier ::" not in dry_output
     assert "answer server :: ollama synthetic-model at https://synthetic-answers:11434" in dry_output
     assert "Dry run: the schema check was not sent" in dry_output
     assert TOKEN not in dry_output

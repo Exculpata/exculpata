@@ -3,23 +3,13 @@ from __future__ import annotations
 
 import io
 import json
-import subprocess
 import sys
 
 import pytest
 
-from case_intelligence.hardware_profile import HardwareReading, load_profiles
+from case_intelligence.hardware_profile import load_profiles
 from tests.test_oss_installer import ROOT, installer
 from tests.test_bring_your_own_model import _configure_node
-
-
-@pytest.fixture
-def detected_gpu(monkeypatch):
-    reading = HardwareReading(8, 32 * 1024**3, "nvidia", 12 * 1024**3, False, (),
-                              (12 * 1024**3,), 12 * 1024**3, 1)
-    calls = []
-    monkeypatch.setattr(installer, "detect_hardware", lambda: calls.append(True) or reading)
-    return calls
 
 
 def scripted_input(monkeypatch, answers):
@@ -35,57 +25,13 @@ def scripted_input(monkeypatch, answers):
     return prompts
 
 
-@pytest.mark.parametrize("answers, expected", [
-    ([""], "gpu-12"), (["cpu"], "cpu"), ([" CPU "], "cpu"),
-    (["unknown", "gpu-8"], "gpu-8"),
-])
-def test_prompt_accepts_default_override_and_retries(monkeypatch, capsys, detected_gpu, answers, expected):
-    args = installer._parser().parse_args(["install"])
-    prompts = scripted_input(monkeypatch, answers)
-    assert installer._select_model_tier(installer.Console(color=False), args) == expected
-    assert args.model_tier == expected
-    assert "[gpu-12]" in prompts[0]
-    assert "remote" not in prompts[0]
-    output = capsys.readouterr().out
-    assert "8 CPU cores; 32.0 GiB RAM; NVIDIA" in output
-    assert "suggested tier :: gpu-12" in output
-    profiles = {p["id"]: p for p in load_profiles()["profiles"]}
-    assert profiles["gpu-12"]["tradeoff"] in output
-    assert profiles[expected]["tradeoff"] in output
-    assert len(detected_gpu) == 1
-    if "unknown" in answers:
-        assert "Choose one of:" in output
-
-
-@pytest.mark.parametrize("tier", [None, "cpu", "apple-32"])
-def test_noninteractive_tier_never_reads_input(monkeypatch, detected_gpu, tier):
-    arguments = ["install", "--non-interactive"] + (["--model-tier", tier] if tier else [])
-    args = installer._parser().parse_args(arguments)
-    scripted_input(monkeypatch, [])
-    assert installer._select_model_tier(installer.Console(color=False), args) == (tier or "gpu-12")
-
-
-def test_explicit_interactive_flag_skips_tier_prompt(monkeypatch, detected_gpu):
-    args = installer._parser().parse_args(["install", "--model-tier", "potato"])
-    scripted_input(monkeypatch, [])
-    assert installer._select_model_tier(installer.Console(color=False), args) == "potato"
-
-
-@pytest.mark.parametrize("tier", ["CPU", " CPU "])
-def test_model_tier_flag_normalizes_case_and_whitespace(monkeypatch, detected_gpu, tier):
-    args = installer._parser().parse_args(["install", "--model-tier", tier])
-    scripted_input(monkeypatch, [])
-    assert installer._select_model_tier(installer.Console(color=False), args) == "cpu"
-    assert args.model_tier == "cpu"
-
-
 @pytest.mark.parametrize("stdin_flag, is_tty", [
     ("--password-stdin", False), ("--hf-token-stdin", False), (None, False),
     ("--password-stdin", True), ("--hf-token-stdin", True),
     ("--external-generator-api-key-stdin", False), ("--external-generator-api-key-stdin", True),
 ])
 def test_main_preserves_stdin_for_password_reader(
-    monkeypatch, tmp_path, capsys, detected_gpu, stdin_flag, is_tty,
+    monkeypatch, tmp_path, capsys, stdin_flag, is_tty,
 ):
     secret = "synthetic-pass-0000"
     stream = io.StringIO(secret + "\n")
@@ -97,8 +43,8 @@ def test_main_preserves_stdin_for_password_reader(
         "--storage-root", str(tmp_path / "matters"),
         "--bind-address", "127.0.0.1", "--server-name", "node.example.test",
         "--auth", "local", "--admin-username", "synthetic.admin",
-        "--admin-display-name", "Synthetic Administrator", "--models", "none",
-    ] + ([stdin_flag] if stdin_flag else []))
+        "--admin-display-name", "Synthetic Administrator",
+    ] + ([stdin_flag] if stdin_flag else ["--models", "none"]))
     seen = []
 
     def password_reader(args):
@@ -112,7 +58,7 @@ def test_main_preserves_stdin_for_password_reader(
     monkeypatch.setattr(installer, "_password", password_reader)
     monkeypatch.setattr(installer, "_prepare_directories", stop_before_writes)
     assert installer.main() == 1
-    assert seen == [("gpu-12", secret)]
+    assert seen == [(None, secret)]
     output = capsys.readouterr().out
     assert "synthetic stop after password input" in output
     assert "Hardware model tier (" not in output
@@ -129,25 +75,7 @@ def test_invalid_flag_is_rejected_before_writes(tmp_path):
     assert not root.exists()
 
 
-@pytest.mark.parametrize("failure", [OSError("synthetic"), ValueError("synthetic"),
-                                    RuntimeError("synthetic"), subprocess.TimeoutExpired("synthetic", 1)])
-def test_detection_failure_uses_potato_without_retrying_detector(monkeypatch, capsys, failure):
-    calls = []
-
-    def fail():
-        calls.append(True)
-        raise failure
-
-    monkeypatch.setattr(installer, "detect_hardware", fail)
-    scripted_input(monkeypatch, [""])
-    args = installer._parser().parse_args(["install"])
-    assert installer._select_model_tier(installer.Console(color=False), args) == "potato"
-    assert args.model_tier == "potato"
-    assert "hardware detection :: using the potato CPU suggestion" in capsys.readouterr().out
-    assert len(calls) == 1
-
-
-def test_main_selects_tier_before_preflight(monkeypatch, tmp_path, detected_gpu):
+def test_explicit_legacy_tier_is_accepted_as_metadata(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", ["install", "install", "--root", str(tmp_path / "node"),
                                     "--auth", "local", "--models", "none", "--non-interactive",
                                     "--model-tier", "gpu-8", "--dry-run"])
@@ -163,40 +91,42 @@ def test_main_selects_tier_before_preflight(monkeypatch, tmp_path, detected_gpu)
     assert not (tmp_path / "node").exists()
 
 
-def test_main_collects_identity_before_tier(monkeypatch, tmp_path, detected_gpu):
+def test_default_collects_identity_without_selecting_a_bundle_or_tier(monkeypatch, tmp_path):
     root = tmp_path / "node"
     monkeypatch.setattr(sys, "argv", ["install", "install", "--root", str(root),
                                     "--storage-root", str(tmp_path / "matters"),
                                     "--bind-address", "127.0.0.1", "--server-name", "node.example.test",
-                                    "--auth", "local", "--models", "none", "--dry-run"])
-    prompts = scripted_input(monkeypatch, ["synthetic.admin", "Synthetic Administrator", ""])
+                                    "--auth", "local", "--dry-run"])
+    prompts = scripted_input(monkeypatch, ["", "synthetic.admin", "Synthetic Administrator"])
     seen = []
 
     def preflight(console, *, args, **kwargs):
-        seen.append((args.admin_username, args.admin_display_name, args.model_tier))
+        seen.append((args.admin_username, args.admin_display_name, args.models, args.model_tier))
         raise RuntimeError("synthetic stop before provisioning")
 
     monkeypatch.setattr(installer, "_preflight", preflight)
     assert installer.main() == 1
-    assert seen == [("synthetic.admin", "Synthetic Administrator", "gpu-12")]
-    assert prompts[0].startswith("Initial administrator username")
-    assert prompts[1].startswith("Administrator display name")
-    assert prompts[2].startswith("Hardware model tier")
+    assert seen == [("synthetic.admin", "Synthetic Administrator", "none", None)]
+    assert len(prompts) == 3
+    assert prompts[0].startswith("Connect an answer server")
+    assert prompts[1].startswith("Initial administrator username")
+    assert prompts[2].startswith("Administrator display name")
     assert not root.exists()
 
 
 @pytest.mark.parametrize("tier", [None, "gpu-8"])
-def test_selected_tier_is_saved_and_preserved_on_resume(tmp_path, monkeypatch, detected_gpu, tier):
+def test_selected_tier_is_saved_and_preserved_on_resume(tmp_path, monkeypatch, tier):
     _, root, _, _ = _configure_node(tmp_path, ["--model-tier", tier] if tier else [])
-    expected = tier or "gpu-12"
+    expected = tier
     path = root / "installation.json"
     original = path.read_bytes()
     record = json.loads(original)
-    assert record["model_tier"] == expected
+    assert record.get("model_tier") == expected
+    assert record["models"] == "none"
+    assert record["profiles"] == []
+    assert installer._dotenv(root / "compose.env")["CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL"] == ""
     assert "external_generator" not in record
-    assert len(detected_gpu) == (0 if tier else 1)
     seen = []
-    monkeypatch.setattr(installer, "detect_hardware", lambda: pytest.fail("resume redetected hardware"))
     scripted_input(monkeypatch, [])
     monkeypatch.setattr(installer, "_password", lambda args: "synthetic-bootstrap-password")
     monkeypatch.setattr(installer, "_preflight", lambda *a, **kw: ())
@@ -211,7 +141,7 @@ def test_selected_tier_is_saved_and_preserved_on_resume(tmp_path, monkeypatch, d
 
 
 @pytest.mark.parametrize("tier", [None, "unknown", []])
-def test_saved_tier_compatibility_and_validation(tmp_path, detected_gpu, tier):
+def test_saved_tier_compatibility_and_validation(tmp_path, tier):
     _, root, _, _ = _configure_node(tmp_path, ["--model-tier", "cpu"])
     path = root / "installation.json"
     record = json.loads(path.read_text())
@@ -230,10 +160,9 @@ def test_saved_tier_compatibility_and_validation(tmp_path, detected_gpu, tier):
             installer._saved_node_arguments(resumed, root)
 
 
-def test_endpoint_default_stays_declined(monkeypatch, detected_gpu):
+def test_endpoint_default_stays_declined(monkeypatch):
     args = installer._parser().parse_args(["install", "--models", "none"])
-    prompts = scripted_input(monkeypatch, ["", ""])
-    installer._select_model_tier(installer.Console(color=False), args)
+    prompts = scripted_input(monkeypatch, [""])
     assert installer._collect_external_generator(installer.Console(color=False), args) is None
     assert "[no]" in prompts[-1]
     assert args.external_generator_url is None

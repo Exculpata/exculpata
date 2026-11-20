@@ -37,6 +37,11 @@ def test_installer_omits_obsolete_answer_thinking_opt_out(tmp_path, models):
         devices = (installer.GpuDevice("0", "Synthetic GPU", 48_000, 46_000, 8.9),)
         installer._configure(installer.Console(color=False), args, root, paths, "synthetic-release", ROOT, devices)
     environment = installer._dotenv(installer._app_env(root))
+    bundled = models == "review"
+    assert environment["CASE_INTELLIGENCE_GENERATOR_URL"] == ("http://generator:8000" if bundled else "")
+    assert bool(environment["CASE_INTELLIGENCE_GENERATOR_MODEL"]) == bundled
+    compose = installer._dotenv(root / "compose.env")
+    assert compose["CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL"] == ("http://retrieval:8787" if bundled else "")
     assert "CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING" not in environment
 
 
@@ -92,6 +97,26 @@ def test_interrupted_provisioning_resume_retains_canonical_account_profile(tmp_p
     assert not args.enable_account_management
     installer._resume_node(installer.Console(color=False, quiet=True), args, root)
     assert calls == [True]
+
+
+@pytest.mark.parametrize("profile", ["review", "transcription", "all"])
+@pytest.mark.parametrize("resume", [False, True])
+def test_fresh_node_rejects_retired_bundle_before_provisioning(tmp_path, monkeypatch, capsys, profile, resume):
+    root = tmp_path / "new-node"
+    flags = ["--root", str(root), "--models", profile, "--non-interactive", "--password-stdin"]
+    if resume:
+        flags.append("--resume")
+    for command in (["preflight", "--json"], ["install"]):
+        monkeypatch.setattr(sys, "argv", ["install", *command, *flags])
+        assert installer.main() == 1
+        out = capsys.readouterr().out
+        if command[0] == "preflight":
+            result = json.loads(out)
+            assert result["ready"] is False
+            assert result["checks"][0]["name"] == "model-profile"
+            assert result["checks"][0]["blocking"] is True
+        assert "operator-managed" in out
+        assert not root.exists()
 
 
 @pytest.mark.parametrize("prepare_only", [False, True])
@@ -395,6 +420,7 @@ def test_plain_noninteractive_install_defaults_to_cpu_evaluation(tmp_path, ready
     assert installer.main() == 0
     output = capsys.readouterr().out
     assert "model payload   :: none" in output
+    assert "GPU topology" not in output
     assert "nvidia-smi" not in output
     assert not node.exists()
 
@@ -1541,7 +1567,7 @@ def test_fresh_diarization_dry_run_never_consumes_credentials(tmp_path, ready_ho
     monkeypatch.setattr(installer, "_password", lambda *a: pytest.fail("dry-run consumed a password"))
     monkeypatch.setattr(sys, "argv", ["install", "--root", str(node), "--models", "transcription", "--enable-diarization",
                                      "--non-interactive", "--accept-model-terms", "--hf-token-stdin", "--dry-run"])
-    assert installer.main() == 0
+    assert installer.main() == 1
     assert not node.exists()
 
 

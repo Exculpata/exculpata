@@ -22,7 +22,7 @@ ROOT = Path(__file__).parents[1]
 PASSWORD = "synthetic-handoff-password"
 
 
-def configured_node(tmp_path, *, storage_root=None, names=f"{LEGACY_STEM}", storage_profile=None, evaluation_reserve_gib=None):
+def configured_node(tmp_path, *, storage_root=None, names=f"{LEGACY_STEM}", storage_profile=None, evaluation_reserve_gib=None, models="none"):
     root = tmp_path / "Synthetic Node"
     console = installer.Console(color=False)
     extra = []
@@ -31,14 +31,15 @@ def configured_node(tmp_path, *, storage_root=None, names=f"{LEGACY_STEM}", stor
     if evaluation_reserve_gib is not None:
         extra.extend(["--evaluation-reserve-gib", str(evaluation_reserve_gib)])
     args = installer._parser().parse_args(["install", "--names", names, "--auth", "local", "--enable-account-management",
-        "--models", "none", "--non-interactive", "--prepare-only", "--admin-username", "alice.admin", "--admin-display-name", "Alice Administrator", *extra])
+        "--models", models, "--non-interactive", "--prepare-only", "--admin-username", "alice.admin", "--admin-display-name", "Alice Administrator", *extra])
     installer._collect_identity_choices(args)
     paths = installer._prepare_directories(console, root, storage_root=storage_root, resume=False, dry_run=False)
     cert, key = paths["tls"] / "synthetic.crt", paths["tls"] / "synthetic.key"
     cert.write_text("synthetic certificate")
     key.write_text("synthetic key")
     args.tls_cert, args.tls_key = cert, key
-    installer._configure(console, args, root, paths, "synthetic-release", ROOT, ())
+    devices = () if models == "none" else (installer.GpuDevice("0", "Synthetic GPU", 48_000, 46_000, 8.9),)
+    installer._configure(console, args, root, paths, "synthetic-release", ROOT, devices)
     return root, args, paths
 
 
@@ -62,11 +63,7 @@ def test_prepared_handoff_does_not_claim_browser_login_or_running(tmp_path, caps
 
 @pytest.mark.parametrize("interrupted_after", ["configuration", "administrator", "models"])
 def test_resume_keeps_identity_sources_secrets_and_verified_models(tmp_path, monkeypatch, interrupted_after):
-    root, args, paths = configured_node(tmp_path)
-    installation = json.loads((root / "installation.json").read_text())
-    installation["models"] = "review"
-    (root / "installation.json").write_text(json.dumps(installation))
-    args.models = "review"
+    root, args, paths = configured_node(tmp_path, models="review")
     counts = {"account": 0, "stage": 0, "storage": 0}
     repository = LocalAccountRepository(paths["accounts"] / "local-accounts.json")
     model = paths["models"] / "synthetic-pinned-model"
@@ -352,7 +349,7 @@ def test_resume_and_update_preflight_uses_saved_coordinates_and_model_options(tm
     # Provisioning is stubbed in this coordinate/input test; supply its one-use bootstrap credential.
     monkeypatch.setattr(installer, '_password', lambda args: 'synthetic-bootstrap-password')
     storage = tmp_path / "separate-storage"
-    root, _, paths = configured_node(tmp_path, storage_root=storage)
+    root, _, paths = configured_node(tmp_path, storage_root=storage, models="review")
     installation = json.loads((root / "installation.json").read_text())
     installation.update(models="review", review_model_profile="quality", transcription_languages=["es"],
                         server_name="synthetic-node.example.test", profiles=["ai"])
@@ -415,7 +412,7 @@ def test_resume_refuses_conflicting_or_replaced_saved_mounts_before_external_com
 def test_unattended_resume_requires_staging_inputs_only_when_cache_is_not_verified(tmp_path, monkeypatch, receipt_state):
     # Provisioning is stubbed in this coordinate/input test; supply its one-use bootstrap credential.
     monkeypatch.setattr(installer, '_password', lambda args: 'synthetic-bootstrap-password')
-    root, _, paths = configured_node(tmp_path)
+    root, _, paths = configured_node(tmp_path, models="transcription")
     installation = json.loads((root / "installation.json").read_text())
     installation.update(models="transcription", transcription_diarization=True, profiles=["transcription"],
                         diarization_backend="community-1")

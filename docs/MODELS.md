@@ -126,22 +126,11 @@ The tier IDs, order and detection bounds in this table are checked against
 
 ### Installer note
 
-The installer's tier prompt still prints generator text from
-[`config/model_profiles.json`](../config/model_profiles.json). That text predates
-this page and is not a pick for real cases; a separate change will update it.
-The table contract checks tier IDs and detection bounds, not that generator text.
-
-After the identity questions, the installer shows detected hardware and suggests
-a tier ID. Press Enter to accept the hardware tier, choose another ID, or pass
-`./install install --non-interactive --model-tier gpu-12` with your other options.
-The ID is saved as `model_tier` in `installation.json` and retained on resume.
-If hardware detection fails, the suggested tier is `potato`, with an explicit
-CPU fallback message.
-
-These tiers record hardware guidance. Installed capabilities still use
-`--models`; bundled model selection and GPU admission still use the existing
-`--review-model-profile` and preflight checks. Selecting a tier does not download
-or configure an answer server or qualify a model for real cases.
+Fresh installations use operator-managed [model APIs](MODEL_CONFIGURATION.md).
+The installer offers to connect an answer server and skips hardware tier
+selection and model downloads. The table above remains a resource for evaluating
+model servers and operating earlier bundled installations. Existing nodes retain
+the saved `model_tier` when resumed and use their original GPU admission rules.
 
 The [R1b claim-evaluation harness](CLAIM_EVALUATION.md) freezes synthetic challenges,
 separates raw generation errors from deterministic verifier false acceptance and

@@ -272,8 +272,8 @@ settings: `--external-generator ollama|llamacpp|lmstudio|vllm` with the server
 HTTPS origin (for example `https://answers.example.test:8443`) and model name. A host outside the local network requires
 `--confirm-remote-generator`, because matter text would leave the machine.
 `--models none` without an external server leaves answering unavailable.
-`--models review` and `--models all` still write the bundled vLLM origin
-`http://generator:8000`. Compose defaults
+Existing nodes with a saved review bundle retain their private vLLM origin
+`http://generator:8000` on resume and update. Compose defaults
 `CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS` to `generator` unless the installer
 records the chosen host. External requests use the CONNECT egress relay; private
 RFC1918/ULA destinations require explicit reviewed `--generator-egress-pins`.
