@@ -1,10 +1,10 @@
 # Model choice, acquisition and compatibility
 
-Exculpata's product direction is to let operators select and procure models
-compatible with its adapters. The reference configuration gives contributors a
-repeatable starting point; it is not an exclusive list of models the product
-should ever support. Model selection belongs in administrator configuration,
-while reviewers choose capabilities such as transcription or generated answers.
+A fresh installation starts with no model endpoints. A team can import and tag
+documents, review sources, run local scanned-PDF OCR and search by exact text.
+Operators can connect the capabilities below independently. The installer
+offers an optional answer server and skips bundled model staging and hardware
+tier selection on a fresh node. [Installation guide](INSTALL.md#hardware-and-capability-profiles)
 
 The application remains responsible for access controls, source citations,
 exports, job handling and clear failure messages regardless of model choice.
@@ -12,26 +12,43 @@ Accuracy and resource requirements depend on the selected models and inputs.
 
 ## What can be configured today
 
-| Component | Existing integration | Current limit |
+In the selected application environment file, append `URL` and `MODEL` to
+the prefix for each capability you configure. For example, speech recognition uses
+`CASE_INTELLIGENCE_ASR_URL` and `CASE_INTELLIGENCE_ASR_MODEL`. Review the
+endpoint-specific credential, host, HTTPS relay and pin settings in the linked
+contracts. Run `./install doctor --root <node-root>` after applying changes.
+
+| Capability | Environment prefix | What the app sends and receives |
 |---|---|---|
-| Answer generation | `CASE_INTELLIGENCE_GENERATOR_BACKEND` selects `ollama` or `openai`; `CASE_INTELLIGENCE_GENERATOR_URL` and `CASE_INTELLIGENCE_GENERATOR_MODEL` select an operator endpoint and model. `CASE_INTELLIGENCE_GENERATOR_SERVER` selects `ollama`, `llamacpp`, `lmstudio`, or `vllm` | The endpoint and model must satisfy the adapter contract in [existing answer endpoints](#existing-answer-endpoints). On fresh nodes, `--external-generator` connects an operator server. Existing bundled installations retain their saved vLLM service. A compatible-looking API is not automatically qualified. |
-| Embeddings | Local SentenceTransformer worker or [optional embedding endpoint](#optional-embedding-and-rerank-endpoints) | The index requires 768 dimensions and a matching recorded model identity. |
-| Reranking | Local CrossEncoder worker or [optional rerank endpoint](#optional-embedding-and-rerank-endpoints) | Ranking quality still needs evaluation for the selected model. |
-| Scanned documents | The app runs Poppler and Tesseract locally for scanned PDFs, including on installations with zero model endpoints. | Exact search covers recognized text on the selected pages. [Local setup and verification](OCR_AND_MEDIA.md#check-scanned-pdf-ocr-on-an-installed-node) |
-| Speech recognition | WhisperX/faster-whisper profiles use approved CTranslate2 snapshots. Operators can configure a [speech API](#check-a-speech-recognition-api) and authorize recording transfers per matter. | Version 2 inventories select exact compatible model identities for the existing profiles; [offline import](ASR_MODEL_IMPORT.md) copies prepared inventories to a new cache. Raw-model preparation and installer integration remain operator work. |
-| Word alignment | Manifest-approved English/Spanish Torchaudio checkpoints | Language-to-checkpoint bindings are currently fixed. Another language/checkpoint requires adapter and inventory support. |
-| Speaker diarization | Nemotron or Community-1 adapter selected during installation | These are separate implementations with their own artifact/runtime contracts. An unrelated diarization model cannot be substituted by changing a filename. |
+| Answer generation | `CASE_INTELLIGENCE_GENERATOR_` | Sends the question and cited passages to Ollama, llama.cpp, LM Studio or vLLM and validates the structured answer. [Answer endpoints](#existing-answer-endpoints) |
+| Embeddings | `CASE_INTELLIGENCE_EMBEDDING_` | Sends passage or query text to `/v1/embeddings`. The index requires 768-dimensional vectors and a compatible recorded identity. [Retrieval endpoints](#optional-embedding-and-rerank-endpoints) |
+| Reranking | `CASE_INTELLIGENCE_RERANK_` | Sends a query and candidate passages to `/v1/rerank` and ranks matches using the returned relevance scores. [Retrieval endpoints](#optional-embedding-and-rerank-endpoints) |
+| Speech recognition | `CASE_INTELLIGENCE_ASR_` | Sends the recording to `/v1/audio/transcriptions` and receives source-language text with timestamped segments. [Transcription contract](#check-a-speech-recognition-api) |
+| Word alignment | `CASE_INTELLIGENCE_ALIGNMENT_` | Sends the recording, source language and timed text when word alignment is needed. Returned word times refine segment citations. [Alignment contract](SPEECH_ENRICHMENT_APIS.md#alignment) |
+| English translation | `CASE_INTELLIGENCE_TRANSLATION_` | Sends source-language segment text and language information for English translation. Reviewers see the translation alongside the original. [Translation contract](SPEECH_ENRICHMENT_APIS.md#translation) |
+| Speaker labeling | `CASE_INTELLIGENCE_DIARIZATION_` | Sends the recording and segment times and receives anonymous speaker labels. Reviewers can assign names in the matter. [Speaker contract](SPEECH_ENRICHMENT_APIS.md#speaker-labels) |
 
-These are application/worker configuration interfaces, not a claim that the
-installer exposes every choice interactively. Review the resolved service
-configuration when using an operator-managed deployment. Do not modify the
-Python mapping or remove manifest checks merely to make a custom model appear
-ready. Adding a new architecture may require a new adapter; a compatible model
-can use the versioned ASR inventory when it satisfies the existing adapter contract.
+Scanned-PDF OCR runs locally with Poppler and Tesseract, including with all
+seven endpoints unset. [Installed OCR check](OCR_AND_MEDIA.md#check-scanned-pdf-ocr-on-an-installed-node)
 
-The current model-portfolio display also assumes reference generator IDs and
-retrieval metadata. Configurability of the underlying adapters does not yet
-provide complete custom-model installation, readiness reporting or migration.
+Use the [local synthetic setup](LOCAL_SPEECH_APIS.md) to check all four speech
+contracts through the installed app and relay. Approval to send case material
+is separate for each matter, capability, endpoint and model.
+[Matter approval](#matter-approval-for-external-model-services)
+
+Existing nodes can resume their saved bundles. Their private speech worker uses
+WhisperX/faster-whisper with approved CTranslate2 snapshots, English/Spanish
+Torchaudio alignment checkpoints and the saved Nemotron or Community-1 diarizer.
+For migration, qualify the replacement APIs, finish or cancel pending private
+jobs and, if retaining semantic search, verify or rebuild the embedding index
+before retiring the bundles.
+Follow the [saved-node migration procedure](INSTALL.md#move-an-existing-bundled-node-to-model-apis).
+The [prepared ASR inventory guide](ASR_MODEL_IMPORT.md) describes offline import
+for a retained worker.
+
+The model-portfolio display assumes reference generator IDs and retrieval
+metadata. Use the installed contract checks to verify the endpoints configured
+for this node.
 
 ## Existing answer endpoints
 
@@ -168,13 +185,9 @@ repair has its own admission and dispatch receipts. Periodic schema refreshes
 run once in the background and return cached status to pages and health checks.
 HTTP rejection or malformed response bodies report refusal, not network failure.
 
-`doctor` and the installer also print CPU cores, RAM, GPU VRAM when a tool
-reports it, and Apple Silicon when the host is Darwin arm64. The suggestion
-comes from [`config/model_profiles.json`](../config/model_profiles.json). A
-missing tool selects the CPU profile and says so. Nothing is downloaded.
-
-By default, embeddings and reranking use the built-in retrieval worker. `CASE_REVIEW_MODEL_DEVICE=cpu` loads
-Granite and the ModernBERT reranker on CPU. When an index already contains
+A saved review bundle can continue to run its private retrieval worker.
+`CASE_REVIEW_MODEL_DEVICE=cpu` runs its Granite embedding model and ModernBERT
+reranker on CPU. When an index already contains
 vectors and the embedding model or revision changes, `doctor` and startup say
 that existing indexes must be rebuilt. Exculpata does not rebuild them
 automatically. An API key for the answer server is read from
@@ -237,8 +250,8 @@ version. User-chosen models keep their own license terms.
 
 The source repository and reference model catalog contain configuration and
 download references, not the main ASR/generator/embedding/diarization weights.
-The installer obtains selected artifacts from upstream into the operator's
-model cache. Their terms remain separate from Exculpata's Apache-2.0 license.
+For an existing bundled installation, staging obtains selected artifacts from
+upstream into the operator's model cache. Their terms remain separate from Exculpata's Apache-2.0 license.
 Operators should consult the exact upstream model card and terms for their use,
 including any required access approval. A download instruction does not grant
 additional rights or establish suitability for every use.
@@ -249,7 +262,7 @@ notice in the service package/image inputs; see [third-party notices](../THIRD_P
 Describing a deployment as using operator-supplied models does not remove
 notices for components actually included in an image or package.
 
-The current alignment preparation also downloads the pinned NLTK `punkt_tab`
+Alignment preparation for the bundled worker also downloads the pinned NLTK `punkt_tab`
 resource automatically. Its catalog entry explicitly says
 `UPSTREAM-TERMS-REVIEW-REQUIRED`. Upstream lists Punkt resources among those with
 [unclarified dataset licensing](https://github.com/nltk/nltk_data/blob/gh-pages/DATASET-LICENSES.md).
@@ -308,9 +321,10 @@ request, including schema repairs.
 Installation settings establish which endpoints the app can contact. Before
 sending case material, open the matter's setup page and review the capability,
 endpoint and model. The matter owner or a workspace administrator can approve
-generation, embedding and reranking independently for that matter. New and
-upgraded matters start with no grants. Changing the endpoint or model requires
-fresh approval, including a change to the generation server's path prefix.
+generation, embeddings, reranking, transcription, word alignment, translation
+and speaker labeling independently for that matter. New matters start without grants.
+Existing grants remain scoped to their approved capability and destination.
+Changing the endpoint or model requires fresh approval, including a change to the generation server's path prefix.
 Once Exculpata observes a change, restoring an earlier endpoint also requires
 fresh approval. Matter archives exclude these deployment-specific grants.
 
@@ -376,8 +390,9 @@ representative recordings before retiring a previously qualified model.
 
 ## Optional embedding and rerank endpoints
 
-The built-in retrieval worker remains the default. In the selected app env file,
-set `CASE_INTELLIGENCE_EMBEDDING_URL=https://models.example.test` and
+Fresh nodes use word search until a retrieval endpoint is configured. On a
+saved review bundle, the private retrieval worker can continue serving its
+configured roles. In the selected app env file, set `CASE_INTELLIGENCE_EMBEDDING_URL=https://models.example.test` and
 `CASE_INTELLIGENCE_EMBEDDING_MODEL=synthetic-embedding` to opt into an
 OpenAI-compatible `/v1/embeddings` server. Independently configure
 `CASE_INTELLIGENCE_RERANK_URL` and `CASE_INTELLIGENCE_RERANK_MODEL` for a
