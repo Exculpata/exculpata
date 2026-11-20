@@ -88,7 +88,8 @@ def main():
                         raise RuntimeError("Compose does not forward " + key)
                     relay["environment"][key] = value
             path.write_text(yaml.safe_dump(graph))
-            compose("up", "--no-build", "-d", "--wait", "--wait-timeout", "60", "app", "egress-proxy")
+            compose("up", "--no-build", "-d", "--wait", "--wait-timeout", "60", "egress-proxy")
+            compose("up", "--no-build", "-d", "app")
             compose("exec", "-T", "app", "sh", "-ec", "cat > /tmp/speech-contract-ca.pem", stdin=certificate + "\n")
             online = diagnostics(compose)
             print("Relay online", json.dumps(online, sort_keys=True), flush=True)
