@@ -305,6 +305,7 @@ def test_media_original_machine_text_every_revision_speaker_history_and_clip_rec
     workspace = bench.workspace
     if metadata_source == 'current_service':
         summary = natural_transcription_summary(tmp_path, monkeypatch, document.digest)
+        assert summary['quality']['source_alignment_status'] == 'succeeded'
     else:
         from tests.test_matter_media_workflow import ImmediateMediaProcessor
         processor = ImmediateMediaProcessor()
@@ -491,7 +492,7 @@ def natural_transcription_summary(tmp_path, monkeypatch, source_digest):
     # this does not run ASR or claim a model-quality evaluation.
     monkeypatch.syspath_prepend(str(Path(__file__).parents[1] / 'services/transcription/src'))
     from transcription_v2.worker import JobWorker
-    from transcription_v2.pipeline import PipelineResult, PipelineStatus
+    from transcription_v2.pipeline import PipelineResult, PipelineStatus, StageRecord, StageStatus
     from transcription_v2.media import MediaProbe
     from transcription_v2.model_manifest import ModelReadiness, ArtifactReadiness, ASRBinding, MODEL_MANIFEST_SCHEMA_V2
     worker = JobWorker.__new__(JobWorker)
@@ -506,6 +507,7 @@ def natural_transcription_summary(tmp_path, monkeypatch, source_digest):
         {'asr_model': 'generated/model', 'alignment_backend': 'generated-aligner'},
         source_language='en', source_language_confidence=.95,
         segments=[{'confidence': .9, 'overlap': False}],
+        stages=[StageRecord('source_alignment', StageStatus.SUCCEEDED)],
         diarization={'requested': True, 'status': 'completed', 'speaker_count': 1, 'model': 'generated/diarizer'},
         provenance={'pipeline_version': 'generated-v1', 'engine': {'mock': True}})
     bundle = SimpleNamespace(manifest_path=Path('generated-manifest.json'), zip_path=None, archive_sha256=None)
