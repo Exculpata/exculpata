@@ -48,7 +48,7 @@ workbench_matter_membership:matter_id,principal_id,role,state,granted_by,created
 workbench_matter_purpose:matter_id,objective,background,revision,updated_by,updated_at
 workbench_matter_retention:matter_id,expires_at,purge_after,scheduled_by,created_at,updated_at
 workbench_media_clip:clip_id,matter_id,document_id,source_version_id,title,start_ms,end_ms,created_by,created_at
-workbench_media_job:media_job_id,matter_id,document_id,source_version_id,requested_by,state,stage,progress,external_job_id,source_sha256,byte_size,media_type,duration_ms,attempts,worker_id,degraded,message,warnings_json,quality_json,provenance_json,created_at,started_at,finished_at,updated_at
+workbench_media_job:media_job_id,matter_id,document_id,source_version_id,requested_by,state,stage,progress,external_job_id,source_sha256,byte_size,media_type,duration_ms,attempts,worker_id,degraded,message,warnings_json,quality_json,provenance_json,created_at,started_at,finished_at,updated_at,dispatch_kind
 workbench_media_summary:transcript_id,matter_id,document_id,source_version_id,state,attempts,payload_json,basis_digest,covered_segment_count,total_segment_count,message,created_at,started_at,finished_at,updated_at
 workbench_media_transcript:transcript_id,matter_id,document_id,source_version_id,media_job_id,review_state,duration_ms,segment_count,transcript_digest,warnings_json,quality_json,provenance_json,imported_by,imported_at,updated_at
 workbench_message:message_id,conversation_id,ordinal,role,content,payload_json,created_at
@@ -165,7 +165,7 @@ CHILD_SCOPES = {
 OPERATIONAL_COLUMNS = frozenset("""
     session_id request_id token_digest idempotency_key request_key selection_key
     selection_fingerprint dedupe_key worker_id lease_token lease_expires_at
-    external_job_id external_segment_id stable_device stable_inode stable_mtime_ns
+    external_job_id dispatch_kind external_segment_id stable_device stable_inode stable_mtime_ns
     source_location_id action_token slug display_name_key search_key
     name_key last_claimed_at
 """.split())
