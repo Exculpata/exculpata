@@ -41,6 +41,7 @@ def serving(server):
 
 @pytest.fixture
 def speech_services(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
     paths = []
     asr_received = threading.Event()
     release_asr = threading.Event()
