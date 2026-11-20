@@ -603,7 +603,8 @@ def test_proxy_configuration_and_internal_clients(monkeypatch):
     import httpx
     compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
     env = compose["services"]["app"]["environment"]
-    assert env["CASE_INTELLIGENCE_ASR_PROXY"] == "http://egress-proxy:3128"
+    for role in ("ASR", "ALIGNMENT", "TRANSLATION", "DIARIZATION"):
+        assert env[f"CASE_INTELLIGENCE_{role}_PROXY"] == "http://egress-proxy:3128"
     for key in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
         monkeypatch.setenv(key, env[key])
     with httpx.Client() as client:
@@ -619,7 +620,7 @@ def test_proxy_configuration_and_internal_clients(monkeypatch):
     }
     destination_pairs.update({(role + "_EGRESS_URL", role + "_EGRESS_PINS"):
                               (role + "_EGRESS_URL", role + "_EGRESS_PINS")
-                              for role in ("EMBEDDING", "RERANK", "ASR")})
+                              for role in ("EMBEDDING", "RERANK", "ASR", "ALIGNMENT", "TRANSLATION", "DIARIZATION")})
     expected = {
         setting: "${" + source + ":-}"
         for settings, sources in destination_pairs.items()

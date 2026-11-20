@@ -442,6 +442,36 @@ Changing the weights behind the same model name requires an explicit rebuild.
 The old identity is invalidated before committing replacement vectors. If the
 final identity write fails, keep writers stopped and rerun the rebuild.
 
+### Retain compatible bundled embeddings
+
+A populated, complete index from the current learned-vector format can migrate
+to an operator endpoint without resending passages. Keep a backup, stop the
+app and all other index writers, and leave the original private retrieval
+worker running. Use the upgraded worker image with the original pinned model
+revision. Its health response must identify the loaded embedding model and
+revision recorded for this index. Configure the new embedding origin, model
+and relay alongside the existing worker URL. From the app environment with
+the index record mounted writable, run:
+
+```sh
+python -m case_intelligence.retrieval_rebuild --confirm-stopped --verify-migration
+```
+
+The command locks the projection and checks for missing embeddings. Both
+services receive only the same three public synthetic sentences. All three
+768-component embeddings must be distinct, nonzero, and bit-identical at the
+single precision used by pgvector. On a match the command atomically records
+the new endpoint identity, producing worker revision and sample fingerprint. The source rows,
+vectors and citation IDs stay in place. Restart the app and run the retrieval
+diagnostic. Each authorized embedding batch for a transferred index performs
+one extra synthetic request to check the fingerprint before case text is
+sent. Existing matter permissions still apply to the new destination.
+
+A missing producing worker, older projection format, changed model, unavailable
+endpoint, or differences from numerical precision can require the approved
+rebuild above. Word search remains available. Matching a fixed sample checks
+compatibility for that sample and cannot identify arbitrary replacement weights.
+
 ## Canary run
 
 Exculpata is local-first by default. On a GPU host with Docker Compose, the

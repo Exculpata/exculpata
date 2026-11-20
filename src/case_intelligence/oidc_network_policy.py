@@ -20,14 +20,28 @@ OIDC_RELAY_LIMITS = RelayLimits(2, 60, 8 * 1024 * 1024)
 GENERATOR_RELAY_LIMITS = RelayLimits(2, 310, 32 * 1024 * 1024)
 EMBEDDING_RELAY_LIMITS = RelayLimits(4, 310, 32 * 1024 * 1024)
 RERANK_RELAY_LIMITS = RelayLimits(4, 310, 32 * 1024 * 1024)
-ASR_RELAY_LIMITS = RelayLimits(1, 60, 2 * 1024 * 1024)
+MEDIA_ROLES = ("ASR", "ALIGNMENT", "TRANSLATION", "DIARIZATION")
+# An admitted recording may be 5 GiB. Allow framing, transcript and reply bytes
+# within one bounded TLS tunnel without granting another concurrent upload.
+MEDIA_UPLOAD_RELAY_LIMITS = RelayLimits(1, 310, 5 * 1024**3 + 64 * 1024**2)
+TRANSLATION_RELAY_LIMITS = RelayLimits(1, 310, 32 * 1024**2)
 RELAY_LIMITS = {
     "OIDC": OIDC_RELAY_LIMITS, "GENERATOR": GENERATOR_RELAY_LIMITS,
-    "EMBEDDING": EMBEDDING_RELAY_LIMITS, "RERANK": RERANK_RELAY_LIMITS, "ASR": ASR_RELAY_LIMITS,
+    "EMBEDDING": EMBEDDING_RELAY_LIMITS, "RERANK": RERANK_RELAY_LIMITS,
+    "ASR": MEDIA_UPLOAD_RELAY_LIMITS, "ALIGNMENT": MEDIA_UPLOAD_RELAY_LIMITS,
+    "TRANSLATION": TRANSLATION_RELAY_LIMITS, "DIARIZATION": MEDIA_UPLOAD_RELAY_LIMITS,
 }
 RELAY_ADMISSION_HEADROOM = 4
 RELAY_HEADER_CONNECTIONS = sum(limit.connections for limit in RELAY_LIMITS.values())
 RELAY_HEADER_SECONDS = 10
+
+
+def shared_relay_limits(roles):
+    """A CONNECT authority shared by several roles must satisfy every role's ceiling."""
+    limits = [RELAY_LIMITS[role] for role in roles]
+    return RelayLimits(min(limit.connections for limit in limits),
+                       min(limit.seconds for limit in limits),
+                       min(limit.bytes for limit in limits))
 
 
 class Denied(ValueError):

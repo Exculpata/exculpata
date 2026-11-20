@@ -684,7 +684,7 @@
           "source_line_sha256": "a14bd07aac9b5a7c51848ad4163d278f2dd777256531ad38544b3cbf3101f9d9"
         },
         {
-          "line": 3434,
+          "line": 3443,
           "identifier": "unsupported legacy syntax (mapping unpacking); use immutable contract-based construction",
           "function": "_configure",
           "reason": "Serialize the installed identity and endpoint settings. Only legacy bundled profiles include their saved GPU and model selections. This receipt covers the complete installation mapping, including its auth and destination fields.",
