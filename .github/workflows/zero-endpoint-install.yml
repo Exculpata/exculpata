@@ -1,29 +1,38 @@
-name: Fresh zero-endpoint install
+name: Verify merged release installation and speech endpoints
 
 on:
   push:
-    branches: ['verify/zero-endpoint-install/**']
-  workflow_dispatch:
+    branches: ['verify/zero-endpoint-install/release-558']
 
 permissions:
   contents: read
 
-concurrency:
-  group: zero-endpoint-install-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  fresh-install:
+  fresh-install-and-speech:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      VERIFIED_COMMIT: 2f8f7c5589dec2699d46b914083b1a5bb6f2843d
+      COMPOSE_PARALLEL_LIMIT: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: 2f8f7c5589dec2699d46b914083b1a5bb6f2843d
           persist-credentials: false
-      - name: Exercise the installer and local review through HTTPS
-        env:
-          COMPOSE_PARALLEL_LIMIT: '1'
+      - name: Verify the checked-out release and run a fresh local-account install
         run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$VERIFIED_COMMIT"
+          git diff --exit-code
           umask 077
           chmod go-rwx "$HOME"
           python3 scripts/verify-zero-endpoint-install.py --root "$RUNNER_TEMP/synthetic-cpu-node"
+      - name: Run online and offline speech diagnostics against the installed image
+        run: |
+          set -euo pipefail
+          readarray -t apps < <(docker ps -q --filter 'label=com.docker.compose.service=app')
+          test "${#apps[@]}" -eq 1
+          installed_image=$(docker inspect --format '{{.Config.Image}}' "${apps[0]}")
+          python3 -m venv "$RUNNER_TEMP/speech-check"
+          "$RUNNER_TEMP/speech-check/bin/python" -m pip install --disable-pip-version-check --require-hashes -r requirements/network-smoke.lock
+          "$RUNNER_TEMP/speech-check/bin/python" scripts/test-speech-apis.py --docker-context default --app-image "$installed_image"
