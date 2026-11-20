@@ -199,3 +199,25 @@ def test_case_dispatch_rechecks_grant_after_verifying_source_and_discards_invali
     with pytest.raises(MediaProcessorError, match="recording changed"):
         speech_endpoint.transcribe_recording(workspace, job, source, endpoint, check_access=lambda: None)
     assert len(provider["connections"]) == 1
+
+
+def test_stream_never_sends_a_changed_block_after_initial_source_check(tmp_path):
+    from types import SimpleNamespace
+    from case_intelligence.media_processor_errors import MediaProcessorError
+
+    source = tmp_path / "source.wav"
+    original = b"first" * 120000
+    source.write_bytes(original)  # fixture-write: generated multi-block recording
+    job = SimpleNamespace(media_type="audio/wav", byte_size=len(original),
+                          source_sha256=hashlib.sha256(original).hexdigest())
+    with speech_endpoint.recording_request("https://speech.example.test", {}, source, job,
+                                           prefix="CASE_INTELLIGENCE_ASR") as request:
+        chunks = iter(request.data)
+        next(chunks)
+        first = next(chunks)
+        assert original.startswith(first)
+        with source.open("r+b") as writer:
+            writer.seek(len(first))
+            writer.write(b"changed")  # fixture-write: synthetic in-place correction during streaming
+        with pytest.raises(MediaProcessorError, match="changed"):
+            next(chunks)
