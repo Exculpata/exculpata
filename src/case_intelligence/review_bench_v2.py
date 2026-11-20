@@ -394,7 +394,7 @@ def _model_request(base_url: str, operation: str, body: bytes, timeout: float, *
         if config is None and not base_url and custom_request is None:
             raise EndpointFailure("The external retrieval endpoint is no longer configured.")
         if operation == "embed" and (config is not None or custom_request is None):
-            require_index_identity(require_record=True)
+            record = require_index_identity(require_record=True)
         if config is not None:
             capability = "embedding" if operation == "embed" else "reranking"
             destination = model_destination(capability, config.url, config.model)
@@ -403,6 +403,10 @@ def _model_request(base_url: str, operation: str, body: bytes, timeout: float, *
     if config is not None:
         if not matter_id or grant_allows is None or grant_allows(matter_id, destination) is not True:
             raise RetrievalGrantRequired("This matter requires approval for the external retrieval destination.")
+        if operation == "embed":
+            from .retrieval_endpoints import verify_fingerprint
+            if verify_fingerprint(config, record) and grant_allows(matter_id, destination) is not True:
+                raise RetrievalGrantRequired("This matter requires approval for the external retrieval destination.")
         if custom_request is not None:
             return custom_request(config.url, operation, body, timeout)
         return endpoint_batch(config, operation, json.loads(body))

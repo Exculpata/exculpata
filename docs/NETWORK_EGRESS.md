@@ -220,12 +220,13 @@ slots, operation timeouts and byte limits. The shared constants in
 | GENERATOR | 2 | 310 seconds | 32 MiB |
 | EMBEDDING | 4 | 310 seconds | 32 MiB |
 | RERANK | 4 | 310 seconds | 32 MiB |
-| ASR synthetic transcription check | 1 | 60 seconds | 2 MiB |
+| ASR, ALIGNMENT, DIARIZATION | 1 per role | 310 seconds | 5 GiB + 64 MiB |
+| TRANSLATION | 1 | 310 seconds | 32 MiB |
 
 Role slots are acquired after CONNECT validation and before DNS, and released
-on completion or failure. At most 17 connections, including header parsing,
+on completion or failure. At most 20 connections, including header parsing,
 are admitted. The separate pre-header budget (`RELAY_HEADER_CONNECTIONS`)
-covers a burst spanning all thirteen role slots. The four additional connections
+covers a burst spanning all sixteen role slots. The four additional connections
 come from `RELAY_ADMISSION_HEADROOM`. A connection reserves that budget before
 starting a worker and releases it when it acquires a role slot, or on failure.
 Incomplete headers never acquire role slots. Busy model tunnels cannot use
@@ -242,8 +243,14 @@ slot, without increasing total admission or using the reserved OIDC slots.
 
 CONNECT identifies an authority, not the purpose of the encrypted request.
 An authority configured for both OIDC and a model therefore fails startup.
-Model roles sharing an authority and identical pins share the first configured
-role's pool in GENERATOR, EMBEDDING, RERANK, ASR order. Conflicting pins fail startup.
+Model roles configured for the same authority and identical pins use one pool.
+Its connection count, byte limit and duration each use the lowest ceiling among
+those roles. For example, generation and ASR on the same host and port share
+one 32 MiB tunnel for 310 seconds. ASR and alignment alone share one full-sized
+upload tunnel. Doctor reports shared media budgets. Use a separate host or port
+for larger uploads when another role requires a smaller budget. The upload budget accommodates
+a 5 GiB recording, segment metadata, framing and a bounded reply. Translation
+sends timed text. Conflicting pins fail startup.
 
 DNS and all connection
 attempts share one five-second budget. Each address receives an equal share of
@@ -537,6 +544,12 @@ these from the selected app file's corresponding `CASE_INTELLIGENCE_` settings;
 operator-managed Compose must supply them explicitly. Empty slots deny access.
 Recreate app and relay together after changes. Only destination URLs and pins
 reach the relay, never API keys or app secret mounts.
+
+Media destinations also use one URL and one pin setting per role. The installer
+derives `ASR_EGRESS_*`, `ALIGNMENT_EGRESS_*`, `TRANSLATION_EGRESS_*` and
+`DIARIZATION_EGRESS_*` from the selected application's corresponding
+`CASE_INTELLIGENCE_<role>_URL` and `_EGRESS_PINS`. Each media URL must be an
+HTTPS origin. Credentials stay inside the app.
 
 Embedding and rerank requests reuse the generator CONNECT transport and relay
 policy: exact host/port, full DNS-answer validation, numeric dialing, reviewed

@@ -148,6 +148,8 @@ def health() -> dict[str, object]:
     return {
         "status": "ok",
         "embedding_loaded": _embedding is not None,
+        "embedding_model": EMBEDDING_MODEL,
+        "embedding_revision": EMBEDDING_REVISION,
         "reranker_loaded": _reranker is not None,
     }
 
