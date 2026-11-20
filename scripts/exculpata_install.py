@@ -35,6 +35,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
+import model_bundle_migration as bundle_migration
 from installer_terminal import (
     C,
     Console,
@@ -508,6 +509,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--json", action="store_true", help="emit a structured preflight result (preflight command only)")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--retire-bundled-models", action="store_true",
+                        help="update this saved node to operator-managed model APIs")
     parser.add_argument("--no-backup", action="store_true", help="allow an update without a configured recovery snapshot")
     parser.add_argument("--repository", type=Path, help="encrypted restic repository for backup initialization")
     parser.add_argument("--recovery-key-output", type=Path, help="separate owner-only recovery credential path")
@@ -3761,12 +3764,14 @@ def _provision(
         profiles.append("ai")
     if models in {"all", "transcription"}:
         profiles.append("transcription")
+    if getattr(args, "transcription_history", False):
+        profiles.append("transcription-history")
     compose = _compose(root, profiles, auth=auth, local_accounts=args.enable_account_management)
 
     console.phase(5, "PREPARE RUNTIME", "Building isolated OCR, review, retrieval, and transcription images")
     if not args.dry_run:
         _install_phase(root, "runtime", "checking")
-    targets = _build_targets(auth, models)
+    targets = _build_targets(auth, models, profiles)
     _run(console, [*compose, "build", *targets], dry_run=args.dry_run)
     if not args.dry_run:
         _install_phase(root, "runtime", "complete")
@@ -3910,6 +3915,8 @@ def _provision(
         active.append("ai")
     if models in {"all", "transcription"}:
         active.append("transcription")
+    if getattr(args, "transcription_history", False):
+        active.append("transcription-history")
     runtime_compose = _compose(root, active, local_accounts=args.enable_account_management)
     if not args.dry_run:
         _install_phase(root, "running", "checking")
@@ -4412,7 +4419,7 @@ def _saved_node_arguments(args: argparse.Namespace, root: Path) -> tuple[dict[st
     account_management = installation.get("local_account_management", False)
     if (auth not in {"local", "oidc", "kerberos"}
             or models not in {"none", "review", "transcription", "all"}
-            or not isinstance(profiles, list) or any(profile not in {"ai", "transcription"} for profile in profiles)
+            or not isinstance(profiles, list) or any(profile not in {"ai", "transcription", "transcription-history"} for profile in profiles)
             or not isinstance(account_management, bool) or account_management and auth != "local"):
         raise RuntimeError("installed node metadata is invalid")
     for path in (root / "compose.env", _app_env(root), root / "config/transcription.env"):
@@ -4486,7 +4493,17 @@ def _saved_node_arguments(args: argparse.Namespace, root: Path) -> tuple[dict[st
         raise RuntimeError("saved HTTPS coordinates are invalid") from exc
     if not args.tls_cert.is_absolute() or not args.tls_key.is_absolute():
         raise RuntimeError("saved HTTPS certificate paths must be absolute")
+    args.transcription_history = "transcription-history" in profiles
+    if args.transcription_history:
+        if (models != "none" or profiles != ["transcription-history"] or
+                transcription_env.get("TRANSCRIPTION_V2_HISTORY_ONLY") != "1" or
+                app_env.get("CASE_INTELLIGENCE_TRANSCRIPTION_HISTORY_ONLY") != "1"):
+            raise RuntimeError("Saved transcription history configuration is inconsistent.")
     _restore_model_options(args, installation, compose_env, transcription_env)
+    if installation.get("bundled_models_retired") is True:
+        if models != "none":
+            raise RuntimeError("Retired model bundle conflicts with its saved profile.")
+        _endpoint_only_arguments(args)
     return installation, release
 
 
@@ -4717,7 +4734,7 @@ def _restore(console: Console, args: argparse.Namespace, root: Path) -> None:
     console.ok("Restore drill cryptographic and database checks passed")
 
 
-def _build_targets(auth: str, models: str) -> list[str]:
+def _build_targets(auth: str, models: str, profiles: Sequence[str] = ()) -> list[str]:
     targets = ["app", "account-admin", "gateway", "clamav", "postgres", "egress-proxy"]
     if auth == "kerberos":
         targets.append("kerberos-proxy")
@@ -4725,15 +4742,53 @@ def _build_targets(auth: str, models: str) -> list[str]:
         targets.append("retrieval")
     if models in {"all", "transcription"}:
         targets.extend(("transcription-api", "transcription-worker"))
+    if "transcription-history" in profiles:
+        targets.append("transcription-api")
     return targets
 
 
+def _endpoint_only_arguments(args: argparse.Namespace) -> None:
+    args.models = "none"
+    args.gpu_layout = args.retrieval_device = args.review_model_profile = "auto"
+    args.model_tier = args.generator_gpus = args.transcription_gpu = args.retrieval_gpu = None
+    args.generator_dtype = args.generator_gpu_utilization = args.transcription_min_free_vram_mib = None
+    args.enable_diarization = False
+
+
+def _retire_bundle_settings(root: Path, app_path: Path, profiles: list[str]) -> None:
+    compose_path = root / "compose.env"
+    _replace_env(compose_path, "COMPOSE_PROFILES", ",".join(profiles))
+    _replace_env(compose_path, "CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", "")
+    saved = _dotenv(app_path)
+    if bundled_generator(saved.get("CASE_INTELLIGENCE_GENERATOR_URL", "")):
+        for key in ("BACKEND", "URL", "MODEL"):
+            _replace_env(app_path, f"CASE_INTELLIGENCE_GENERATOR_{key}", "")
+    if "transcription-history" in profiles:
+        _replace_env(app_path, "CASE_INTELLIGENCE_TRANSCRIPTION_HISTORY_ONLY", "1")
+        _replace_env(root / "config/transcription.env", "TRANSCRIPTION_V2_HISTORY_ONLY", "1")
+
+
 def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
+    if bundle_migration.journal_exists(root) and not args.retire_bundled_models:
+        raise RuntimeError("Complete interrupted migration using update --retire-bundled-models.")
+    recovering = args.retire_bundled_models and bundle_migration.journal_exists(root)
+    if recovering:
+        if _existing_storage_path(args.root) != root:
+            raise RuntimeError("Bundle recovery requires the canonical saved node root.")
+        if args.dry_run:
+            raise RuntimeError("Complete interrupted bundle migration using update --retire-bundled-models.")
+        bundle_migration.restore_journal(root, _atomic_private_write)
     installation, old_release = _saved_node_arguments(args, root)
-    auth, models, profiles = args.auth, args.models, installation["profiles"]
+    auth, models, old_profiles = args.auth, args.models, installation["profiles"]
+    retire = args.retire_bundled_models and models != "none"
+    profiles = old_profiles
+    if retire:
+        profiles = ["transcription-history"] if "transcription" in old_profiles else []
+        _endpoint_only_arguments(args)
+        models = args.models
     _preflight(console, models=models, dry_run=args.dry_run, args=args,
                needs_model_staging=False, defer_gpu_free_check=True)
-    old_compose = _compose(root, profiles, release=old_release, auth=auth)
+    old_compose = _compose(root, old_profiles, release=old_release, auth=auth)
     console.phase(2, "SNAPSHOT BEFORE MUTATION", "Requiring a recoverable checkpoint before swapping release capsules")
     backup_configured = (root / "config" / "backup.json").is_file()
     if backup_configured:
@@ -4757,17 +4812,17 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
 
     console.phase(3, "LOAD NEW RELEASE CAPSULE", "Hashing an allowlisted source tree and preserving the prior runtime intact")
     release_id, release = _stage_release(console, root, dry_run=args.dry_run)
-    if release_id == installation.get("release_id"):
+    if release_id == installation.get("release_id") and not retire:
         _apply_storage_profile(args, root, dry_run=args.dry_run)
         console.ok("Node already runs this exact release capsule")
         if not args.dry_run:
             _doctor(console, args, root)
         return
-    old_installation_text = (root / "installation.json").read_text(encoding="utf-8")
-    old_compose_text = (root / "compose.env").read_text(encoding="utf-8")
+    old_installation_text = (root / "installation.json").read_bytes().decode("utf-8")
+    old_compose_text = (root / "compose.env").read_bytes().decode("utf-8")
     app_path = _app_env(root)
-    old_app_text = app_path.read_text(encoding="utf-8")
-    old_transcription_text = (root / "config" / "transcription.env").read_text(encoding="utf-8")
+    old_app_text = app_path.read_bytes().decode("utf-8")
+    old_transcription_text = (root / "config" / "transcription.env").read_bytes().decode("utf-8")
     updated = dict(installation)
     updated.update(
         {
@@ -4778,16 +4833,32 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
             "previous_release_path": str(old_release),
         }
     )
-    if not args.dry_run:
-        _replace_env(root / "compose.env", f"{LEGACY_ENV_PREFIX}RELEASE_ID", release_id)
-        _atomic_private_write(
-            root / "installation.json", json.dumps(updated, indent=2) + "\n"
-        )
+    if retire:
+        if release_id == installation.get("release_id"):
+            updated = dict(installation)
+        updated.update(models="none", profiles=profiles, bundled_models_retired=True)
+        for key in ("gpu_layout", "gpu_topology", "model_tier", "review_model_profile"):
+            updated.pop(key, None)
+        updated["transcription_diarization"] = False
     compose = _compose(root, profiles, release=release, auth=auth)
     console.phase(4, "FORGE REPLACEMENT RUNTIME", "Building versioned images without overwriting the rollback image set")
     try:
+        if retire:
+            if not args.dry_run and not recovering:
+                bundle_migration.write_journal(root, bundle_migration.configuration(root, app_path), _atomic_private_write)
+            _run(console, [*old_compose, "stop", "--timeout", "120"], dry_run=args.dry_run)
+            if not args.dry_run:
+                if "transcription" in old_profiles:
+                    bundle_migration.require_idle_media(root)
+                _retire_bundle_settings(root, app_path, profiles)
+        if not args.dry_run:
+            _replace_env(root / "compose.env", f"{LEGACY_ENV_PREFIX}RELEASE_ID", release_id)
+            _atomic_private_write(root / "installation.json", json.dumps(updated, indent=2) + "\n")
         _apply_storage_profile(args, root, dry_run=args.dry_run)
-        _run(console, [*compose, "build", *_build_targets(auth, models)], dry_run=args.dry_run)
+        if retire and release_id == installation.get("release_id"):
+            console.note("Reusing the running capsule’s images for this profile change")
+        else:
+            _run(console, [*compose, "build", *_build_targets(auth, models, profiles)], dry_run=args.dry_run)
         _run(console, [*compose, "config", "--quiet"], dry_run=args.dry_run)
         console.phase(5, "ATOMIC NODE SWAP", "Starting the new capsule and waiting for application and storage consensus")
         if _required_gpu_count(models):
@@ -4808,19 +4879,26 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
             _record_prepared_phases(root, updated)
             if (root / "state" / "backup-unit.json").is_file():
                 _schedule_backup(console, root, dry_run=False)
+        if retire and not args.dry_run:
+            (root / bundle_migration.JOURNAL).unlink()
         console.ok(f"Update committed :: {release_id}")
     except Exception as update_error:
         console.warn("New capsule failed acceptance; rolling back configuration and versioned images")
         rollback_error: Exception | None = None
         if not args.dry_run:
             try:
-                _atomic_private_write(root / ("compose" + ".env"), old_compose_text)
-                _atomic_private_write(root / "installation.json", old_installation_text)
-                _atomic_private_write(app_path, old_app_text)
-                _atomic_private_write(root / "config" / "transcription.env", old_transcription_text)
-                rollback = _compose(root, profiles, release=old_release, auth=auth)
+                if retire and bundle_migration.journal_exists(root):
+                    bundle_migration.restore_journal(root, _atomic_private_write)
+                else:
+                    _atomic_private_write(root / ("compose" + ".env"), old_compose_text)
+                    _atomic_private_write(root / "installation.json", old_installation_text)
+                    _atomic_private_write(app_path, old_app_text)
+                    _atomic_private_write(root / "config" / "transcription.env", old_transcription_text)
+                rollback = _compose(root, old_profiles, release=old_release, auth=auth)
                 _run(console, [*rollback, "up", "-d", "--remove-orphans"])
                 _wait_health(console, root, rollback=True)
+                if retire and bundle_migration.journal_exists(root):
+                    (root / bundle_migration.JOURNAL).unlink()
                 console.ok("Prior release restored and healthy")
             except Exception as exc:
                 rollback_error = exc
@@ -5160,6 +5238,8 @@ def main() -> int:
         animation=not (args.no_animation or args.no_color or args.plain),
         quiet=args.quiet,
     )
+    if args.retire_bundled_models and args.command != "update":
+        _parser().error("--retire-bundled-models requires update")
     if args.json and args.command != "preflight":
         _parser().error("--json is only supported by the preflight command")
     if args.command == "preflight":
@@ -5194,6 +5274,8 @@ def main() -> int:
             raise RuntimeError("installation root cannot contain control characters")
         root = args.root.expanduser().resolve(strict=False)
         _select_names(args, root)
+        if bundle_migration.journal_exists(root) and args.command in {"install", "update"} and not args.retire_bundled_models:
+            raise RuntimeError("An interrupted model migration needs update --retire-bundled-models on this root.")
         if args.command == "uninstall":
             _uninstall(console, args, root)
             return 0
@@ -5210,12 +5292,16 @@ def main() -> int:
             console.line(console.paint("  >>> RECOVERY DRILL VERIFIED <<<", C.green + C.bold))
             return 0
         if args.command == "update":
-            _update(console, args, root)
+            with bundle_migration.lifecycle_lock(root):
+                _update(console, args, root)
             _handoff(console, root, dry_run=args.dry_run)
             console.line(console.paint("  >>> NODE UPGRADE COMPLETE <<<", C.green + C.bold))
             return 0
         if args.resume and (root / "installation.json").is_file():
-            _resume_node(console, args, root)
+            with bundle_migration.lifecycle_lock(root):
+                if bundle_migration.journal_exists(root):
+                    raise RuntimeError("Complete interrupted migration using update --retire-bundled-models.")
+                _resume_node(console, args, root)
             _handoff(console, root, dry_run=args.dry_run)
             return 0
         if args.models not in {None, "none"}:

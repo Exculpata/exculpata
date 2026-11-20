@@ -190,7 +190,8 @@ def _safe_endpoint(value: str) -> str:
 class TranscriptionV2Client:
     """Content-minimizing client for the private, ephemeral WhisperX v2 API."""
 
-    def __init__(self, endpoint: str, token_file: Path) -> None:
+    def __init__(self, endpoint: str, token_file: Path, *, history_only: bool = False) -> None:
+        self.history_only = history_only
         self.endpoint = _safe_endpoint(endpoint)
         self.token_file = Path(token_file)
 
@@ -201,7 +202,8 @@ class TranscriptionV2Client:
         if not endpoint or not token_file:
             return None
         try:
-            return cls(endpoint, Path(token_file))
+            history_only = os.getenv("CASE_INTELLIGENCE_TRANSCRIPTION_HISTORY_ONLY", "0") != "0"
+            return cls(endpoint, Path(token_file), history_only=history_only)
         except ValueError:
             return None
 
@@ -302,6 +304,8 @@ class TranscriptionV2Client:
 
     def ready(self, owner: str) -> bool:
         try:
+            if self.history_only:
+                return self._request("GET", "/health", owner=owner).get("status") == "ok"
             payload = self._request("GET", "/ready", owner=owner)
             checks = payload.get("checks")
             return payload.get("status") == "ready" or (
@@ -345,6 +349,8 @@ class TranscriptionV2Client:
     def submit(
         self, owner: str, source: Path, media_type: str, source_sha256: str
     ) -> Mapping[str, object]:
+        if self.history_only:
+            raise MediaProcessorError("The private service only retains past jobs. Configure the transcription API.")
         if not source.is_file() or source.is_symlink():
             raise MediaProcessorError("The stored recording is unavailable.")
         options = json.dumps(
@@ -496,7 +502,8 @@ class MediaCoordinator:
                 return configured_endpoint("ASR") is not None
             except ValueError:
                 return False
-        return bool(self.processor is not None and self.processor.available)
+        return bool(self.processor is not None and self.processor.available
+                    and getattr(self.processor, "history_only", False) is not True)
 
     def notify(self) -> None:
         self._wake.set()
@@ -797,6 +804,10 @@ class MediaCoordinator:
                         "Earlier transcription work could not be checked. Try again when the service is available."
                     )
                 recovered = self.processor.find_job(owner, job.source_sha256, job.byte_size)
+                if (recovered is not None and getattr(self.processor, "history_only", False) is True
+                        and recovered.get("status") in self.TERMINAL_FAILED):
+                    self.processor.delete(owner, _matched_external_id(recovered, job))
+                    recovered = None
                 if recovered is not None:
                     external_id = _matched_external_id(recovered, job)
                     job = self.workspace.update_media_job(

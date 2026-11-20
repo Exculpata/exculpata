@@ -69,6 +69,24 @@ class ApiAdmissionTests(unittest.TestCase):
         self.addCleanup(client.close)
         return client, app
 
+    def test_history_service_only_reads_cancels_and_deletes_existing_jobs(self):
+        active, app = self._client()
+        owner = {"X-User-ID": "synthetic-reviewer"}
+        created = active.post("/v1/jobs", headers=owner, files=self._files(5))
+        self.assertEqual(created.status_code, 201, created.text)
+        job_id = created.json()["jobs"][0]["job_id"]
+        with patch.dict(os.environ, {"TRANSCRIPTION_V2_HISTORY_ONLY": "1"}):
+            history = TestClient(create_app(app.state.runtime.settings))
+        self.addCleanup(history.close)
+        self.assertEqual(history.post("/v1/jobs", headers=owner, files=self._files(1)).status_code, 409)
+        listed = history.get("/v1/jobs", headers=owner)
+        self.assertEqual([job["job_id"] for job in listed.json()["jobs"]], [job_id])
+        route = f"/v1/jobs/{job_id}"
+        self.assertEqual(history.post(route + "/retry", headers=owner).status_code, 409)
+        self.assertEqual(history.post(route + "/cancel", headers=owner).status_code, 200)
+        self.assertEqual(history.delete(route, headers=owner).status_code, 200)
+        self.assertEqual(history.get("/v1/jobs", headers=owner).json()["jobs"], [])
+
     def test_ready_endpoint_reports_queue_scope_without_worker_gpu_probe(self):
         client, _app = self._client()
         with patch("transcription_v2.resources.gpu_states", side_effect=AssertionError("No GPU in API role")):

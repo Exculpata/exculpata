@@ -8074,3 +8074,27 @@ path = "scripts/verify-zero-endpoint-install.py"
 kind = "host"
 digest = "dd573a076405ac7ffbcf984eb6bee992ad4914693d0c8c2797d4492d5bbccf88"
 detail = "tls.crt"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
+detail = "compose.env"
+
+[[source]]
+path = "scripts/model_bundle_migration.py"
+kind = "host"
+digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
+detail = "compose.env"
+
+[[source]]
+path = "scripts/model_bundle_migration.py"
+kind = "host"
+digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
+detail = "compose.env"
+
+[[source]]
+path = "scripts/model_bundle_migration.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
