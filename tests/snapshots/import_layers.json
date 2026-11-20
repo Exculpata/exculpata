@@ -116,6 +116,7 @@
   "case_intelligence.matter_purpose": "modules.workflows",
   "case_intelligence.matter_purpose_repository": "core.storage",
   "case_intelligence.matter_purpose_routes": "app_shell",
+  "case_intelligence.media_endpoint_doctor": "app_shell",
   "case_intelligence.media_evidence": "modules.transcription",
   "case_intelligence.media_playback": "modules.transcription",
   "case_intelligence.media_preflight": "core.sources",

@@ -45,3 +45,16 @@ Accept multipart form fields `model`, `segments` (a serialized JSON array) and `
 ## Partial results and retry
 
 The checklist in matter setup controls which destinations may receive material. The worker checks approval again immediately before every external request. Each request's segment JSON and each JSON reply are limited to 8 MiB. A missing grant, invalid response, or unavailable configured service produces a bounded processing notice and leaves that capability's annotation unapplied. Other authorized services can finish, and the original transcript stays available for review. After import, retry recovers the stored transcript with its existing reviewer edits and citation IDs. A retained private transcription service also supports these enrichment APIs during migration.
+
+
+## Installed contract checks
+
+After saving settings and recreating the app and relay, run the installer
+`doctor` command. It reports the saved model, HTTPS origin and data sent for
+each configured capability, then checks the running app with synthetic input.
+To repeat one check inside the app, use
+`python -m case_intelligence.media_endpoint_doctor alignment`,
+`translation` or `speaker_labeling` as the positional capability. The command
+prints one JSON status. It reads the packaged diagnostic recording for the audio
+checks and uses a fixed Spanish sentence for translation. The result describes
+API compatibility. Approve case processing separately in matter setup.
