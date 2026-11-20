@@ -10,6 +10,7 @@ import stat
 
 JOURNAL = ".bundle-update-recovery.json"
 MAX_JOURNAL_BYTES = 8 * 1024 * 1024
+_PHASE_RECEIPTS = {"state/provisioned.json", "state/install-progress.json"}
 _APP_QUERY = "SELECT 1 FROM workbench_media_job WHERE state IN ('queued','running') LIMIT 1"
 _PROCESSOR_QUERY = "SELECT 1 FROM jobs WHERE status NOT IN ('succeeded','failed','canceled') LIMIT 1"
 
@@ -43,6 +44,11 @@ def journal_exists(root):
 
 def write_journal(root, paths, atomic_write):
     payload = {str(path.relative_to(root)): path.read_bytes().decode("utf-8") for path in paths}
+    for name in _PHASE_RECEIPTS:
+        path = root / name
+        if path.is_symlink() or path.parent.is_symlink() or (path.exists() and not path.is_file()):
+            raise RuntimeError("Saved installation progress is unsafe.")
+        payload[name] = path.read_text() if path.exists() else None
     encoded = json.dumps(payload)
     if len(encoded.encode("utf-8")) > MAX_JOURNAL_BYTES:
         raise RuntimeError("Saved configuration exceeds the bundle recovery file limit.")
@@ -57,17 +63,25 @@ def restore_journal(root, atomic_write):
         raise RuntimeError("Bundle update recovery file is unsafe.")
     payload = json.loads(journal.read_text())
     required = {"installation.json", "compose.env", "config/transcription.env"}
-    if not isinstance(payload, dict) or not required.issubset(payload) or len(payload) != 4:
+    required.update(_PHASE_RECEIPTS)
+    if not isinstance(payload, dict) or not required.issubset(payload) or len(payload) != len(required) + 1:
         raise RuntimeError("Bundle update recovery file has invalid configuration keys.")
     app = Path(next(iter(payload.keys() - required)))
-    if len(app.parts) != 2 or app.parent != Path("config") or not app.name.endswith(".env"):
+    if len(app.parts) != 2 or app.parent != Path("config") or app.name == ".." or "\\" in app.name:
         raise RuntimeError("Bundle update recovery file has an invalid application path.")
     for name, value in payload.items():
         path = root / name
-        if not isinstance(value, str) or path.is_symlink() or path.parent.is_symlink() or not path.is_file():
+        if path.is_symlink() or path.parent.is_symlink() or (path.exists() and not path.is_file()):
+            raise RuntimeError("Bundle update recovery files are unavailable or unsafe.")
+        if name in _PHASE_RECEIPTS and value is None:
+            continue
+        if not isinstance(value, str) or (name not in _PHASE_RECEIPTS and not path.is_file()):
             raise RuntimeError("Bundle update recovery files are unavailable or unsafe.")
     for name, value in payload.items():
-        atomic_write(root / name, value)
+        if value is None:
+            (root / name).unlink(missing_ok=True)
+        else:
+            atomic_write(root / name, value)
 
 
 @contextmanager

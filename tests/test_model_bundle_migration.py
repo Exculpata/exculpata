@@ -10,7 +10,8 @@ from tests.test_oss_installer import ROOT, installer, saved_gpu_node
 
 @pytest.mark.parametrize("bundle,profiles", [("review", []), ("transcription", ["transcription-history"])])
 @pytest.mark.parametrize("rollback", [False, True])
-def test_update_an_existing_bundle(tmp_path, monkeypatch, bundle, profiles, rollback):
+@pytest.mark.parametrize("same_capsule", [False, True])
+def test_update_an_existing_bundle(tmp_path, monkeypatch, bundle, profiles, rollback, same_capsule):
     root, initial, _ = saved_gpu_node(tmp_path, models=bundle)
     app = installer._app_env(root)
     if bundle == "review":
@@ -19,26 +20,36 @@ def test_update_an_existing_bundle(tmp_path, monkeypatch, bundle, profiles, roll
     else:
         installer._replace_env(app, "CASE_INTELLIGENCE_TRANSCRIPTION_URL", "http://transcription-api:8510")
     installer._replace_env(app, "CASE_INTELLIGENCE_EMBEDDING_URL", "https://embeddings.example.test")
-    original = {path: path.read_bytes() for path in (app, root / "compose.env", root / "installation.json")}
+    installer._seal_provisioning(root, initial)
+    installer._install_phase(root, "models", "complete")
+    phase_files = [root / "state" / name for name in ("provisioned.json", "install-progress.json")]
+    original = {path: path.read_bytes() for path in (app, root / "compose.env", root / "installation.json", *phase_files)}
     commands = []
     monkeypatch.setattr(installer, "_preflight", lambda console, **options: (
         None if options["models"] == "none" else pytest.fail("retirement selected a GPU")))
-    monkeypatch.setattr(installer, "_stage_release", lambda *a, **kw: (initial["release_id"], ROOT))
+    monkeypatch.setattr(installer, "_stage_release", lambda *a, **kw: (initial["release_id"] if same_capsule else "replacement", ROOT))
     monkeypatch.setattr(installer, "_verify_installed_package", lambda root: None)
     monkeypatch.setattr(installer, "_wait_health", lambda *a, **kw: None)
     monkeypatch.setattr(installer, "_handoff", lambda *a, **kw: None)
 
     def run(console, command, **kwargs):
         commands.append(command)
-        if rollback and "build" in command:
+        if rollback and not same_capsule and "build" in command:
             raise RuntimeError("synthetic failed image build")
         return subprocess.CompletedProcess(command, 0, "", "")
+
+    if rollback and same_capsule:
+        def reject_after_seal(root, updated):
+            installer._install_phase(root, "models", "not-selected")
+            raise RuntimeError("synthetic failure after replacement health and seal")
+        monkeypatch.setattr(installer, "_record_prepared_phases", reject_after_seal)
 
     monkeypatch.setattr(installer, "_run", run)
     monkeypatch.setattr(sys, "argv", ["install", "update", "--root", str(root),
                                       "--retire-bundled-models", "--no-backup"])
     assert installer.main() == int(rollback)
     assert any("stop" in cmd for cmd in commands)
+    assert any("build" in cmd for cmd in commands) != same_capsule
     if rollback:
         assert {p: p.read_bytes() for p in original} == original
         assert any("up" in cmd for cmd in commands)
@@ -53,18 +64,23 @@ def test_update_an_existing_bundle(tmp_path, monkeypatch, bundle, profiles, roll
         assert installer._dotenv(app)["CASE_INTELLIGENCE_GENERATOR_BACKEND"] == ""
     else:
         assert installer._dotenv(app)["CASE_INTELLIGENCE_TRANSCRIPTION_HISTORY_ONLY"] == "1"
-    targets = next(cmd[cmd.index("build") + 1:] for cmd in commands if "build" in cmd)
-    assert not {"retrieval", "generator", "transcription-worker", "model-stager"}.intersection(targets)
-    assert ("transcription-api" in targets) == bool(profiles)
+    if not same_capsule:
+        targets = next(cmd[cmd.index("build") + 1:] for cmd in commands if "build" in cmd)
+        assert not {"retrieval", "generator", "transcription-worker", "model-stager"}.intersection(targets)
+        assert ("transcription-api" in targets) == bool(profiles)
     args = installer._parser().parse_args(["install", "--root", str(root), "--resume"])
     installer._saved_node_arguments(args, root)
     assert args.models == "none"
+
 
 def test_interrupted_cutover_restores_saved_config_before_reading_state(tmp_path, monkeypatch):
     root, _, _ = saved_gpu_node(tmp_path, models="review")
     migration = installer.bundle_migration
     app_path = installer._app_env(root)
-    paths = migration.configuration(root, app_path)
+    selected = app_path.with_name("application-settings")
+    app_path.rename(selected)
+    installer._replace_env(root / "compose.env", "EXCULPATA_APP_ENV_FILE", selected.name)
+    paths = migration.configuration(root, selected)
     before = {path: path.read_bytes() for path in paths}
     migration.write_journal(root, paths, installer._atomic_private_write)
     installer._atomic_private_write(root / "installation.json", "{}")

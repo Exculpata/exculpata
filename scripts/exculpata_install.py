@@ -4840,7 +4840,10 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
             _replace_env(root / "compose.env", f"{LEGACY_ENV_PREFIX}RELEASE_ID", release_id)
             _atomic_private_write(root / "installation.json", json.dumps(updated, indent=2) + "\n")
         _apply_storage_profile(args, root, dry_run=args.dry_run)
-        _run(console, [*compose, "build", *_build_targets(auth, models, profiles)], dry_run=args.dry_run)
+        if retire and release_id == installation.get("release_id"):
+            console.note("Reusing the running capsule’s images for this profile change")
+        else:
+            _run(console, [*compose, "build", *_build_targets(auth, models, profiles)], dry_run=args.dry_run)
         _run(console, [*compose, "config", "--quiet"], dry_run=args.dry_run)
         console.phase(5, "ATOMIC NODE SWAP", "Starting the new capsule and waiting for application and storage consensus")
         if _required_gpu_count(models):
@@ -4869,10 +4872,13 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
         rollback_error: Exception | None = None
         if not args.dry_run:
             try:
-                _atomic_private_write(root / ("compose" + ".env"), old_compose_text)
-                _atomic_private_write(root / "installation.json", old_installation_text)
-                _atomic_private_write(app_path, old_app_text)
-                _atomic_private_write(root / "config" / "transcription.env", old_transcription_text)
+                if retire and bundle_migration.journal_exists(root):
+                    bundle_migration.restore_journal(root, _atomic_private_write)
+                else:
+                    _atomic_private_write(root / ("compose" + ".env"), old_compose_text)
+                    _atomic_private_write(root / "installation.json", old_installation_text)
+                    _atomic_private_write(app_path, old_app_text)
+                    _atomic_private_write(root / "config" / "transcription.env", old_transcription_text)
                 rollback = _compose(root, old_profiles, release=old_release, auth=auth)
                 _run(console, [*rollback, "up", "-d", "--remove-orphans"])
                 _wait_health(console, root, rollback=True)

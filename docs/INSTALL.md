@@ -993,7 +993,7 @@ with zero APIs.
 Run `./install update --root /srv/exculpata --retire-bundled-models` using the
 existing node's account and state root. The normal update backup policy applies.
 Use `--dry-run` to inspect the plan. The command also works when the node
-already runs the current release capsule.
+already runs the current release capsule and reuses its installed images in this case.
 
 The installer stops the old node and checks both media queues before updating
 its saved selection to `none`. The replacement uses the same accounts, matter
@@ -1005,7 +1005,7 @@ the authorized transcription API. Resume and future updates keep this layout.
 The original model cache stays on disk.
 
 If startup or acceptance fails, the installer restores the saved configuration
-and restarts the prior services. After a process interruption, rerun the same
+and installation progress, then restarts the prior services. After a process interruption, rerun the same
 update command so it can recover the interrupted configuration. Run
 `./install doctor --root /srv/exculpata` and repeat a review, a timestamped
 playback citation, and exact search against the same source on the migrated node.
