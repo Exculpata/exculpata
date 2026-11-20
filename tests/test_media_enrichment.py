@@ -156,3 +156,10 @@ def test_completed_private_alignment_uses_existing_segment_boundaries(monkeypatc
     result = enrichment.enrich_transcript(None, None, None, payload, check_access=lambda: pytest.fail("dispatch"))
     assert result["quality"]["alignment_status"] == "completed_locally"
     assert result["segments"] == payload["segments"]
+
+
+def test_segment_request_limit_counts_encoded_bytes(monkeypatch):
+    monkeypatch.setattr(enrichment, "_LIMIT", 8)
+    assert enrichment._serialized("á") == '"\\u00e1"'
+    with pytest.raises(enrichment.MediaContractError, match="request limit"):
+        enrichment._serialized(["á"])
