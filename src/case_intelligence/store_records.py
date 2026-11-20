@@ -287,6 +287,8 @@ class MediaJobRecord:
     finished_at: str | None
     updated_at: str
 
+    dispatch_kind: str | None = None
+
     @property
     def preflight(self) -> Mapping[str, object]:
         value = self.quality.get("preflight")

@@ -9,6 +9,7 @@ from .workspace_store import WorkspaceProblem
 _CAPABILITIES = {
     "generation": ("Answer generation and extraction", "May send questions, review instructions and source text."),
     "embedding": ("Embedding", "May send extracted passages for indexing and search queries for matching."),
+    "transcription": ("Transcription", "May send the original audio or video recording to produce a timed transcript."),
     "reranking": ("Reranking", "May send search queries and candidate passages to rank search results."),
 }
 
