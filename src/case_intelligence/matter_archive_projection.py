@@ -110,15 +110,24 @@ _DYNAMIC_REFERENCE = re.compile(r'(?:[a-z][a-z_-]*-)?[0-9a-f]{32,64}|[SPLFR][0-9
 
 _MODEL_KEYS = frozenset({'model', 'model_name', 'model_id', 'model_revision', 'artifact_revision',
     'engine_version', 'asr_model', 'alignment_model', 'aligner_model', 'diarization_model'})
+_SPEECH_CAPABILITIES = ('transcription', 'alignment', 'translation', 'speaker_labeling')
+_ENRICHMENT_OUTCOMES = frozenset('completed configuration unconfigured authentication unreachable refused incompatible limit fixture denied'.split())
+_SPEECH_OUTCOMES = {
+    'source_alignment_status': frozenset('pending running succeeded degraded failed skipped'.split()),
+    'alignment_status': _ENRICHMENT_OUTCOMES | {'completed_locally'},
+    'translation_status': _ENRICHMENT_OUTCOMES | {'skipped'},
+    'speaker_labeling_status': _ENRICHMENT_OUTCOMES,
+}
 _STRUCTURED = {
     'preflight': frozenset('revision outcome complete checked_ms first_speech_ms last_speech_ms quiet_ms leading_quiet_ms trailing_quiet_ms language quality inspection_id continued'.split()),
     'media': frozenset('duration_seconds audio_streams channels sample_rate_hz format_name has_video bit_rate'.split()),
     'model_artifacts': frozenset('status ready required code message artifact_role file_index schema_version manifest_sha256 artifact_count verified_file_count verified_bytes artifacts asr_bindings'.split()),
     'artifact': frozenset('role model_id revision license file_count verified_bytes'.split()),
     'binding': frozenset('model_id revision adapter supports_translation'.split()),
+    **{capability: frozenset({'endpoint', 'model'}) for capability in _SPEECH_CAPABILITIES},
 }
 
-_SAFE_KEYS |= frozenset().union(*_STRUCTURED.values())
+_SAFE_KEYS |= frozenset().union(*_STRUCTURED.values(), _SPEECH_CAPABILITIES, _SPEECH_OUTCOMES)
 
 
 def origin_reference(matter_id, value):
@@ -132,7 +141,16 @@ def origin_reference(matter_id, value):
 
 
 def structured(kind, value, matter_id, *, depth):
-    if not isinstance(value, dict) or set(value) - _STRUCTURED[kind]:
+    if not isinstance(value, dict):
+        raise ValueError('Preservation metadata contains an unreviewed field.')
+    if kind in _SPEECH_CAPABILITIES:
+        value = {key: child for key, child in value.items() if key not in _DROP_KEYS}
+        model = value.get('model')
+        if not isinstance(model, str) or not 1 <= len(model) <= 200 or not model.isprintable():
+            raise ValueError('Preservation speech provenance requires a model identifier.')
+        if any(mark in model for mark in ('?', '#', '\\')) or {'.', '..'}.intersection(model.split('/')):
+            raise ValueError('Preservation provenance contains a nonportable runtime location.')
+    if set(value) - _STRUCTURED[kind]:
         raise ValueError('Preservation metadata contains an unreviewed field.')
     out = {}
     for key, child in value.items():
@@ -176,6 +194,8 @@ def portable(value, matter_id, *, depth=0):
                 raise ValueError('Preservation payload crosses a matter boundary.')
             if key == 'review_recommended' and type(child) is not bool:
                 raise ValueError('Preservation review recommendation must be a boolean.')
+            if key in _SPEECH_OUTCOMES and (not isinstance(child, str) or child not in _SPEECH_OUTCOMES[key]):
+                raise ValueError('Preservation speech status has an unreviewed value.')
             if key == 'pipeline' and (not isinstance(child, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,119}', child)):
                 raise ValueError('Preservation pipeline must be a portable identifier.')
             if key in ACTOR_COLUMNS:
@@ -235,6 +255,7 @@ def payload_coverage_manifest():
         'omitted_nested_fields': sorted(_DROP_KEYS | {'inspection_id'}),
         'typed_metadata': {'review_recommended': 'boolean',
                            'pipeline': 'Unqualified identifier: 1-120 ASCII letters, digits, dot, underscore or hyphen'},
+        'speech_status_values': {key: sorted(values) for key, values in _SPEECH_OUTCOMES.items()},
         'actor_fields': sorted(ACTOR_COLUMNS),
         'pseudonymized_reference_fields': sorted(_REF_KEYS),
         'structured_metadata_fields': {key: sorted(value) for key, value in _STRUCTURED.items()},
