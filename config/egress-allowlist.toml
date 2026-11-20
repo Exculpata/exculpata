@@ -7958,3 +7958,16 @@ path = "scripts/application-test-shard.py"
 kind = "host"
 digest = "71546855d6279ef70d20909b292c42c2dcb02cd06bde01485da52d13e304ebf4"
 detail = "::"
+
+# The stopped-writer migration sends the fixed fingerprint inputs to the private companion worker.
+[[source]]
+path = "src/case_intelligence/retrieval_endpoints.py"
+kind = "client"
+digest = "c62568f183de13b7278979f42abce277b90b1194f2757c9c8bf0286286ffb488"
+detail = "urllib.request.Request"
+
+[[source]]
+path = "src/case_intelligence/retrieval_endpoints.py"
+kind = "client"
+digest = "c654ab4bdb9312f8aabfa05cfc2a7911c4b243b6398faf0b8b0a5b95ce8321d2"
+detail = "service_endpoints.open_service_request"

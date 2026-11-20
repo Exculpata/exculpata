@@ -5,7 +5,6 @@
     "case_intelligence.case_lifecycle -> case_intelligence.case_downloads",
     "case_intelligence.case_lifecycle_support -> case_intelligence.matter_archive",
     "case_intelligence.case_lifecycle_support -> case_intelligence.matter_archive_verifier",
-    "case_intelligence.embedding_index -> case_intelligence.retrieval_endpoints",
     "case_intelligence.exact_search_results -> case_intelligence.media_evidence",
     "case_intelligence.full_review_exports -> case_intelligence.answer_presentation",
     "case_intelligence.full_review_exports -> case_intelligence.branding",

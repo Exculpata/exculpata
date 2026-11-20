@@ -4,11 +4,17 @@ import http.client
 import json
 import math
 import os
+import re
 from pathlib import Path
 import urllib.error
 import urllib.request
 
+from .embedding_fingerprint import MISMATCH, PROBES, vector_fingerprint
+from .embedding_index import (
+    TRANSFER_FORMAT, configured_embedding, embedding_change_warning, embedding_index_path, load_embedding_index,
+)
 from .generator_transport import open_generator_request
+from .service_endpoints import open_service_request, validate_service_endpoint
 from .retrieval_endpoint_config import Endpoint, configured_endpoint
 from .retrieval_limits import MAX_BODY_BYTES
 
@@ -42,8 +48,7 @@ def retrieval_ready(worker_url, local_ready):
     return any(configured) or bool(worker_url and local_ready(worker_url))
 
 
-def require_index_identity(*, require_record=False):
-    from .embedding_index import configured_embedding, embedding_change_warning, embedding_index_path, load_embedding_index
+def require_index_identity(*, require_record=False, check_fingerprint=False):
     path = embedding_index_path()
     record = load_embedding_index(path) if path else None
     model, revision = configured_embedding()
@@ -54,6 +59,11 @@ def require_index_identity(*, require_record=False):
         return
     if embedding_change_warning(record, model=model, revision=revision, allow_empty=True):
         raise RuntimeError(REBUILD)
+    if check_fingerprint:
+        config = configured_endpoint("EMBEDDING")
+        if config is not None:
+            verify_fingerprint(config, record)
+    return record
 
 
 def request_json(config, path, body=None):
@@ -109,17 +119,60 @@ def endpoint_batch(config, operation, body):
         raise EndpointFailure("Invalid retrieval response; check API compatibility.") from None
 
 
+def require_listed_model(config):
+    models = request_json(config, "/v1/models")
+    if (not isinstance(models, dict) or not isinstance(models.get("data"), list)
+            or not all(isinstance(row, dict) for row in models["data"])):
+        raise EndpointFailure("Invalid model list. Check the endpoint's /v1/models response.")
+    if not any(row.get("id") == config.model for row in models["data"]):
+        raise EndpointFailure("Configured model is not listed; check the model setting.")
+
+
+def endpoint_fingerprint(config):
+    try:
+        vectors = endpoint_batch(config, "embed", {"texts": list(PROBES)})["vectors"]
+        return vector_fingerprint(vectors)
+    except (ValueError, OverflowError):
+        raise EndpointFailure("The endpoint returned invalid synthetic fingerprint vectors.") from None
+
+
+def verify_fingerprint(config, record):
+    if record and record.get("projection_format") == TRANSFER_FORMAT:
+        if endpoint_fingerprint(config) != record.get("synthetic_fingerprint"):
+            raise EndpointFailure(MISMATCH)
+        return True
+    return False
+
+
+def _worker_json(url, path, data=None):
+    req = urllib.request.Request(url.rstrip("/") + path, data=data, headers={"Content-Type": "application/json"})
+    with open_service_request(req, timeout=15, environment_name="CASE_INTELLIGENCE_RETRIEVAL_ALLOWED_HOSTS") as response:
+        raw = response.read(128 * 1024 + 1)
+    if len(raw) > 128 * 1024:
+        raise ValueError("Oversize worker response.")
+    return json.loads(raw)
+
+
+def worker_fingerprint(worker, record):
+    worker = validate_service_endpoint(worker, environment_name="CASE_INTELLIGENCE_RETRIEVAL_ALLOWED_HOSTS",
+                                       label="retrieval worker", schemes=frozenset({"http"}), origin_only=True)
+    health = _worker_json(worker, "/health")
+    if (not isinstance(health, dict) or health.get("status") != "ok" or health.get("embedding_loaded") is not True
+            or not isinstance(health.get("embedding_revision"), str)
+            or not re.fullmatch("[0-9a-f]{40}", health["embedding_revision"])
+            or embedding_change_warning(record, model=health.get("embedding_model"), revision=health["embedding_revision"])):
+        raise ValueError("The worker must report the model and revision that produced the populated index.")
+    body = json.dumps({"texts": list(PROBES)}).encode()
+    return vector_fingerprint(_worker_json(worker, "/embed", body)["vectors"])
+
+
 def probe_endpoint(config: Endpoint) -> str:
     """Check a configured API with synthetic inputs independently of the stored index."""
     if config.role not in {"EMBEDDING", "RERANK"}:
         return "Unknown retrieval role. Select embeddings or reranking."
     try:
         config = replace(config, timeout=min(config.timeout, 15))
-        models = request_json(config, "/v1/models")
-        if not isinstance(models["data"], list):
-            return "Invalid model list. Check the endpoint's /v1/models response."
-        if not any(row.get("id") == config.model for row in models["data"]):
-            return "Configured model is not listed; check the model setting."
+        require_listed_model(config)
         if config.role == "EMBEDDING":
             endpoint_batch(config, "embed", {"texts": ["Synthetic diagnostic text"]})
         else:
@@ -144,7 +197,9 @@ def doctor(role):
     result = probe_endpoint(config)
     if role == "EMBEDDING":
         try:
-            require_index_identity()
+            require_index_identity(check_fingerprint=result == "ok")
+        except EndpointFailure as exc:
+            return f"Endpoint passed. {exc}"
         except RuntimeError:
             endpoint_status = "Endpoint passed." if result == "ok" else result
             return f"{endpoint_status} {REBUILD}"
