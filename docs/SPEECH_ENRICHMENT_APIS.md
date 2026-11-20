@@ -58,3 +58,6 @@ To repeat one check inside the app, use
 prints one JSON status. It reads the packaged diagnostic recording for the audio
 checks and uses a fixed Spanish sentence for translation. The result describes
 API compatibility. Approve case processing separately in matter setup.
+
+Run the [local four-service contract check](LOCAL_SPEECH_APIS.md) to exercise
+the installed diagnostics over HTTPS, including the behavior during a relay outage.
