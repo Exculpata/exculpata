@@ -91,6 +91,21 @@ def test_saved_media_settings_select_only_the_exact_relay_destination(tmp_path, 
     assert maintenance[role + "_EGRESS_URL"] == maintenance[role + "_EGRESS_PINS"] == ""
 
 
+def test_doctor_reports_shared_media_origin_budget(tmp_path, capsys):
+    root, _, _ = configured_node(tmp_path)
+    capsys.readouterr()
+    host = "https://speech.example.test"
+    settings = {"CASE_INTELLIGENCE_ASR_URL": host,
+                "CASE_INTELLIGENCE_GENERATOR_URL": host + "/v1",
+                "CASE_INTELLIGENCE_DIARIZATION_URL": "https://distinct.example.test"}
+    # fixture-write: Share a synthetic model authority on the saved node.
+    installer._app_env(root).write_text(installer._env_text(settings, "Synthetic"))
+    installer._doctor_generator(installer.Console(color=False), root, dry_run=True)
+    output = capsys.readouterr().out
+    assert "GENERATOR, ASR share a relay budget of 32 MiB, 310 seconds and 1 concurrent tunnel" in output
+    assert "GENERATOR, ASR, DIARIZATION share" not in output
+
+
 @pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
 @pytest.mark.parametrize("auth", ["oidc", "local", "kerberos"])
 def test_egress_issuer_uses_selected_app_file_only(tmp_path, names, auth):

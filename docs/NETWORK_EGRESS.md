@@ -243,10 +243,12 @@ slot, without increasing total admission or using the reserved OIDC slots.
 
 CONNECT identifies an authority, not the purpose of the encrypted request.
 An authority configured for both OIDC and a model therefore fails startup.
-Model roles sharing an authority and identical pins share the first configured
-role's pool in GENERATOR, EMBEDDING, RERANK, ASR, ALIGNMENT, TRANSLATION,
-DIARIZATION order. Configure a separate authority for large recordings when a
-shared service would inherit a smaller budget. The upload budget accommodates
+Model roles configured for the same authority and identical pins use one pool.
+Its connection count, byte limit and duration each use the lowest ceiling among
+those roles. For example, generation and ASR on the same host and port share
+one 32 MiB tunnel for 310 seconds. ASR and alignment alone share one full-sized
+upload tunnel. Doctor reports shared media budgets. Use a separate host or port
+for larger uploads when another role requires a smaller budget. The upload budget accommodates
 a 5 GiB recording, segment metadata, framing and a bounded reply. Translation
 sends timed text. Conflicting pins fail startup.
 
