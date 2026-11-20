@@ -37,6 +37,11 @@ def test_installer_omits_obsolete_answer_thinking_opt_out(tmp_path, models):
         devices = (installer.GpuDevice("0", "Synthetic GPU", 48_000, 46_000, 8.9),)
         installer._configure(installer.Console(color=False), args, root, paths, "synthetic-release", ROOT, devices)
     environment = installer._dotenv(installer._app_env(root))
+    bundled = models == "review"
+    assert environment["CASE_INTELLIGENCE_GENERATOR_URL"] == ("http://generator:8000" if bundled else "")
+    assert bool(environment["CASE_INTELLIGENCE_GENERATOR_MODEL"]) == bundled
+    compose = installer._dotenv(root / "compose.env")
+    assert compose[f"{LEGACY_ENV_PREFIX}RETRIEVAL_WORKER_URL"] == ("http://retrieval:8787" if bundled else "")
     assert "CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING" not in environment
 
 
@@ -395,6 +400,7 @@ def test_plain_noninteractive_install_defaults_to_cpu_evaluation(tmp_path, ready
     assert installer.main() == 0
     output = capsys.readouterr().out
     assert "model payload   :: none" in output
+    assert "GPU topology" not in output
     assert "nvidia-smi" not in output
     assert not node.exists()
 

@@ -543,9 +543,8 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     dry = installer._parser().parse_args(["doctor", "--root", str(root), "--dry-run"])
     installer._doctor(installer.Console(color=False), dry, root)
     dry_output = capsys.readouterr().out
-    assert "hardware ::" in dry_output
-    assert "suggested tier ::" in dry_output
-    assert "model download :: not started" in dry_output
+    assert "hardware ::" not in dry_output
+    assert "suggested tier ::" not in dry_output
     assert "answer server :: ollama synthetic-model at https://synthetic-answers:11434" in dry_output
     assert "Dry run: the schema check was not sent" in dry_output
     assert TOKEN not in dry_output
