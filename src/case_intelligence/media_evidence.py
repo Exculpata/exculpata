@@ -28,8 +28,10 @@ from .media_processor_errors import MediaProcessorError, MediaProcessorNotFound
 from .branding import PRODUCT_NAME
 from .derived_text import presentation_text
 from .generation import GenerationRejected, GenerationUnavailable
-from .pilot_uploads import PilotDocument, PilotStore, PilotUnit, UploadProblem
+from .pilot_uploads import PilotDocument, PilotStore, UploadProblem
 from .service_endpoints import validate_service_endpoint
+from .retrieval_endpoint_config import configured_endpoint
+from .media_segments import normalize_transcript_payload, transcript_speaker_labels, transcript_units
 from .workspace_store import (
     MediaClipRecord,
     MediaJobRecord,
@@ -426,103 +428,6 @@ def processor_owner(media_job_id: str) -> str:
     return "ci-" + media_job_id
 
 
-def normalize_transcript_payload(
-    payload: Mapping[str, object], *, duration_ms: int
-) -> tuple[Mapping[str, object], ...]:
-    raw_segments = payload.get("segments")
-    if not isinstance(raw_segments, list):
-        raise MediaProcessorError("The transcription service returned no transcript.")
-    normalized: list[Mapping[str, object]] = []
-    for item in raw_segments:
-        if not isinstance(item, dict):
-            raise MediaProcessorError("The transcription service returned invalid segments.")
-        speaker = item.get("speaker")
-        if not isinstance(speaker, dict):
-            speaker = {}
-        try:
-            start_ms = round(float(item.get("start")) * 1000)
-            end_ms = round(float(item.get("end")) * 1000)
-        except (TypeError, ValueError) as exc:
-            raise MediaProcessorError(
-                "The transcription service returned invalid timestamps."
-            ) from exc
-        if start_ms < 0 or end_ms <= start_ms or end_ms > duration_ms + 2_000:
-            raise MediaProcessorError(
-                "The transcription service returned timestamps outside the recording."
-            )
-        text = str(item.get("model_text") or item.get("text") or "").strip()
-        if not text:
-            continue
-        normalized.append(
-            {
-                "external_segment_id": str(
-                    item.get("segment_id") or item.get("id") or ""
-                ),
-                "start_ms": start_ms,
-                "end_ms": end_ms,
-                "speaker_cluster": str(speaker.get("cluster_id") or "UNKNOWN"),
-                "speaker_display_name": str(
-                    speaker.get("display_name") or speaker.get("cluster_id") or "UNKNOWN"
-                ),
-                "model_text": text,
-                "translated_text": item.get("translated_text"),
-                "confidence": item.get("confidence"),
-                "low_confidence": bool(item.get("low_confidence")),
-                "overlap": bool(item.get("overlap")),
-            }
-        )
-    if not normalized:
-        raise MediaProcessorError("The recording produced no searchable transcript.")
-    return tuple(normalized)
-
-
-def transcript_speaker_labels(
-    segments: Sequence[TranscriptSegmentRecord],
-) -> dict[str, str]:
-    """Assign one stable staff-facing label to every transcript speaker cluster."""
-
-    confirmed_labels: dict[str, str] = {}
-    anonymous_clusters: set[str] = set()
-    for segment in segments:
-        display_name = " ".join(segment.speaker_display_name.split()).strip()
-        if segment.speaker_identity_state == "confirmed" and display_name:
-            confirmed_labels[segment.speaker_cluster] = display_name
-        else:
-            anonymous_clusters.add(segment.speaker_cluster)
-    anonymous_clusters.difference_update(confirmed_labels)
-    anonymous_labels = {
-        cluster: f"Speaker {ordinal}"
-        for ordinal, cluster in enumerate(
-            sorted(anonymous_clusters),
-            1,
-        )
-    }
-    return {**anonymous_labels, **confirmed_labels}
-
-
-def transcript_units(
-    segments: Sequence[TranscriptSegmentRecord],
-) -> tuple[PilotUnit, ...]:
-    units: list[PilotUnit] = []
-    speaker_labels = transcript_speaker_labels(segments)
-    for ordinal, segment in enumerate(segments, 1):
-        speaker = speaker_labels[segment.speaker_cluster]
-        text = f"{speaker}: {segment.current_text}"
-        units.append(
-            PilotUnit(
-                ordinal,
-                text,
-                line_start=segment.start_ms,
-                line_end=segment.end_ms,
-                excerpt_digest=hashlib.sha256(text.encode("utf-8")).hexdigest(),
-                start_ms=segment.start_ms,
-                end_ms=segment.end_ms,
-                speaker_cluster=segment.speaker_cluster,
-            )
-        )
-    return tuple(units)
-
-
 ProjectTranscript = Callable[
     [MatterRecord, PilotDocument, Sequence[TranscriptSegmentRecord], bool], None
 ]
@@ -542,6 +447,7 @@ class MediaCoordinator:
         resolve_matter: Callable[[str], MatterRecord],
         resolve_store: Callable[[MatterRecord], PilotStore],
         project_transcript: ProjectTranscript,
+        transcribe_recording: Callable,
         summarize_transcript: Callable[
             [PilotDocument, Sequence[TranscriptSegmentRecord]], TranscriptSummaryResult
         ]
@@ -553,6 +459,7 @@ class MediaCoordinator:
         self.resolve_matter = resolve_matter
         self.resolve_store = resolve_store
         self.project_transcript = project_transcript
+        self.transcribe_recording = transcribe_recording
         self.summarize_transcript = summarize_transcript
         self.poll_seconds = max(float(poll_seconds), 0.05)
         self._stop = threading.Event()
@@ -580,6 +487,11 @@ class MediaCoordinator:
 
     @property
     def available(self) -> bool:
+        if os.getenv("CASE_INTELLIGENCE_ASR_URL", "").strip():
+            try:
+                return configured_endpoint("ASR") is not None
+            except ValueError:
+                return False
         return bool(self.processor is not None and self.processor.available)
 
     def notify(self) -> None:
@@ -768,6 +680,58 @@ class MediaCoordinator:
         except KeyError as exc:
             raise MediaProcessorError("Matter access was removed; transcription stopped.") from exc
 
+    def _import_transcript(self, job, matter, document, store, payload, *, degraded, cleanup):
+        normalized = normalize_transcript_payload(
+            payload, duration_ms=job.duration_ms
+        )
+        self.workspace.update_media_job(
+            job.media_job_id, stage="Importing transcript", progress=0.98
+        )
+        with store.mutation_guard():
+            self._require_job_access(job)
+            current = store.get(job.document_id)
+            if current.version_id != job.source_version_id or current.digest != job.source_sha256:
+                raise MediaProcessorError("The source version changed during transcription.")
+            store.source_path(job.document_id, verify_digest=True)
+            transcript = self.workspace.import_media_transcript(
+                job.media_job_id,
+                segments=normalized,
+                degraded=degraded,
+                warnings=(
+                    payload.get("warnings")
+                    if isinstance(payload.get("warnings"), list)
+                    else []
+                ),
+                quality=(
+                    payload.get("quality")
+                    if isinstance(payload.get("quality"), dict)
+                    else {}
+                ),
+                provenance=(
+                    payload.get("provenance")
+                    if isinstance(payload.get("provenance"), dict)
+                    else {}
+                ),
+            )
+            segments = self.workspace.transcript_segments(
+                job.matter_id, job.document_id, job.source_version_id
+            )
+            self.project_transcript(matter, document, segments, degraded)
+        cleanup_message = ""
+        if cleanup is not None:
+            try:
+                cleanup()
+            except MediaProcessorError:
+                cleanup_message = " Transcript ready; temporary processor scratch will expire automatically."
+        self.workspace.finish_media_job(
+            job.media_job_id,
+            degraded=degraded,
+            message=(document.message + cleanup_message)[:240],
+            warnings=transcript.warnings,
+            quality=transcript.quality,
+            provenance=transcript.provenance,
+        )
+
     def _process(self, claimed: MediaJobRecord) -> None:
         job = claimed
         owner = processor_owner(job.media_job_id)
@@ -801,7 +765,11 @@ class MediaCoordinator:
                 job.preflight.get("outcome") in {"no_audio", "no_speech", "uncertain", "failed"}
                 and job.preflight.get("continued") is False
             )
-            if not external_id and job.attempts > 1 and not known_hold:
+            private_recovery = (
+                job.dispatch_kind == "private" or
+                (job.dispatch_kind is None and not os.getenv("CASE_INTELLIGENCE_ASR_URL", "").strip())
+            )
+            if not external_id and job.attempts > 1 and not known_hold and private_recovery:
                 if self.processor is None or not self.processor.available:
                     raise MediaProcessorError(
                         "Earlier transcription work could not be checked. Try again when the service is available."
@@ -852,6 +820,30 @@ class MediaCoordinator:
                         )
                         if hold:
                             return
+            if not external_id:
+                try:
+                    endpoint = configured_endpoint("ASR")
+                except ValueError:
+                    raise MediaProcessorError("Invalid transcription API configuration. Check the origin and model.") from None
+                if endpoint is not None:
+                    job = self.workspace.update_media_job(
+                        job.media_job_id, stage="Submitting recording", progress=0.02, dispatch_kind="api",
+                    )
+                    store.mark_media_processing(job.document_id, stage="Transcribing")
+
+                    def check_access():
+                        self._require_job_access(job)
+                        if self._stop.is_set() or self._matter_cancelled(job.matter_id):
+                            raise MediaProcessorError("Transcription stopped before dispatch.")
+
+                    payload = self.transcribe_recording(self.workspace, job, source, endpoint, check_access=check_access)
+                    if self._stop.is_set():
+                        return
+                    check_access()
+                    self._import_transcript(job, matter, document, store, payload, degraded=False, cleanup=None)
+                    return
+                if job.dispatch_kind == "api":
+                    raise MediaProcessorError("The configured transcription API is unavailable. Restore it and try again.")
             if self.processor is None or not self.processor.available:
                 raise MediaProcessorError(
                     "The local transcription service is not configured. Choose Try again after it is restored."
@@ -869,7 +861,7 @@ class MediaCoordinator:
                 )
                 if reconciled is None:
                     self.workspace.update_media_job(
-                        job.media_job_id, stage="Submitting recording", progress=0.02
+                        job.media_job_id, stage="Submitting recording", progress=0.02, dispatch_kind="private",
                     )
                     reconciled = self.processor.submit(
                         owner, source, job.media_type, job.source_sha256
@@ -931,52 +923,9 @@ class MediaCoordinator:
                 if status in self.TERMINAL_READY:
                     degraded = status == "degraded" or bool(view.get("degraded"))
                     payload = self.processor.transcript(owner, external_id)
-                    normalized = normalize_transcript_payload(
-                        payload, duration_ms=job.duration_ms
-                    )
-                    self.workspace.update_media_job(
-                        job.media_job_id, stage="Importing transcript", progress=0.98
-                    )
-                    with store.mutation_guard():
-                        self._require_job_access(job)
-                        transcript = self.workspace.import_media_transcript(
-                            job.media_job_id,
-                            segments=normalized,
-                            degraded=degraded,
-                            warnings=(
-                                payload.get("warnings")
-                                if isinstance(payload.get("warnings"), list)
-                                else []
-                            ),
-                            quality=(
-                                payload.get("quality")
-                                if isinstance(payload.get("quality"), dict)
-                                else {}
-                            ),
-                            provenance=(
-                                payload.get("provenance")
-                                if isinstance(payload.get("provenance"), dict)
-                                else {}
-                            ),
-                        )
-                        segments = self.workspace.transcript_segments(
-                            job.matter_id, job.document_id, job.source_version_id
-                        )
-                        self.project_transcript(matter, document, segments, degraded)
-                    cleanup_message = ""
-                    try:
-                        self.processor.delete(owner, external_id)
-                    except MediaProcessorError:
-                        cleanup_message = (
-                            " Transcript ready; temporary processor scratch will expire automatically."
-                        )
-                    self.workspace.finish_media_job(
-                        job.media_job_id,
-                        degraded=degraded,
-                        message=(document.message + cleanup_message)[:240],
-                        warnings=transcript.warnings,
-                        quality=transcript.quality,
-                        provenance=transcript.provenance,
+                    self._import_transcript(
+                        job, matter, document, store, payload, degraded=degraded,
+                        cleanup=lambda: self.processor.delete(owner, external_id),
                     )
                     return
                 if self._stop.wait(self.poll_seconds):
@@ -986,6 +935,8 @@ class MediaCoordinator:
             message = str(exc)[:240]
         except Exception:
             message = "Transcription did not finish. Choose Try again."
+        if self._stop.is_set():
+            return
         try:
             matter = self.resolve_matter(job.matter_id)
             self.resolve_store(matter).mark_failed(job.document_id, message)
@@ -1004,6 +955,8 @@ class MediaCoordinator:
     def cancel_external(self, media_job: MediaJobRecord) -> bool:
         """Remove processor scratch, including jobs whose legacy retry lost the ID."""
 
+        if media_job.dispatch_kind == "api":
+            return True
         external_id = media_job.external_job_id
         if not external_id and self.workspace.media_transcript(
             media_job.matter_id, media_job.document_id, media_job.source_version_id

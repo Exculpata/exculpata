@@ -7879,7 +7879,7 @@ kind = "host"
 digest = "24d5f69bcfd1907cfb35c93d284fe7632e161c6751a8e100fa072ce546fc9598"
 detail = "attachment.txt"
 
-# The ASR check constructs a request for the existing HTTPS relay and reads a fixed package fixture.
+# The ASR doctor uses a fixed fixture. Case multipart uploads use the same reviewed relay with a live matter grant.
 [[source]]
 path = "src/case_intelligence/speech_endpoint.py"
 kind = "client"
@@ -7908,6 +7908,24 @@ detail = "urllib.request.Request"
 path = "src/case_intelligence/speech_endpoint.py"
 kind = "client"
 digest = "9794fd4bffade444285152a875edb21c04c7b5f8c39ec6041fb0d542a7e51d36"
+detail = "http.client.HTTPException"
+
+[[source]]
+path = "src/case_intelligence/speech_endpoint.py"
+kind = "host"
+digest = "1644d0d2607643fc99128b41c2d7335d806d5cdec377882315c77c96b4025062"
+detail = "diagnostic.wav"
+
+[[source]]
+path = "src/case_intelligence/speech_endpoint.py"
+kind = "client"
+digest = "02b6e6ad3ce78f7fb87a139aa820596a8772b24ec655ace814a2a4d9610ef1fb"
+detail = "urllib.request.Request"
+
+[[source]]
+path = "src/case_intelligence/speech_endpoint.py"
+kind = "client"
+digest = "4117ab9305ad0b50038ebff4547c5a58dbf5ed52da83d42a1632367db4366e27"
 detail = "http.client.HTTPException"
 
 # Pytest uses a double colon to separate a test file from a node name.

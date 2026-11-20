@@ -130,3 +130,72 @@ def test_unreadable_secret_and_unreachable_service(provider, monkeypatch, tmp_pa
     monkeypatch.setenv("CASE_INTELLIGENCE_ASR_PROXY", "http://127.0.0.1:1")
     assert speech_endpoint.doctor() == speech_endpoint.UNAVAILABLE
     assert provider["requests"] == []
+
+
+@pytest.mark.parametrize("decision", ["approved", "missing", "revoked", "reconfigured"])
+def test_queued_recording_checks_live_matter_grant_at_dispatch(provider, tmp_path, monkeypatch, decision):
+    from fastapi.testclient import TestClient
+    from case_intelligence.external_model_grants import configured_model_destination
+    from tests.test_media_preflight import ObservedProcessor, app_for, silence, upload, wait_job
+    from tests.test_matter_media_workflow import _matter, ACTOR
+
+    recording = tmp_path / "synthetic-source.wav"
+    silence(recording, 4)
+    private = ObservedProcessor()
+    with TestClient(app_for(tmp_path / "runtime", private)) as client:
+        slug = _matter(client)
+        bench, matter, document, token = upload(client, slug, recording)
+        held = wait_job(bench, matter, document)
+        assert provider["connections"] == []
+        target = configured_model_destination("transcription")
+        if decision != "missing":
+            bench.workspace.set_model_grant(matter.matter_id, target, ACTOR, approved=True)
+        if decision == "revoked":
+            bench.workspace.set_model_grant(matter.matter_id, target, ACTOR, approved=False)
+        if decision == "reconfigured":
+            monkeypatch.setenv("CASE_INTELLIGENCE_ASR_MODEL", "another-synthetic-model")
+        action = client.post(f"/matters/{slug}/sources/{token}/recording-check", data={
+            "action": "continue", "inspection_id": held.preflight["inspection_id"]}, follow_redirects=False)
+        assert action.status_code == 303
+        job = wait_job(bench, matter, document, ("failed", "succeeded"))
+        assert private.submissions == private.readiness_calls == 0
+        if decision != "approved":
+            assert job.state == "failed" and "approval" in job.message
+            assert provider["connections"] == []
+            return
+        assert job.state == "succeeded", job.message
+        [(path, _, parts)] = provider["requests"]
+        assert path == "/v1/audio/transcriptions"
+        assert parts["file"].get_filename() == "recording.wav"
+        assert parts["file"].get_payload(decode=True) == recording.read_bytes()
+        assert parts["model"].get_content() == target.model
+        saved = bench.workspace.media_transcript(matter.matter_id, document.document_id, document.version_id)
+        assert saved.provenance["transcription"] == {"endpoint": target.endpoint, "model": target.model}
+        [segment] = bench.workspace.transcript_segments(matter.matter_id, document.document_id, document.version_id)
+        assert (segment.start_ms, segment.end_ms, segment.model_text) == (0, 2100, transcript()["text"])
+        assert bench.media.cancel_external(job)
+
+
+def test_case_dispatch_rechecks_grant_after_verifying_source_and_discards_invalid_reply(provider, tmp_path):
+    from types import SimpleNamespace
+    from case_intelligence.media_processor_errors import MediaProcessorError
+
+    source = tmp_path / "case.wav"
+    source.write_bytes(b"synthetic-source")  # fixture-write: synthetic wire input
+    job = SimpleNamespace(matter_id="synthetic", media_type="audio/wav", source_sha256=hashlib.sha256(
+        source.read_bytes()).hexdigest(), byte_size=source.stat().st_size, duration_ms=1000)
+    grant = {"approved": True}
+    workspace = SimpleNamespace(model_grant_allows=lambda matter, target: grant["approved"])
+    endpoint = speech_endpoint.configured_speech_endpoint()
+    with pytest.raises(MediaProcessorError, match="approval"):
+        speech_endpoint.transcribe_recording(workspace, job, source, endpoint,
+                                             check_access=lambda: grant.update(approved=False))
+    assert provider["connections"] == []
+    grant["approved"] = True
+    with pytest.raises(MediaProcessorError, match="Invalid transcription response"):
+        speech_endpoint.transcribe_recording(workspace, job, source, endpoint, check_access=lambda: None)
+    assert len(provider["requests"]) == 1
+    source.write_bytes(b"synthetic-change")  # fixture-write: changed same-length original
+    with pytest.raises(MediaProcessorError, match="recording changed"):
+        speech_endpoint.transcribe_recording(workspace, job, source, endpoint, check_access=lambda: None)
+    assert len(provider["connections"]) == 1

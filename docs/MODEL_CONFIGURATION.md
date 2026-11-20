@@ -18,7 +18,7 @@ Accuracy and resource requirements depend on the selected models and inputs.
 | Embeddings | Local SentenceTransformer worker or [optional embedding endpoint](#optional-embedding-and-rerank-endpoints) | The index requires 768 dimensions and a matching recorded model identity. |
 | Reranking | Local CrossEncoder worker or [optional rerank endpoint](#optional-embedding-and-rerank-endpoints) | Ranking quality still needs evaluation for the selected model. |
 | Scanned documents | The app runs Poppler and Tesseract locally for scanned PDFs, including on installations with zero model endpoints. | Exact search covers recognized text on the selected pages. [Local setup and verification](OCR_AND_MEDIA.md#check-scanned-pdf-ocr-on-an-installed-node) |
-| Speech recognition | WhisperX/faster-whisper profiles use approved CTranslate2 snapshots. Operators can also [check a speech API](#check-a-speech-recognition-api) using synthetic audio. | Version 2 inventories select exact compatible model identities for the existing profiles; [offline import](ASR_MODEL_IMPORT.md) copies prepared inventories to a new cache. Raw-model preparation and installer integration remain operator work. |
+| Speech recognition | WhisperX/faster-whisper profiles use approved CTranslate2 snapshots. Operators can configure a [speech API](#check-a-speech-recognition-api) and authorize recording transfers per matter. | Version 2 inventories select exact compatible model identities for the existing profiles; [offline import](ASR_MODEL_IMPORT.md) copies prepared inventories to a new cache. Raw-model preparation and installer integration remain operator work. |
 | Word alignment | Manifest-approved English/Spanish Torchaudio checkpoints | Language-to-checkpoint bindings are currently fixed. Another language/checkpoint requires adapter and inventory support. |
 | Speaker diarization | Nemotron or Community-1 adapter selected during installation | These are separate implementations with their own artifact/runtime contracts. An unrelated diarization model cannot be substituted by changing a filename. |
 
@@ -362,9 +362,20 @@ source-language text and timed segments in seconds. The JSON result reports
 `{"transcription": "ok"}` when the contract passes. Use the returned diagnostic
 to correct the configuration, credentials or response format and retry.
 
-The command only takes its audio from the installed synthetic fixture. The
-private transcription job service continues to process matter recordings.
-Speech quality, speaker labels and word alignment require separate verification.
+The doctor always uses the installed synthetic fixture. To transcribe a matter's
+recordings, its owner or an administrator must approve **Transcription** for the
+displayed origin and model in matter setup. The queued worker checks that grant
+and the requesting member's access immediately before it streams the original
+audio or video. It sends a generic filename and the model settings. The response
+must contain source-language text and timed segments within the recording. The app
+assigns the citation IDs and keeps imported transcripts and reviewer edits.
+
+When an approved API is unreachable, the job records a retryable failure. Restore
+the endpoint or grant, then choose **Try again**. An interrupted request can
+submit the same source again until import succeeds. An existing temporary
+private job finishes on the private service. Installations with no configured
+ASR API can continue using their private service. Check recognition quality on
+representative recordings before retiring a previously qualified model.
 
 ## Optional embedding and rerank endpoints
 
