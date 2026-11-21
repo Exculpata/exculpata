@@ -233,6 +233,24 @@ def node_expressions(relative, node_type, predicate):
     return sorted(found)
 
 
+def test_production_inspection_route_contains_only_the_recognized_format():
+    relative = 'src/case_intelligence/static/production-inspection.js'
+    endpoints = node_expressions(relative, 'binary_expression',
+                                 lambda expression: expression.startswith('this.dataset.inspectionUrl +'))
+    [(_, endpoint)] = endpoints
+    run_node("const assert = require('node:assert/strict');\n" + declaration('suffixOf', relative)
+             + "\nfunction endpointFor(file) {return " + endpoint + ";}\n" + r'''
+const component = {dataset: {inspectionUrl: '/matters/m-synthetic/production-inspection/'}};
+for (const format of ['dat', 'opt', 'dii', 'lfp']) {
+  const file = {name: 'Folder # and ?/' + format + '.' + format.toUpperCase()};
+  assert.equal(endpointFor.call(component, file), component.dataset.inspectionUrl + format);
+}
+for (const name of ['Indexed.dat.txt', 'Index.opt?file=name', 'lfp', 'Index.dii/other']) {
+  assert.equal(suffixOf({name}), undefined);
+}
+''')
+
+
 @pytest.mark.parametrize('filename', [
     'browser-accept-assistant-passage.cjs', 'browser-accept-manual-review.cjs',
     'browser-accept-static-site.cjs', 'qa-people-browser.cjs', 'qa-team-groups-browser.cjs',
@@ -429,3 +447,37 @@ const head=await worker.fetch(new Request('https://synthetic.example.test/video.
 assert.equal(head.headers.get('Content-Length'),'3');assert.equal((await head.arrayBuffer()).byteLength,0);
 })().catch(error=>{console.error(error);process.exitCode=1;});
 ''')
+
+
+def test_producer_mapping_messages_are_display_text():
+    editor = 'src/case_intelligence/static/production-dat-mapping.js'
+    intake = 'src/case_intelligence/static/case-intelligence.js'
+
+    def one(path, node, prefix):
+        matches = node_expressions(path, node, lambda text: text.startswith(prefix))
+        assert len(matches) == 1, (path, prefix)
+        return matches[0][1]
+
+    statements = [
+        one(editor, 'assignment_expression', 'input.placeholder = suggestions.has'),
+        one(editor, 'assignment_expression', 'this.querySelector("[data-header-coverage]").textContent = omitted'),
+        one(editor, 'assignment_expression', 'this.status.textContent = `Saved mapping could not be applied.'),
+        one(intake, 'call_expression', 'productionInspection.status.replaceChildren(mapping.message,'),
+    ]
+    diagnostic = one(editor, 'template_string', '`${draft.label}: ${problem}')
+    run_node("""const assert = require('node:assert/strict');
+const role = 'text_path', suggestions = new Map([[role, '<generated heading>']]);
+const omitted = 2, coverage = {}, input = {}, status = {};
+const productionInspection = {status: {replaceChildren(...text) {this.textContent = text.join('');}}};
+const draft = {label: 'Synthetic/index.dat'}, problem = 'Choose exact headings from the inspected DAT.';
+const missing = [['First <heading>', 'begin_bates'], ['Second', 'text_path']];
+const mapping = {message: """ + diagnostic + """};
+(function () {
+""" + ';\n'.join(statements) + """
+}).call({status, querySelector: () => coverage});
+assert.equal(input.placeholder, 'Suggested: <generated heading>');
+assert.match(coverage.textContent, /^2 headings exceed/);
+assert.match(status.textContent, /Unavailable headings: First <heading>, Second/);
+assert.equal(productionInspection.status.textContent,
+  'Synthetic/index.dat: Choose exact headings from the inspected DAT. Inspect this DAT to review its mapping.');
+""")

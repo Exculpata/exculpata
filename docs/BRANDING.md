@@ -222,7 +222,7 @@ unresolved-composition and unsupported-syntax diagnostics only. The fingerprint
 does not depend on the Python interpreter's AST schema. Literal and resolved-name scanning still
 applies; a changed function body or another file does not inherit the disposition.
 
-`config/rename-source-forms.json` records 232 Python and 365 JavaScript diagnostic-specific source
+`config/rename-source-forms.json` records Python and JavaScript diagnostic-specific source
 contracts for existing analysis or transport operations that remain outside this
 grammar. Forty-five concern diagnostic text analysis; the remaining 132 concern
 existing setting validation/output, authenticated dependency metadata replacement,
@@ -267,8 +267,8 @@ require review because a line anchor does not establish semantic equivalence.
 Records for diagnostics that are no longer emitted must be removed or reviewed. Deleted, renamed, excluded, binary or unscanned source cannot leave an unused receipt behind.
 No command automatically accepts a new finding or refreshes these records.
 
-The JavaScript records cover the reviewed inventory of 67 additions, 24 addition
-assignments, 234 interpolated templates and 40 joins in twelve files. They retain
+The original JavaScript records covered 67 additions, 24 addition assignments,
+234 interpolated templates and 40 joins in twelve files. They retain
 existing source bytes: native coercion, operand order, assignment behavior,
 Node path normalization, array separators, generated QA fallback and upload JSON
 bytes are not rewritten to satisfy the checker. Each construction additionally
