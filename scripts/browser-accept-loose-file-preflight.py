@@ -337,9 +337,9 @@ def _selection_reference_qc_regression(driver, wait, bench, base_url, output):
         folder = Path(tmp) / "Delivery"
         folder.mkdir()
         # The suite's 128-byte file limit also applies to this real upload.
-        data = b"PATH\x14SIDE\n" + b"\x14\n" * 20 + b"ok.txt\x14ok.txt\nabsent.txt\x14other.txt\n"
-        (folder / "index.dat").write_bytes(data)
-        (folder / "ok.txt").write_bytes(b"Generated companion text.")
+        data = b"PATH\x14SIDE\n" + b"\x14\n" * 20 + b"case note.txt\x14case note.txt\nmissing note.txt\x14missing copy.txt\n"
+        (folder / "main index.dat").write_bytes(data)
+        (folder / "case note.txt").write_bytes(b"Generated companion text.")
         _select(driver.find_element(By.ID, "source-folder"), [folder])
         inspect = wait.until(lambda current: (
             button if (button := current.find_element(By.CSS_SELECTOR, "[data-inspect-production]")).is_displayed()
@@ -351,16 +351,16 @@ def _selection_reference_qc_regression(driver, wait, bench, base_url, output):
             element = driver.find_element(By.CSS_SELECTOR, f'[data-reference-count="{status}"]')
             _require(element.text == expected, f"incorrect complete reference count for {status}")
         findings = driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text
-        _require("Record 22" in findings and "line 23" in findings and "absent.txt" in findings,
+        _require("Record 22" in findings and "line 23" in findings and "missing note.txt" in findings,
                  "the path after the record sample has no cited finding")
-        _require("absent.txt" not in driver.find_element(By.CSS_SELECTOR, "[data-production-inspection-rows]").text,
+        _require("missing note.txt" not in driver.find_element(By.CSS_SELECTOR, "[data-production-inspection-rows]").text,
                  "the late finding was substituted into the record sample")
         editor = mapping_editor()
         editor.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated inspection producer")
         editor.find_element(By.CSS_SELECTOR, '[data-role="native_path"]').send_keys("SIDE")
         inspect_for("custom")
         custom = driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text
-        _require("other.txt" in custom and "absent.txt" not in custom, "custom DAT paths did not replace the default role")
+        _require("missing copy.txt" in custom and "missing note.txt" not in custom, "custom DAT paths did not replace the default role")
         receipts = IntakeReceipts(bench.workspace)
         _require(not receipts.recent(matter.matter_id, ACTOR)
                  and not bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR)
@@ -372,32 +372,32 @@ def _selection_reference_qc_regression(driver, wait, bench, base_url, output):
         navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
                     page_load_timeout=20, readiness_timeout=20)
         second = folder.rename(Path(tmp) / "Second")
-        (second / "alternate.dat").write_bytes(b"PATH\x14SIDE\nok.txt\x14other.txt\n")
+        (second / "alternate index.dat").write_bytes(b"PATH\x14SIDE\ncase note.txt\x14missing copy.txt\n")
         _select(driver.find_element(By.ID, "source-folder"), [second])
         wait.until(lambda current: current.find_element(By.CSS_SELECTOR, "[data-inspect-production]").is_displayed())
-        choose_dat("index.dat")
+        choose_dat("main index.dat")
         inspect_for("standard")
         editor = mapping_editor()
         editor.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated inspection producer")
         editor.find_element(By.CSS_SELECTOR, "[data-load-profile]").send_keys(Keys.ENTER)
         wait.until(lambda _driver: editor.find_element(By.CSS_SELECTOR, '[data-role="native_path"]').get_attribute("value") == "SIDE")
         inspect_for("custom")
-        _require("other.txt" in driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text,
+        _require("missing copy.txt" in driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text,
                  "reused producer mapping was not used in the selection check")
-        choose_dat("alternate.dat")
+        choose_dat("alternate index.dat")
         inspect_for("standard")
         mapping_editor().find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Incomplete producer")
-        choose_dat("index.dat")
+        choose_dat("main index.dat")
         inspect_for("custom")
-        _require("other.txt" in driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text,
+        _require("missing copy.txt" in driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text,
                  "switching DATs lost the selected mapping or applied the other DAT's draft")
-        choose_dat("alternate.dat")
+        choose_dat("alternate index.dat")
         inspect_for("standard")
         editor = mapping_editor()
         _require(editor.find_element(By.CSS_SELECTOR, "[data-profile-producer]").get_attribute("value")
                  == "Incomplete producer", "the unfinished mapping could not be reopened")
         editor.find_element(By.CSS_SELECTOR, "[data-clear-profile]").send_keys(Keys.ENTER)
-        choose_dat("index.dat")
+        choose_dat("main index.dat")
         # Apply the same byte-limit boundary against the small synthetic fixture.
         driver.execute_script("document.querySelector('[data-upload-form]').dataset.maxPreflightRequestBytes = '16'")
         driver.find_element(By.CSS_SELECTOR, "[data-inspect-production]").send_keys(Keys.ENTER)
