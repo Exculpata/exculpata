@@ -447,3 +447,37 @@ const head=await worker.fetch(new Request('https://synthetic.example.test/video.
 assert.equal(head.headers.get('Content-Length'),'3');assert.equal((await head.arrayBuffer()).byteLength,0);
 })().catch(error=>{console.error(error);process.exitCode=1;});
 ''')
+
+
+def test_producer_mapping_messages_are_display_text():
+    editor = 'src/case_intelligence/static/production-dat-mapping.js'
+    intake = 'src/case_intelligence/static/case-intelligence.js'
+
+    def one(path, node, prefix):
+        matches = node_expressions(path, node, lambda text: text.startswith(prefix))
+        assert len(matches) == 1, (path, prefix)
+        return matches[0][1]
+
+    statements = [
+        one(editor, 'assignment_expression', 'input.placeholder = suggestions.has'),
+        one(editor, 'assignment_expression', 'this.querySelector("[data-header-coverage]").textContent = omitted'),
+        one(editor, 'assignment_expression', 'this.status.textContent = `Saved mapping could not be applied.'),
+        one(intake, 'call_expression', 'productionInspection.status.replaceChildren(mapping.message,'),
+    ]
+    diagnostic = one(editor, 'template_string', '`${draft.label}: ${problem}')
+    run_node("""const assert = require('node:assert/strict');
+const role = 'text_path', suggestions = new Map([[role, '<generated heading>']]);
+const omitted = 2, coverage = {}, input = {}, status = {};
+const productionInspection = {status: {replaceChildren(...text) {this.textContent = text.join('');}}};
+const draft = {label: 'Synthetic/index.dat'}, problem = 'Choose exact headings from the inspected DAT.';
+const missing = [['First <heading>', 'begin_bates'], ['Second', 'text_path']];
+const mapping = {message: """ + diagnostic + """};
+(function () {
+""" + ';\n'.join(statements) + """
+}).call({status, querySelector: () => coverage});
+assert.equal(input.placeholder, 'Suggested: <generated heading>');
+assert.match(coverage.textContent, /^2 headings exceed/);
+assert.match(status.textContent, /Unavailable headings: First <heading>, Second/);
+assert.equal(productionInspection.status.textContent,
+  'Synthetic/index.dat: Choose exact headings from the inspected DAT. Inspect this DAT to review its mapping.');
+""")

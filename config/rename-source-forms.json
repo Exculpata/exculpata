@@ -5193,6 +5193,50 @@
           "source_line_sha256": "7082a031fa73539334e72da44ac0c40a4a8c50a4633f4c0a674da1bb3e89b29a"
         }
       ]
+    },
+    "src/case_intelligence/static/production-dat-mapping.js": {
+      "diagnostics": [
+        {
+          "line": 67,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 53-67:90 sha256=2ab4033b3dd89bc39e1898cd88e473c1a4cbc242c8615e989c26d437da30c715; use the rename-compat contract helper",
+          "function": "source columns 53-67:90",
+          "reason": "Show the exact suggested heading from the inspected DAT in a role input placeholder. The input value and saved mapping still require the reviewer to choose a heading.",
+          "validation": "tests/test_production_inspection.py::test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions; scripts/browser-accept-loose-file-preflight.py::_image_index_intake_regression; tests/test_rename_javascript_consumers.py::test_producer_mapping_messages_are_display_text",
+          "source_line_sha256": "9744e7da786a163621893fb88e6bc0a7310012db7944e5d7a7ffe69ebb2f51db"
+        },
+        {
+          "line": 71,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 11-71:116 sha256=954ba99244be83730476528daffcef54232a074c3042c7ec33e275121ac9df07; use the rename-compat contract helper",
+          "function": "source columns 11-71:116",
+          "reason": "Explain the numeric difference between the inspected header count and the set of admissible exact headings in the textContent of the coverage notice.",
+          "validation": "tests/test_production_inspection.py::test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions; scripts/browser-accept-loose-file-preflight.py::_image_index_intake_regression; tests/test_rename_javascript_consumers.py::test_producer_mapping_messages_are_display_text",
+          "source_line_sha256": "d25a78687d22e9e9ff1681f4b7e3b0c507db0db711cb5acf4344ed04f69ced6c"
+        },
+        {
+          "line": 114,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 47-114:75 sha256=76107d94b5e891286e47d06e12e2fb5137eb38a2edfd33eca281dcde1f50eb87; use the rename-compat contract helper",
+          "function": "source columns 47-114:75",
+          "reason": "Identify which selected load file needs a correction by combining its display label with one of the fixed draft validation explanations. The receiver writes the message as status text.",
+          "validation": "tests/test_production_inspection.py::test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions; scripts/browser-accept-loose-file-preflight.py::_image_index_intake_regression; tests/test_rename_javascript_consumers.py::test_producer_mapping_messages_are_display_text",
+          "source_line_sha256": "c306a8ec098efb8b661f09203b489a59ff9389b10710679d84353a8e9edf1f86"
+        },
+        {
+          "line": 143,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 37-143:178 sha256=97a8f9e0c77095237b9b084c10d16fa7f42debaab070e5f5406ee292faaf0525; use the rename-compat contract helper",
+          "function": "source columns 37-143:178",
+          "reason": "Display the absent saved headings inside a fixed lookup diagnostic. Status textContent preserves each heading as text and the absent heading blocks receipt confirmation.",
+          "validation": "tests/test_production_inspection.py::test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions; scripts/browser-accept-loose-file-preflight.py::_image_index_intake_regression; tests/test_rename_javascript_consumers.py::test_producer_mapping_messages_are_display_text",
+          "source_line_sha256": "e23f01d3ab2e9b07ae32a4d2b78f61265c5c777b89c55b2f432e9bb220f14944"
+        },
+        {
+          "line": 143,
+          "identifier": "unsupported JavaScript construction (.join()) at 98-143:142 sha256=48bec2d039018ee9de2cb55dc478bb1baad24c157378e48da4e14f8be5ef0c5b; use the rename-compat contract helper",
+          "function": "source columns 98-143:142",
+          "reason": "Separate each unavailable saved heading with a comma for the lookup status. This list is solely diagnostic; the exact field-role pairs remain separately validated.",
+          "validation": "tests/test_production_inspection.py::test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions; scripts/browser-accept-loose-file-preflight.py::_image_index_intake_regression; tests/test_rename_javascript_consumers.py::test_producer_mapping_messages_are_display_text",
+          "source_line_sha256": "e23f01d3ab2e9b07ae32a4d2b78f61265c5c777b89c55b2f432e9bb220f14944"
+        }
+      ]
     }
   }
 }
