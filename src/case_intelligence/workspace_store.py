@@ -303,12 +303,15 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
             ).fetchone()
             pending_migrations = []
             if needs_speech_grants:
-                pending_migrations.append("0052_speech_model_grants.sql")
+                speech_grants = resources.files("case_intelligence").joinpath(
+                    "migrations/sqlite/0052_speech_model_grants.sql").read_text(encoding="utf-8")
+                pending_migrations.append(("speech model grants", speech_grants))
             production_columns = {row[1] for row in self.connection.execute("PRAGMA table_info(workbench_discovery_production)")}
             if "profile_positions_json" not in production_columns:
-                pending_migrations.append("0053_intake_dat_profile.sql")
-            for name in pending_migrations:
-                migration = resources.files("case_intelligence").joinpath("migrations/sqlite", name).read_text(encoding="utf-8")
+                dat_profile = resources.files("case_intelligence").joinpath(
+                    "migrations/sqlite/0053_intake_dat_profile.sql").read_text(encoding="utf-8")
+                pending_migrations.append(("intake DAT profile", dat_profile))
+            for name, migration in pending_migrations:
                 statement = ""
                 for line in migration.splitlines(keepends=True):
                     statement += line
