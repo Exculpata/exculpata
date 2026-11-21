@@ -37,6 +37,20 @@
       <h3>{{ record.source_format }} record {{ record.ordinal }}{% if record.kind == 'rejected' %} · Rejected{% endif %}</h3>
       <p class="dr-provenance">{{ record.source_name }} · source {{ record.source_document_id }} · version {{ record.source_version_id }} · line {{ record.line }}</p>
       {% if record.association_status %}<p class="dr-muted">Association: {{ record.association_status }}</p>{% endif %}
+      {% if record.files.matched %}
+      <p><a data-dat-file="matched" href="{{ record.files.matched.url }}">Open matched source</a> · {{ record.files.matched.path }}</p>
+      {% endif %}
+      {% if record.files.text %}
+      <p><a data-dat-file="text" href="{{ record.files.text.url }}">Open produced text</a> · {{ record.files.text.path }}</p>
+      {% elif record.files.text_status and record.files.text_status != 'absent' %}
+      <p class="dr-muted" data-dat-text-status="{{ record.files.text_status }}">
+        Produced text{% if record.files.text_path %} · {{ record.files.text_path }}{% endif %} ·
+        {% if record.files.text_status == 'ambiguous' %}More than one field or file matches the text reference.
+        {% elif record.files.text_status == 'unsafe_path' %}The supplied reference is not a safe production-relative path.
+        {% elif record.files.text_status == 'conflict' %}The document association is ambiguous or conflicting.
+        {% else %}The text file is unavailable at this path in this production.{% endif %}
+      </p>
+      {% endif %}
       {% if record.diagnostics %}<ul class="dr-production-findings">{% for finding in record.diagnostics %}<li>{{ finding }}</li>{% endfor %}</ul>{% endif %}
       {% if record.recoverable %}<dl>
         {% for cell in record.display_cells %}<div data-record-cell="{{ cell.position }}"><dt><span class="dr-muted">Position {{ cell.position }}</span>{% if cell.has_header %}<pre>{{ cell.label }}</pre>{% endif %}</dt><dd>{% if cell.has_value %}<pre>{{ cell.value }}</pre>{% else %}<span class="dr-muted">No recoverable cell</span>{% endif %}</dd></div>{% endfor %}

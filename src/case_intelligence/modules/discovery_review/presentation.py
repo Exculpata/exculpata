@@ -163,7 +163,8 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
     available = [key for key, offered in (("document", bool(item.embedded) or page_records), ("text", item.has_text),
                                           ("fields", True)) if offered]
     active = view if view in available else available[0]
-    source_url = f"/matters/{slug}/sources/{item.token}"
+    sources_url = f"/matters/{slug}/sources"
+    source_url = f"{sources_url}/{item.token}"
     fragment = f"/matters/{slug}/production/items/{item.token}"
     parsed_url = urlsplit(list_url)
     base_query = {key: value for key, value in parse_qsl(parsed_url.query)
@@ -222,7 +223,7 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
     else:
         panel["fields"] = item_fields(definition, item, choice)
         if record_window is not None and record_window['category'] == 'document':
-            panel['records'] = record_panel(definition, record_window, links, view='fields')
+            panel['records'] = record_panel(definition, record_window, links, view='fields', sources_url=sources_url)
     if panel.get('records') and panel['records']['current_cursor']:
         panel['state'].update(record=panel['records']['current_cursor'], record_dir='at')
         for record in panel['records']['rows']:
@@ -258,7 +259,7 @@ def indexed_images(record, attempt, slug, links):
             'next': browse(window['next_start']) if window['next_start'] else ''}
 
 
-def record_panel(definition: Definition, window: dict, links, *, view: str) -> dict:
+def record_panel(definition: Definition, window: dict, links, *, view: str, sources_url: str = "") -> dict:
     """Render bounded stored records exactly, including unrecoverable values."""
     kind = 'dat' if window['category'] == 'document' else 'opt'
     attempt = window['attempt']
@@ -274,7 +275,12 @@ def record_panel(definition: Definition, window: dict, links, *, view: str) -> d
                 headings or (), supplied or (), fillvalue=None), 1):
             cells.append({'position': ordinal, 'label': label, 'value': value,
                           'has_header': label is not None, 'has_value': value is not None})
-        rows.append({**record, 'display_cells': cells, 'recoverable': supplied is not None,
+        files = dict(record.get('files', {}))
+        for role in ('matched', 'text'):
+            if source := files.get(role):
+                token = action_token(source['document_id'], source['version_id'])
+                files[role] = {**source, 'url': f'{sources_url}/{token}'}
+        rows.append({**record, 'files': files, 'display_cells': cells, 'recoverable': supplied is not None,
                      'source_format': str(record.get('source_format') or attempt['source_format']).upper()})
     current = window.get('current')
     cursor = f"{kind}:{attempt_id}:{current['ordinal']}" if current else ''

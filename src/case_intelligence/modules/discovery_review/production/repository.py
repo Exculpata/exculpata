@@ -19,6 +19,7 @@ from pathlib import PurePosixPath
 from typing import Callable, Mapping
 
 from case_intelligence.modules import ModuleDatabase
+from ..fields import MAX_HEADER_CHARS, normalize_header
 from .matching import path_key
 
 MAX_ORDINAL = 9_223_372_036_854_775_807
@@ -848,7 +849,8 @@ class ProductionRepository:
                 row["root_key"] = root_key
         return rows
 
-    def catalog_key_candidates(self, matter_id, root_key, *, kind, value, compatible_path="", excluded_document_id=""):
+    def catalog_key_candidates(self, matter_id, root_key, *, kind, value, compatible_path="",
+                               excluded_document_id="", excluded_stem_id=""):
         """Return at most two qualifying identities: sufficient to prove ambiguity."""
         try:
             receipt, root = json.loads(root_key)
@@ -891,6 +893,9 @@ class ProductionRepository:
                       "i.relative_path=u.relative_path", "c.relative_path=u.relative_path",
                       "substr(c.relative_path,1,?)=?", "(?<>'' OR c.relative_path NOT LIKE '%/%')"))
         arguments.extend((matter_id, receipt, excluded_document_id, len(prefix), prefix, root))
+        if kind == "stem" and excluded_stem_id:
+            where.append("c.document_id<>?")
+            arguments.append(excluded_stem_id)
         where.append("NOT EXISTS (SELECT 1 FROM workbench_upload_item item "
                      "CROSS JOIN workbench_intake_transfer other WHERE item.matter_id=c.matter_id "
                      "AND item.document_id=c.document_id AND other.matter_id=item.matter_id "
@@ -915,7 +920,29 @@ class ProductionRepository:
         return self.catalog_key_candidates(matter_id, root_key, kind="path", value=key,
             excluded_document_id=excluded_document_id)
 
-    def candidate_lookup(self, matter_id, root_key, *, paths=(), labels=(), after="", limit=100, excluded_document_id=""):
+    def dat_text_companion(self, matter_id, attempt, record):
+        """Resolve one explicitly supplied DAT text path within its source receipt."""
+        if attempt["source_format"] != "dat" or record["kind"] != "accepted":
+            return "", "absent", None
+        paths = [value for header, value in zip(record["headers"] or (), record["cells"] or ())
+                 if len(header) <= MAX_HEADER_CHARS and normalize_header(header) in {"text", "textpath"}]
+        if len(paths) > 1:
+            return "", "ambiguous", None
+        if not paths or not paths[0].strip():
+            return "", "absent", None
+        value = paths[0]
+        if not path_key(value):
+            return value, "unsafe_path", None
+        candidates = self.exact_path_candidates(matter_id, attempt["root_key"], value,
+            excluded_document_id=attempt["document_id"])
+        if len(candidates) > 1:
+            return value, "ambiguous", None
+        if not candidates or candidates[0]["media_type"] != "text/plain":
+            return value, "unavailable", None
+        return value, "matched", candidates[0]
+
+    def candidate_lookup(self, matter_id, root_key, *, paths=(), labels=(), after="", limit=100,
+                         excluded_document_id="", excluded_stem_id=""):
         """Combine bounded per-key uniqueness proofs, retaining independent keys.
 
         Matching only needs zero, one, or two qualifying identities for each key.
@@ -966,7 +993,8 @@ class ProductionRepository:
                     retain(rows)
                     found = True
             if not found:
-                retain(self.catalog_key_candidates(matter_id, root_key, kind="stem", value=key, excluded_document_id=excluded_document_id))
+                retain(self.catalog_key_candidates(matter_id, root_key, kind="stem", value=key,
+                    excluded_document_id=excluded_document_id, excluded_stem_id=excluded_stem_id))
         with self.db.lock:
             for row in selected.values():
                 row["root_key"] = root_key

@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to, refresh_page
+from browser_navigation import navigate_to, refresh_page, wait_for_replacement
 
 import argparse
 import base64
@@ -329,7 +329,7 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
     def opened(selector, label, *, ready=True, outcome="clean"):
         scanner.ready, scanner.outcome = ready, outcome
         matter = bench.create_matter(f"Synthetic image index {label}", "Generated intake acceptance", ACTOR)
-        navigate_to(driver, f"{base_url}/matters/{matter.slug}", diagnostics=output,
+        navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
                     page_load_timeout=20, readiness_timeout=20)
         for input_id in ("source-files", "source-folder"):
             element = wait.until(lambda current: current.find_element(By.ID, input_id))
@@ -347,8 +347,7 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
     def confirmed(matter, expected):
         confirm = driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]")
         _require(confirm.is_enabled(), "eligible image-index selection cannot be confirmed")
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", confirm)
-        confirm.click()
+        confirm.send_keys(Keys.ENTER)
         _wait_until(lambda: bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR),
                     "image-index confirmation did not create an upload session")
         session = _wait_until(lambda: (
@@ -438,9 +437,22 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
             rows = reviewed(2)
             _require(all(row.get_attribute("data-state") == "needs_attention" for row in rows),
                      "unavailable required scanner allowed image-index eligibility")
-            _require(not driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]").is_enabled()
-                     and scanner.scan_calls == before_scans,
-                     "scanner-unavailable preview was admitted or scanned")
+            confirm = driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]")
+            _require(confirm.is_enabled() and confirm.text == "Save selection receipt",
+                     "an all-skipped selection did not offer a receipt")
+            confirm.send_keys(Keys.ENTER)
+            wait.until(lambda current: "No file bytes were uploaded." in current.find_element(
+                By.CSS_SELECTOR, "[data-upload-preflight-status]").text)
+            receipt_url = driver.find_element(By.CSS_SELECTOR, "[data-intake-receipt-open]").get_attribute("href")
+            navigate_to(driver, receipt_url, diagnostics=output, page_load_timeout=20, readiness_timeout=20)
+            receipt_rows = driver.find_elements(By.CSS_SELECTOR, "[data-intake-row]")
+            _require(len(receipt_rows) == 2 and all(
+                row.get_attribute("data-disposition") == "skipped"
+                and row.get_attribute("data-transfer") == "not_received" for row in receipt_rows),
+                "the receipt did not account for both scanner-blocked selections")
+            _require(not bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR)
+                     and not bench.source_store(matter).documents and scanner.scan_calls == before_scans,
+                     "saving the scanner-unavailable receipt transferred or scanned a file")
 
             for outcome in ("infected", "indeterminate"):
                 matter, element = opened(selector, f"{selector} {outcome}", outcome=outcome)
@@ -563,7 +575,9 @@ def main() -> int:
             driver.find_element(By.ID, "matter-descriptor").send_keys(
                 "Generated selection preflight acceptance"
             )
-            driver.find_element(By.CSS_SELECTOR, ".matter-form button[type='submit']").click()
+            submit_matter = driver.find_element(By.CSS_SELECTOR, ".matter-form button[type='submit']")
+            submit_matter.click()
+            wait_for_replacement(driver, wait, submit_matter)
             wait.until(lambda current: "/setup" in current.current_url)
             slug = urlparse(driver.current_url).path.split("/")[2]
             driver.find_element(By.CSS_SELECTOR, "[data-assistant-collapse]").click()
