@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from .intake_receipts import MAX_METADATA_BATCH_BYTES
 from .malware_scan import scanner_status
 from .modules.discovery_review.inspection import inspect_load_file
-from .modules.discovery_review.reference_qc import SelectionInventory
+from .modules.discovery_review.reference_qc import InvalidInventory, SelectionInventory
 from .pilot_uploads import UploadProblem
 from .source_admission import LOAD_FILE_SUFFIXES
 from .source_load_files import LoadFileError
@@ -57,9 +57,11 @@ def _parse_inventory(raw, suffix):
 
     try:
         inventory = SelectionInventory(json.loads(raw.decode("utf-8"), object_pairs_hook=unique_keys))
+    except InvalidInventory as exc:
+        raise UploadProblem(str(exc), 400) from None
     except (UnicodeError, ValueError, RecursionError):
         raise UploadProblem("The selection inventory is invalid. Review the folder again.", 400) from None
-    if PurePosixPath(inventory.index_path.replace("\\", "/")).suffix.casefold() != suffix:
+    if PurePosixPath(inventory.index_path).suffix.casefold() != suffix:
         raise UploadProblem("The selected index does not match its file type.", 400)
     return inventory
 
@@ -137,7 +139,7 @@ def install_production_inspection(app, *, bench, auth_context, refresh_authority
                     raise UploadProblem("The file size changed. Choose the file again.", 400)
                 await run_in_threadpool(stream.flush)
                 sha256 = digest.hexdigest()
-                inspect = inspect_load_file if inventory is None else partial(inspect_load_file, inventory=inventory)
+                inspect = partial(inspect_load_file, inventory=inventory, verified_sha256=sha256)
                 report = await run_in_threadpool(store.inspect_staged_load_file, path, suffix, sha256, inspect)
                 report["sha256"] = sha256
             finally:
@@ -147,6 +149,8 @@ def install_production_inspection(app, *, bench, auth_context, refresh_authority
             return transfer_lease(request, JSONResponse(report), through_send=True)
         except UploadProblem as exc:
             return JSONResponse({"message": str(exc)}, status_code=exc.status_code)
+        except InvalidInventory as exc:
+            return JSONResponse({"message": str(exc)}, status_code=409)
         except LoadFileError:
             return JSONResponse({"message": "The load file could not be inspected completely."}, status_code=422)
         except OSError:

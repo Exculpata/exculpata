@@ -1,5 +1,6 @@
 """Bounded record previews of a single scanned, structurally validated load file."""
 from collections import Counter
+import hashlib
 from itertools import islice
 import unicodedata
 
@@ -7,6 +8,7 @@ from case_intelligence.source_image_load_files import detect_image_load_file, pa
 from case_intelligence.source_load_files import DAT_INTAKE_ROLES, DAT_TEXT_HEADER_KEYS, LoadFileError, parse_dat, parse_opt
 
 from .fields import MAX_HEADER_CHARS, load_definition, normalize_header
+from .production.matching import DatProfileError, profile_positions
 from .reference_qc import InvalidInventory, ReferenceQC, SelectionInventory
 
 
@@ -36,14 +38,40 @@ def _mapping_choices(headers, definition):
             "suggestions": {h: role for h, role in choices.items() if counts[role] == 1}}
 
 
-def inspect_load_file(path, suffix, *, inventory=None):
+def _reference_roles(headers, definition, fields):
+    try:
+        assigned = dict(profile_positions(headers, fields))
+    except DatProfileError as error:
+        raise InvalidInventory("A selected DAT heading is missing or ambiguous in this index.") from error
+    overrides = set(assigned.values())
+    path_roles = {"native_path": "native", "text_path": "text"}
+    for position, header in enumerate(headers):
+        role = assigned.get(position)
+        if role is None and len(header) <= MAX_HEADER_CHARS:
+            key = normalize_header(header)
+            if "native_path" not in overrides and key in definition.path_headers:
+                role = "native_path"
+            elif "text_path" not in overrides and key in DAT_TEXT_HEADER_KEYS:
+                role = "text_path"
+        if role in path_roles:
+            yield position, path_roles[role]
+
+
+def inspect_load_file(path, suffix, *, inventory=None, verified_sha256=None):
     """Inspect one authorized staged file; embedded path strings stay inert."""
     source_format = suffix.casefold().removeprefix(".")
-    qc = None
+    qc, profile = None, None
     if inventory is not None:
         selected = inventory if isinstance(inventory, SelectionInventory) else SelectionInventory(inventory)
         if not selected.index_path.casefold().endswith("." + source_format):
             raise InvalidInventory("The selected index does not have the requested filename extension.")
+        profile = selected.dat_profile
+        if profile:
+            if verified_sha256 is None:
+                with open(path, "rb") as staged:
+                    verified_sha256 = hashlib.file_digest(staged, "sha256").hexdigest()
+            if verified_sha256 != profile["sha256"]:
+                raise InvalidInventory("The inspected DAT no longer matches the proposed mapping.")
         qc = ReferenceQC(selected)
     if source_format in {"dii", "lfp"}:
         detected = detect_image_load_file(path)
@@ -89,15 +117,12 @@ def inspect_load_file(path, suffix, *, inventory=None):
             encoding = event.next_cursor["encoding"]
         if event.kind == "header":
             mapping.update(_mapping_choices(event.headers or (), definition))
-            for position, header in enumerate(event.headers or ()):
-                key = normalize_header(header)
-                if key in definition.path_headers:
-                    roles.append((position, "native"))
-                elif key in DAT_TEXT_HEADER_KEYS:
-                    roles.append((position, "text"))
+            roles.extend(_reference_roles(event.headers or (), definition, profile["fields"] if profile else {}))
             return
         record_count += 1
         diagnostics.update(event.diagnostics)
+        if not qc and len(rows) >= SAMPLE_LIMIT:
+            return
         cells = event.cells or ()
         if source_format == "dat":
             for position, role in roles:
@@ -134,4 +159,6 @@ def inspect_load_file(path, suffix, *, inventory=None):
             "rows": rows, "sample_limit": SAMPLE_LIMIT}
     if qc:
         report["reference_qc"] = qc.report()
+        if source_format == "dat":
+            report["reference_qc"]["dat_mapping"] = "custom" if profile else "standard"
     return report

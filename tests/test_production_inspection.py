@@ -1,4 +1,5 @@
 """Preview bounded synthetic load-file records before a selection is admitted."""
+import hashlib
 import json
 
 import pytest
@@ -85,7 +86,7 @@ def test_reference_qc_counts_each_occurrence_and_cites_late_dat_rows(tmp_path):
                 ["Volume/images/both.pdf", True], ["Volume/Volume/images/both.pdf", True],
                 ["Volume/unsupported.bin", False], ["Other/foreign.pdf", True],
                 ["Volume/case.pdf", True], ["Volume/CASE.PDF", False], ["Volume/extras/byname.txt", True],
-                ["volume/foreign.pdf", True], ["../Volume/gone.pdf", False]]
+                ["volume/foreign.pdf", True]]
     report = inspect_load_file(write_file(tmp_path, "data", body.encode()), ".dat",
         inventory={"index": 0, "files": selected})
     assert len(report["rows"]) == 20 and report["rows"][0]["references"][0]["status"] == "matched"
@@ -121,11 +122,37 @@ def test_loose_selection_names_do_not_prove_a_production_path(tmp_path):
     {"index": 0, "files": [["index.opt", False]]}, {"index": 0, "files": [["../index.opt", True]]},
     {"index": 0, "files": [["index.opt", True], ["INDEX.OPT", False]]},
     {"index": 0, "files": [["index.opt", True], ["x.png", 1]]},
+    {"index": 0, "files": [["Vol/index.opt", True], [r"Vol/Images\A1.png", True]]},
+    {"index": 0, "files": [["Vol/index.opt", True], ["../Vol/Images/A1.png", False]]},
 ])
 def test_invalid_inventory_cannot_return_a_clean_reference_report(tmp_path, manifest):
     source = write_file(tmp_path, "index", b"A1,V,A1.png,Y,,,1\n")
     with pytest.raises(ValueError):
         inspect_load_file(source, ".opt", inventory=manifest)
+
+
+def test_role_overrides_recheck_every_dat_reference_against_the_original_digest(tmp_path):
+    headings = ("NATIVEPATH", "TEXT", "Provided original", "Provided words")
+    body = (dat_record(headings) + "".join(dat_record(("old.pdf", "unrelated", "native.pdf",
+        "text.txt" if n < 20 else "late.txt")) for n in range(21))).encode()
+    staged = write_file(tmp_path, "index", body)
+    inventory = {"index": 0, "files": [["Vol/index.dat", True], ["Vol/native.pdf", True], ["Vol/text.txt", True]]}
+    ordinary = inspect_load_file(staged, ".dat", inventory=inventory)["reference_qc"]
+    assert ordinary["dat_mapping"] == "standard" and ordinary["counts"]["missing"] == 42
+    mapping = {"Provided original": "native_path", "Provided words": "text_path", "TEXT": "begin_bates"}
+    profile = {"sha256": hashlib.sha256(body).hexdigest(), "fields": mapping}
+    mapped = inspect_load_file(staged, ".dat", inventory={**inventory, "dat_profile": profile})
+    qc = mapped["reference_qc"]
+    assert qc["dat_mapping"] == "custom" and qc["total"] == 42
+    assert qc["counts"]["matched"] == 41 and qc["counts"]["missing"] == 1
+    assert [(v["role"], v["path"]) for v in mapped["rows"][0]["references"]] == [
+        ("native", "native.pdf"), ("text", "text.txt")]
+    assert [(v["ordinal"], v["line"], v["path"]) for v in qc["examples"]] == [(21, 22, "late.txt")]
+    for bad in ({"sha256": "0" * 64}, {"fields": {"Missing heading": "native_path"}},
+                {"fields": {"TEXT": "native_path", "NATIVEPATH": "native_path"}},
+                {"fields": {"TEXT": "unknown"}}, {"fields": {}}):
+        with pytest.raises(ValueError):
+            inspect_load_file(staged, ".dat", inventory={**inventory, "dat_profile": {**profile, **bad}})
 
 
 def test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions(tmp_path):

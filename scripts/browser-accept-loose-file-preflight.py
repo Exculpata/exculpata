@@ -28,7 +28,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import Select, WebDriverWait
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -317,18 +317,34 @@ def _selection_reference_qc_regression(driver, wait, bench, base_url, output):
     matter = bench.create_matter("Synthetic reference inspection", "Generated folder selection", ACTOR)
     navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
                 page_load_timeout=20, readiness_timeout=20)
+    def inspect_for(basis):
+        driver.find_element(By.CSS_SELECTOR, "[data-inspect-production]").send_keys(Keys.ENTER)
+        wait.until(lambda current: current.find_elements(By.CSS_SELECTOR, f'[data-reference-mapping="{basis}"]'))
+
+    def choose_dat(name):
+        chooser = Select(driver.find_element(By.CSS_SELECTOR, "exculpata-production-inspection select"))
+        option = next(item for item in chooser.options if item.text.endswith("/" + name))
+        chooser.select_by_value(option.get_attribute("value"))
+
+    def mapping_editor():
+        editor = driver.find_element(By.CSS_SELECTOR, "exculpata-dat-mapping")
+        details = editor.find_element(By.TAG_NAME, "details")
+        if details.get_dom_attribute("open") is None:
+            details.find_element(By.TAG_NAME, "summary").send_keys(Keys.ENTER)
+        return editor
+
     with tempfile.TemporaryDirectory() as tmp:
         folder = Path(tmp) / "Delivery"
         folder.mkdir()
         # The suite's 128-byte file limit also applies to this real upload.
-        data = b"PATH\x14ID\n" + b"\x14x\n" * 20 + b"ok.txt\x14y\nabsent.txt\x14z\n"
+        data = b"PATH\x14SIDE\n" + b"\x14\n" * 20 + b"ok.txt\x14ok.txt\nabsent.txt\x14other.txt\n"
         (folder / "index.dat").write_bytes(data)
         (folder / "ok.txt").write_bytes(b"Generated companion text.")
         _select(driver.find_element(By.ID, "source-folder"), [folder])
         inspect = wait.until(lambda current: (
             button if (button := current.find_element(By.CSS_SELECTOR, "[data-inspect-production]")).is_displayed()
             and button.is_enabled() else False))
-        inspect.click()
+        inspect.send_keys(Keys.ENTER)
         wait.until(lambda current: "Showing 20 of 22 documents" in current.find_element(
             By.CSS_SELECTOR, "[data-production-inspection-status]").text)
         for status, expected in (("matched", "1"), ("missing", "1"), ("ambiguous", "0")):
@@ -339,6 +355,12 @@ def _selection_reference_qc_regression(driver, wait, bench, base_url, output):
                  "the path after the record sample has no cited finding")
         _require("absent.txt" not in driver.find_element(By.CSS_SELECTOR, "[data-production-inspection-rows]").text,
                  "the late finding was substituted into the record sample")
+        editor = mapping_editor()
+        editor.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated inspection producer")
+        editor.find_element(By.CSS_SELECTOR, '[data-role="native_path"]').send_keys("SIDE")
+        inspect_for("custom")
+        custom = driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text
+        _require("other.txt" in custom and "absent.txt" not in custom, "custom DAT paths did not replace the default role")
         receipts = IntakeReceipts(bench.workspace)
         _require(not receipts.recent(matter.matter_id, ACTOR)
                  and not bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR)
@@ -346,6 +368,47 @@ def _selection_reference_qc_regression(driver, wait, bench, base_url, output):
         driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]").send_keys(Keys.ENTER)
         _wait_until(lambda: len(bench.source_store(matter).documents) == 2, "confirmed originals did not arrive")
         _require(len(receipts.recent(matter.matter_id, ACTOR)) == 1, "confirmation did not save one receipt")
+
+        navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
+                    page_load_timeout=20, readiness_timeout=20)
+        second = folder.rename(Path(tmp) / "Second")
+        (second / "alternate.dat").write_bytes(b"PATH\x14SIDE\nok.txt\x14other.txt\n")
+        _select(driver.find_element(By.ID, "source-folder"), [second])
+        wait.until(lambda current: current.find_element(By.CSS_SELECTOR, "[data-inspect-production]").is_displayed())
+        choose_dat("index.dat")
+        inspect_for("standard")
+        editor = mapping_editor()
+        editor.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated inspection producer")
+        editor.find_element(By.CSS_SELECTOR, "[data-load-profile]").send_keys(Keys.ENTER)
+        wait.until(lambda _driver: editor.find_element(By.CSS_SELECTOR, '[data-role="native_path"]').get_attribute("value") == "SIDE")
+        inspect_for("custom")
+        _require("other.txt" in driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text,
+                 "reused producer mapping was not used in the selection check")
+        choose_dat("alternate.dat")
+        inspect_for("standard")
+        mapping_editor().find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Incomplete producer")
+        choose_dat("index.dat")
+        inspect_for("custom")
+        _require("other.txt" in driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text,
+                 "switching DATs lost the selected mapping or applied the other DAT's draft")
+        choose_dat("alternate.dat")
+        inspect_for("standard")
+        editor = mapping_editor()
+        _require(editor.find_element(By.CSS_SELECTOR, "[data-profile-producer]").get_attribute("value")
+                 == "Incomplete producer", "the unfinished mapping could not be reopened")
+        editor.find_element(By.CSS_SELECTOR, "[data-clear-profile]").send_keys(Keys.ENTER)
+        choose_dat("index.dat")
+        # Apply the same byte-limit boundary against the small synthetic fixture.
+        driver.execute_script("document.querySelector('[data-upload-form]').dataset.maxPreflightRequestBytes = '16'")
+        driver.find_element(By.CSS_SELECTOR, "[data-inspect-production]").send_keys(Keys.ENTER)
+        wait.until(lambda current: "Only the index was inspected." in current.find_element(
+            By.CSS_SELECTOR, "[data-production-inspection-details]").text)
+        _require(not driver.find_elements(By.CSS_SELECTOR, "[data-reference-count]"),
+                 "index-only inspection claimed selection-wide coverage")
+        _require(driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]").is_enabled(),
+                 "index-only preview blocked normal confirmation")
+        _require(len(receipts.recent(matter.matter_id, ACTOR)) == 1,
+                 "inspecting a second selection created a receipt")
 
 
 def _image_index_intake_regression(driver, wait, bench, base_url, output):
