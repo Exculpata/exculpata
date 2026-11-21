@@ -25,7 +25,7 @@ from case_intelligence.source_load_file_qc import (
     family_record, family_diagnostics, family_pair_diagnostics, family_order_key,
 )
 
-PARSER_REVISION = "production-record-events-1"
+PARSER_REVISION = "production-record-events-2"
 MAX_RESTARTS = 3
 def source_identity(store):
     return store.source_changes.epoch
@@ -604,10 +604,22 @@ class ProductionService:
         elif not attempt["root_key"]:
             status = "ambiguous_production"
         else:
-            active = active or initial_match(projection)
+            if active is None:
+                active = initial_match(projection)
+                _, text_status, companion = self.repository.dat_text_companion(matter_id, attempt, row)
+                if text_status not in {"absent", "matched"}:
+                    active["unresolved_text"] = True
+                if companion is not None:
+                    active["text_companion_id"] = companion["document_id"]
+                    if len(projection.paths) == 1:
+                        native = self.repository.exact_path_candidates(matter_id, attempt["root_key"],
+                            projection.paths[0], excluded_document_id=attempt["document_id"])
+                        if len(native) == 1 and native[0]["document_id"] != companion["document_id"]:
+                            active["excluded_stem_id"] = companion["document_id"]
             candidates = self.repository.candidate_lookup(matter_id, attempt["root_key"], paths=projection.paths,
                 labels={key: projection.keys[key] for key in ("begin_bates", "end_bates", "control_number")},
-                after=active["after"], limit=16, excluded_document_id=attempt["document_id"])
+                after=active["after"], limit=16, excluded_document_id=attempt["document_id"],
+                excluded_stem_id=active.get("excluded_stem_id", ""))
             for candidate in candidates:
                 active["after"] = candidate["document_id"]
                 if (candidate["root_key"] != attempt["root_key"] or candidate["document_id"] == attempt["document_id"]
@@ -1140,6 +1152,47 @@ class ProductionService:
         return {"document_id": document.document_id, "version_id": document.version_id,
                 "media_type": candidate["media_type"]}
 
+    def dat_record_files(self, matter_id, attempt, record):
+        """Expose only versioned originals admitted with this completed DAT record."""
+        if (attempt["source_format"] != "dat" or attempt["status"] != "complete"
+                or record["kind"] != "accepted" or record["generation"] != attempt["generation"]
+                or not attempt["root_key"]):
+            return {}
+        store = self.binding(matter_id)["store"]
+
+        def source(candidate):
+            if (not candidate or candidate["source_state"] != "ready" or candidate["origin"] != "upload"
+                    or self.repository.provenance(matter_id, candidate["document_id"], candidate["version_id"])
+                    != attempt["root_key"]):
+                return None
+            try:
+                document = store.get(candidate["document_id"])
+                store.source_path(document.document_id)
+            except (KeyError, UploadProblem):
+                return None
+            if document.version_id != candidate["version_id"] or document.state != "ready":
+                return None
+            return {"document_id": document.document_id, "version_id": document.version_id,
+                    "path": document.relative_path}
+
+        with store.mutation_guard(), self.repository.db.lock:
+            current = self.repository.current_attempt(matter_id, attempt["document_id"])
+            if (not current or any(current[key] != attempt[key] for key in
+                    ("attempt_id", "status", "generation", "target", "input_revision"))
+                    or not self.attempt_current(matter_id, current)):
+                raise ProductionStale("This production changed. Reload to inspect its current files.")
+            path, status, text = self.repository.dat_text_companion(matter_id, attempt, record)
+            association = record["association_status"]
+            matched = None
+            if association == "matched":
+                matched = source(self.repository.catalog(matter_id, record["document_id"]))
+            if status == "matched" and association not in {"matched", "unmatched"}:
+                status, text = "conflict", None
+            companion = source(text) if text else None
+            if status == "matched" and not companion:
+                status = "unavailable"
+            return {"matched": matched, "text": companion, "text_path": path, "text_status": status}
+
     def record_window(self, matter_id, attempt_id, *, category, ordinal=0,
                       direction="at", document_id="", limit=100):
         if category not in {"document", "page"} or direction not in {"at", "next", "previous"}:
@@ -1186,6 +1239,8 @@ class ProductionService:
         following = self.repository.records(matter_id, attempt_id, category=category, after=selected["ordinal"],
                                             document_id=scope, group_ordinal=group, limit=1)
         selected = {**selected, "image": self.page_image(matter_id, attempt, selected) if category == "page" else None}
+        if category == "document":
+            selected["files"] = self.dat_record_files(matter_id, attempt, selected)
         return {"records": (selected,), "current": selected,
             "previous": record_cursor(category, attempt_id, previous[0]["ordinal"]) if previous else "",
             "next": record_cursor(category, attempt_id, following[0]["ordinal"]) if following else "",
