@@ -180,12 +180,14 @@ def decode_attempt(row: dict | None):
             row['input_revision'] = revision['revision']
             row['dependencies'] = revision['dependencies']
         row["headers"] = json.loads(row["headers_json"])
+        row["profile_positions"] = json.loads(row["profile_positions_json"])
         row["counts"] = {key: int(row[key + "_count"]) for key in COUNT_NAMES}
     return row
 
 
 def decode_record(row: dict, category: str) -> dict:
     row["category"] = category
+    row["profile_positions"] = json.loads(row["profile_positions_json"])
     for key in ("headers", "cells", "diagnostics", "optional_values", "semantic", "association_diagnostics"):
         row[key] = json.loads(row[key + "_json"])
     row["values"] = row["cells"]
@@ -495,7 +497,7 @@ class ProductionRepository:
         if category not in TABLES:
             raise ValueError("unknown production record category")
         return ("SELECT r.*,p.document_id AS source_id,p.version_id,p.digest,p.name,p.relative_path,"
-                "p.source_format,p.root_key,p.status AS attempt_status,p.generation AS attempt_generation "
+                "p.source_format,p.root_key,p.profile_positions_json,p.status AS attempt_status,p.generation AS attempt_generation "
                 "FROM " + TABLES[category] + " r JOIN workbench_discovery_production p "
                 "ON p.matter_id=r.matter_id AND p.attempt_id=r.attempt_id ")
 
@@ -817,6 +819,37 @@ class ProductionRepository:
             return ""
         root = path.parts[0] if len(path.parts) > 1 else ""
         return encoded([rows[0]["receipt_id"], root])
+
+    def dat_profile(self, matter_id, source):
+        """Require the mapped receipt entry to be the only proof for this ready upload."""
+        from .matching import DatProfileError
+        with self.db.lock:
+            rows = result_rows(self.execute(
+                "SELECT t.receipt_id,i.relative_path,p.digest,p.fields_json FROM workbench_upload_item u "
+                "JOIN workbench_source_catalog c ON c.matter_id=u.matter_id AND c.document_id=u.document_id "
+                "JOIN workbench_intake_transfer t ON t.matter_id=u.matter_id AND t.upload_item_id=u.upload_item_id "
+                "JOIN workbench_intake_item i ON i.receipt_id=t.receipt_id AND i.matter_id=t.matter_id AND i.ordinal=t.ordinal "
+                "JOIN workbench_intake_receipt r ON r.receipt_id=i.receipt_id AND r.matter_id=i.matter_id "
+                "LEFT JOIN workbench_intake_dat_profile p ON p.receipt_id=i.receipt_id AND p.matter_id=i.matter_id AND p.ordinal=i.ordinal "
+                "WHERE c.matter_id=? AND c.document_id=? AND t.source_version_id=? AND c.version_id=t.source_version_id "
+                "AND c.source_state='ready' AND c.origin='upload' AND u.state='queued' AND r.state='ready' "
+                "AND c.relative_path=u.relative_path AND i.relative_path=u.relative_path "
+                "ORDER BY (p.digest IS NULL),t.receipt_id,t.ordinal LIMIT 2",
+                (matter_id, source.document_id, source.version_id)))
+        if not rows or rows[0]["fields_json"] is None:
+            return ()
+        row = rows[0]
+        if (len(rows) != 1 or not source.root_key or json.loads(source.root_key)[0] != row["receipt_id"]
+                or row["relative_path"] != source.relative_path):
+            raise DatProfileError("The confirmed DAT mapping needs an unambiguous production receipt.")
+        if row["digest"] != source.digest:
+            raise DatProfileError("The original digest differs from the confirmed DAT mapping.")
+        return json.loads(row["fields_json"])
+
+    def set_dat_profile_positions(self, matter_id, attempt_id, positions):
+        self.execute("UPDATE workbench_discovery_production SET profile_positions_json=? "
+                     "WHERE matter_id=? AND attempt_id=? AND status='building' AND phase='parse'",
+                     (encoded(positions), matter_id, attempt_id))
 
     def candidates(self, matter_id, root_key, *, after="", limit=100):
         """Seek a bounded proven-root candidate window, retaining ambiguity flags."""

@@ -7,6 +7,7 @@ import json
 import re
 import unicodedata
 
+from case_intelligence.source_load_files import DAT_INTAKE_ROLES
 from ..fields import MAX_HEADER_CHARS, normalize_header
 
 
@@ -36,18 +37,41 @@ class Projection:
     diagnostics: tuple[str, ...]
 
 
-def project_record(headers, cells, definition) -> Projection:
+class DatProfileError(ValueError):
+    """The confirmed DAT mapping cannot be applied to this admitted original."""
+
+
+def profile_positions(headers, fields):
+    """Resolve exact headings once, against the original DAT header."""
+    if not fields:
+        return []
+    mapped = dict(fields)
+    if (len(mapped) != len(fields) or len(set(mapped.values())) != len(mapped)
+            or not set(mapped.values()) <= DAT_INTAKE_ROLES):
+        raise DatProfileError("The confirmed DAT field mapping is invalid.")
+    positions = [[position, mapped[heading]] for position, heading in enumerate(headers or ())
+                 if heading in mapped]
+    if len(positions) != len(mapped) or len({role for _, role in positions}) != len(mapped):
+        raise DatProfileError("A confirmed DAT header is missing or occurs more than once.")
+    return positions
+
+
+def project_record(headers, cells, definition, mapped_positions=()) -> Projection:
     """Preserve every field; an ambiguous alias never establishes a value."""
     if headers is None or cells is None or len(headers) != len(cells):
         return Projection({}, (), (), {}, "", ("unrecoverable_record",))
     raw = tuple(zip(headers, cells))
+    assigned = dict(mapped_positions)
+    overrides = {"document_date" if role == "date" else role: cells[index]
+                 for index, role in mapped_positions}
     positions = {}
     for index, header in enumerate(headers):
-        if len(header) <= MAX_HEADER_CHARS:
+        if index not in assigned and len(header) <= MAX_HEADER_CHARS:
             positions.setdefault(normalize_header(header), []).append(index)
-    values, diagnostics = {}, set()
+    values = {key: value for key, value in overrides.items() if key != "native_path"}
+    diagnostics = set()
     for field in definition.fields:
-        if field.computed or not field.headers:
+        if field.computed or not field.headers or field.key in overrides:
             continue
         indexes = {index for header in field.headers
                    for index in positions.get(normalize_header(header), ())}
@@ -55,17 +79,20 @@ def project_record(headers, cells, definition) -> Projection:
             values[field.key] = cells[next(iter(indexes))]
         elif indexes:
             diagnostics.add("ambiguous_header")
-    paths = []
-    for normalized, indexes in positions.items():
-        if normalized not in definition.path_headers:
-            continue
-        if len(indexes) != 1:
-            diagnostics.add("ambiguous_header")
-            continue
-        value = cells[indexes[0]]
-        if value.strip():
-            paths.append(value)
-    paths = tuple(paths)
+    if "native_path" in overrides:
+        paths = (overrides["native_path"],) if overrides["native_path"].strip() else ()
+    else:
+        paths = []
+        for normalized, indexes in positions.items():
+            if normalized not in definition.path_headers:
+                continue
+            if len(indexes) != 1:
+                diagnostics.add("ambiguous_header")
+                continue
+            value = cells[indexes[0]]
+            if value.strip():
+                paths.append(value)
+        paths = tuple(paths)
     if any(not path_key(value) for value in paths):
         diagnostics.add("unsafe_path")
     keys = {key: label_key(values.get(key, "")) for key in (
