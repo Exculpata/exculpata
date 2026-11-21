@@ -346,8 +346,7 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
 
     def mapping_form():
         button = driver.find_element(By.CSS_SELECTOR, "[data-inspect-production]")
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'});", button)
-        button.click()
+        button.send_keys(Keys.SPACE)
         mapping = wait.until(lambda current: (
             element if (element := current.find_element(By.TAG_NAME, "exculpata-dat-mapping")).is_displayed() else None))
         details = mapping.find_element(By.TAG_NAME, "details")
@@ -358,8 +357,7 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
     def confirmed(matter, expected):
         confirm = driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]")
         _require(confirm.is_enabled(), "eligible image-index selection cannot be confirmed")
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", confirm)
-        confirm.click()
+        confirm.send_keys(Keys.SPACE)
         _wait_until(lambda: bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR),
                     "image-index confirmation did not create an upload session")
         session = _wait_until(lambda: (
@@ -374,6 +372,8 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
     os.environ["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] = "0"
     try:
         driver.set_window_size(1536, 1024)
+        driver.execute_cdp_cmd("Emulation.setEmulatedMedia", {
+            "features": [{"name": "prefers-reduced-motion", "value": "reduce"}]})
         for selector in ("source-files", "source-folder"):
             folder = selector == "source-folder"
             matter, element = opened(selector, f"{selector} clean")
@@ -453,8 +453,7 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
                 mapping.find_element(By.CSS_SELECTOR, "[data-load-profile]").click()
                 wait.until(lambda _: "Unavailable headings: A" in mapping.text)
                 confirm = driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]")
-                driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'});", confirm)
-                confirm.click()
+                confirm.send_keys(Keys.SPACE)
                 wait.until(lambda _: "Choose exact headings" in mapping.text)
                 _require(len(receipts.recent(matter.matter_id, ACTOR)) == 1, "a missing mapped heading reached a receipt")
                 completed.append("producer DAT mapping reaches the receipt, can be reused and detects missing headings")
@@ -502,6 +501,7 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
                          "non-clean image index escaped the real scan decision")
             completed.append(f"{selector}:type,size,empty,count,duplicate and scanner controls retained")
     finally:
+        driver.execute_cdp_cmd("Emulation.setEmulatedMedia", {"features": []})
         bench.malware_scanner = original_scanner
         if original_reserve is None:
             os.environ.pop("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", None)
