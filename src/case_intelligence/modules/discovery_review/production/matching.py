@@ -116,7 +116,7 @@ def observe_candidate(state: dict, projection: Projection, candidate: dict) -> N
     for key, tiers in state["evidence"].items():
         if key.startswith("path:"):
             supplied = path_key(projection.paths[int(key.split(":")[1])])
-            if supplied == candidate_path:
+            if supplied in (candidate_path, candidate_path.partition("/")[2]):
                 remember(tiers["exact"], document_id)
             elif (basename == supplied.rsplit("/", 1)[-1]
                     and (candidate_path.endswith("/" + supplied) or supplied.endswith("/" + candidate_path))):

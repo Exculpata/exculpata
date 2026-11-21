@@ -138,6 +138,7 @@
   "case_intelligence.modules.discovery_review.load_files": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.presentation": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.production": "modules.discovery_review",
+  "case_intelligence.modules.discovery_review.production.image_references": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.production.matching": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.production.repository": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.production.service": "modules.discovery_review",

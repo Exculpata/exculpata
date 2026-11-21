@@ -19,6 +19,7 @@ from pathlib import PurePosixPath
 from typing import Callable, Mapping
 
 from case_intelligence.modules import ModuleDatabase
+from .matching import path_key
 
 MAX_ORDINAL = 9_223_372_036_854_775_807
 MAX_BATCH_RECORDS = 256
@@ -855,9 +856,9 @@ class ProductionRepository:
                 raise ValueError
         except (ValueError, TypeError):
             return ()
-        expressions = {"path": "c.display_name_key", "name": NAME_EXPR, "stem": STEM_EXPR}
+        expressions = {"name": NAME_EXPR, "stem": STEM_EXPR}
         produced = {"begin": "begin_key", "end": "end_key", "control": "control_key"}
-        if kind not in expressions and kind not in produced:
+        if kind != "path" and kind not in expressions and kind not in produced:
             raise ValueError("unsupported candidate key")
         prefix = root + "/" if root else ""
         tables = "workbench_source_catalog c "
@@ -870,6 +871,14 @@ class ProductionRepository:
                           "d.association_status='matched'", "d.generation=p.generation",
                           "c.document_id=d.document_id", "c.matter_id=d.matter_id"))
             arguments.extend((matter_id, value, root_key))
+        elif kind == "path":
+            rooted = prefix.casefold() + value
+            # Modern display names contain the upload path. Some historical
+            # catalogs store the basename. Both preserve the folded relative
+            # path in the search key; require that full path before LIMIT.
+            where.extend(("c.display_name_key IN (?,?,?)",
+                          "c.search_key IN (c.display_name_key||char(10)||?,c.display_name_key||char(10)||?)"))
+            arguments.extend((value, rooted, value.rsplit("/", 1)[-1], value, rooted))
         else:
             where.append(expressions[kind] + "=?")
             arguments.append(value)
@@ -898,6 +907,14 @@ class ProductionRepository:
                 + " ORDER BY c.document_id LIMIT 2", tuple(arguments)))
         return rows
 
+    def exact_path_candidates(self, matter_id, root_key, value, *, excluded_document_id=""):
+        """Require the full supplied path relative to the proven production root."""
+        key = path_key(value)
+        if not key or not root_key:
+            return ()
+        return self.catalog_key_candidates(matter_id, root_key, kind="path", value=key,
+            excluded_document_id=excluded_document_id)
+
     def candidate_lookup(self, matter_id, root_key, *, paths=(), labels=(), after="", limit=100, excluded_document_id=""):
         """Combine bounded per-key uniqueness proofs, retaining independent keys.
 
@@ -925,16 +942,10 @@ class ProductionRepository:
         for path in paths:
             if not isinstance(path, str):
                 raise ValueError("candidate paths must be text")
-            parts = path.replace("\\", "/").split("/")
-            if path.startswith(("/", "\\")) or ".." in parts or any(":" in part for part in parts):
-                continue
-            key = "/".join(part for part in parts if part not in {"", "."}).casefold()
+            key = path_key(path)
             if not key:
                 continue
-            rooted = key if not root or key.startswith(root.casefold() + "/") else root.casefold() + "/" + key
-            exact = self.catalog_key_candidates(matter_id, root_key, kind="path", value=key, excluded_document_id=excluded_document_id)
-            if rooted != key:
-                exact += self.catalog_key_candidates(matter_id, root_key, kind="path", value=rooted, excluded_document_id=excluded_document_id)
+            exact = self.exact_path_candidates(matter_id, root_key, path, excluded_document_id=excluded_document_id)
             if exact:
                 retain(exact)
             else:

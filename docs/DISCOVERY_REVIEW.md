@@ -228,13 +228,26 @@ production boundary. LFP boundaries and DII parent tokens cannot create families
 only accepted DAT attachment declarations have that authority. Conflicting or
 unsupported relationship assertions remain QC rather than guessed ancestry.
 
-Document shows explicit LFP page metadata and supported admitted JPEG/PNG images;
-DII document values appear through document metadata inspection. Page labels do
-not enter Text or become document Bates through arithmetic. TIFF references show
-metadata and an unavailable-preview explanation until the separate rendering
-slice supplies containment and integrity checks. Parsing neither decodes an
-image nor establishes visual correspondence, applies a rotation, changes source
-page counts or creates searchable text.
+### Opening an image named in an index
+
+Select an OPT or LFP source in **Production documents** and open **Document**.
+Use **Open indexed image** beside a page record to open the image's source
+page, including for a standalone index with no matched document. JPEG and PNG
+can have inline previews. A TIFF link opens its source page, where its stored
+file remains available.
+
+For a DII source, open **Fields**, find the document record and choose **Browse
+listed image files**. **Next files** and **Previous files** move through the
+supplied names in order. Each entry number identifies a position in the DII
+block. Only explicit OPT or LFP page records provide page labels. To inspect a
+different DII block, use **Next records** or **Previous records**.
+
+A file link requires a unique admitted image at the supplied path in the
+same production folder and selection receipt. The source page opens that
+specific file version even when another production uses the same filename.
+Missing and ambiguous references show the supplied name and its status.
+A document's association status and the availability of an individual image
+are reported separately.
 
 ## DAT metadata, explicit page records and families
 
@@ -269,8 +282,8 @@ Only explicit, valid OPT or LFP document groups can associate through an unambig
 accepted DAT class. Rejected records break group continuity. Without OPT or LFP there are no
 per-page Bates labels; labels are never expanded from a range or page count.
 A uniquely admitted JPEG or PNG can appear beside its explicit record. Missing
-images, TIFF images without rendering support, and ambiguous references show
-metadata with an explanation. A separately available PDF does not establish
+images and ambiguous references show metadata with an explanation. An admitted
+TIFF can be opened from its source link. A separately available PDF does not establish
 correspondence between its pages and OPT records. OPT page labels do not enter
 Text, ordinary Fields values or list columns.
 
