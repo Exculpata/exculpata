@@ -126,3 +126,24 @@ def test_invalid_inventory_cannot_return_a_clean_reference_report(tmp_path, mani
     source = write_file(tmp_path, "index", b"A1,V,A1.png,Y,,,1\n")
     with pytest.raises(ValueError):
         inspect_load_file(source, ".opt", inventory=manifest)
+
+
+def test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions(tmp_path):
+    headers = [" Begin Bates ", "BEGDOC", "NATIVE PATH", "Vendor date", "é" * 201, "__proto__"]
+    staged = write_file(tmp_path, "staged", (dat_record(headers) + dat_record(["value"] * len(headers))).encode())
+    profile = inspect_load_file(staged, ".dat")["mapping"]
+    assert profile["headers"] == [*headers[:4], "__proto__"]
+    assert profile["header_count"] == 6
+    assert profile["suggestions"] == {"NATIVE PATH": "native_path"}
+
+
+@pytest.mark.parametrize(("headers", "suggestions"), [
+    (("Text Path",), {"Text Path": "text_path"}),
+    (("Text Path", "TEXT"), {}),
+])
+def test_text_path_suggestions_require_one_recognized_header(tmp_path, headers, suggestions):
+    paths = [f"TEXT/{i}.txt" for i in range(len(headers))]
+    staged = write_file(tmp_path, "sample", (dat_record(headers) + dat_record(paths)).encode())
+    report = inspect_load_file(staged, ".dat")
+    assert report["mapping"]["suggestions"] == suggestions
+    assert report["rows"][0]["references"] == [{"role": "text", "path": path} for path in paths]

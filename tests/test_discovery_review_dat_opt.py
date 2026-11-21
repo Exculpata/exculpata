@@ -636,6 +636,12 @@ def test_record_cursor_validation_and_matter_isolation(review):
         for changes in ({"record_dir": "sideways"}, {"record": "", "record_dir": "next"},
                         {"view": "fields"}, {"record": f"dat:{attempt}:1", "view": "document"}):
             assert review.client.get(endpoint, params={**common, **changes}).status_code == 422
+        dat_cursor = "dat:" + attempts["Generated/load.dat"] + ":1"
+        for options in ({"image_start": 1}, {"view": "fields", "record": "", "image_start": 1},
+                        {"view": "fields", "record": dat_cursor, "image_start": 1, "record_dir": "next"},
+                        {"view": "fields", "record": dat_cursor, "image_start": 1},
+                        {"view": "fields", "record": dat_cursor, "image_start": 0}):
+            assert review.client.get(endpoint, params={**common, **options}).status_code == 422
         assert review.client.get(endpoint, params={**common, "record": f"opt:{attempt}:{MAX_ORDINAL}"}).status_code == 404
         assert review.client.get(endpoint, params={**common, "record": f"opt:{attempt}:2"}).status_code == 404
         assert review.client.get(endpoint, params={**common, "record": f"opt:{'0' * 32}:1"}).status_code == 404
@@ -1018,13 +1024,14 @@ def test_volume_named_subfolder_requires_a_unique_exact_path(tmp_path, role, col
                 assert candidate["relative_path"] == "Generated/" + supplied
 
 
-def test_reopening_prior_matcher_rebuilds_dat_associations(tmp_path, monkeypatch):
+@pytest.mark.parametrize("prior_revision", ["production-record-events-1", "production-record-events-2"])
+def test_reopening_prior_matcher_rebuilds_dat_associations(tmp_path, monkeypatch, prior_revision):
     from case_intelligence.modules.discovery_review.production import service
     from tests.test_discovery_review_dat_opt_storage import finish_import, reopen_storage_case, storage_case
 
     with storage_case(tmp_path, count=1) as current:
         with monkeypatch.context() as previous:
-            previous.setattr(service, "PARSER_REVISION", "production-record-events-1")
+            previous.setattr(service, "PARSER_REVISION", prior_revision)
             old = finish_import(current)
         reopen_storage_case(current, tmp_path)
         for _ in range(30):
