@@ -377,6 +377,23 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
             _require(not bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR),
                      "selection created an upload session before confirmation")
             _require(not bench.source_store(matter).documents, "selection saved originals before confirmation")
+            if folder:
+                indexes = driver.find_element(By.ID, "production-index")
+                options = indexes.find_elements(By.TAG_NAME, "option")
+                _require(len(options) == len(fixtures), "inspection did not offer every eligible load file")
+                for option, (name, _) in zip(options, fixtures, strict=True):
+                    option.click()
+                    driver.find_element(By.CSS_SELECTOR, "[data-inspect-production]").click()
+                    result = wait.until(lambda current: (
+                        summary if name in (summary := current.find_element(
+                            By.CSS_SELECTOR, "[data-production-inspection-status]").text)
+                        and "Showing" in summary else False))
+                    _require(name.rsplit(".", 1)[1] in result, "inspection omitted the detected format")
+                    _require(driver.find_elements(By.CSS_SELECTOR, "[data-production-inspection-rows] > li"),
+                             "inspection returned no sample records")
+                _require(scanner.scan_calls == before_scans + len(fixtures), "inspection skipped required scans")
+                _require(not bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR)
+                         and not bench.source_store(matter).documents, "inspection started an upload")
             driver.save_screenshot(str(output / f"lfp-dii-{selector}-preflight.png"))
             items = confirmed(matter, len(fixtures))
             _require(all(item.state != "failed" for item in items), "supported image-index admission failed")

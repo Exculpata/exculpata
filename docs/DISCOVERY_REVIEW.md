@@ -55,6 +55,20 @@ Rows past the first for one item are counted and not used.
 
 ### Saved load files
 
+To check a production before adding it, choose its enclosing folder in **Add
+sources**. In the selection review, choose an eligible index and select
+**Inspect production**. Exculpata applies the configured upload scanner and
+validates the complete load file. The result gives the format, encoding and
+record count. Open a sample record to see its source line and fields. The
+sample covers the first 20 records and marks any shortened fields or omitted
+references.
+
+The path findings compare the displayed native, text or image references with
+the names in this selection. Check missing or ambiguous paths before deciding
+whether to confirm. Admission and byte checks for the companion files run
+during upload. Canceling inspection or changing the selection discards the
+preview. Confirming the selection creates the receipt.
+
 Use **Choose files** or **Choose a folder** on the workbench's Add sources
 surface to add supported `.dat`, `.opt`, `.lfp`, and `.dii` files, including
 uppercase suffixes. Load-file originals are saved without searchable text.

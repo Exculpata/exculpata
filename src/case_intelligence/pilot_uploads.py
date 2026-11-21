@@ -1066,7 +1066,7 @@ class PilotStore:
             self.malware_scan_mode == "extended" and suffix in EXTENDED_SOURCE_SUFFIXES
         )
 
-    def _scan_staged(self, path: Path, suffix: str, expected_digest: str) -> None:
+    def _scan_staged(self, path: Path, suffix: str, expected_digest: str, *, ephemeral=False) -> None:
         if not self._scan_required(suffix):
             return
         if self.malware_scanner is None:
@@ -1084,6 +1084,8 @@ class PilotStore:
         if result.state == "clean":
             return
         if result.state == "infected":
+            if ephemeral:
+                raise UploadProblem("Security scanning detected malware. Inspection stopped.", 422)
             destination = self.quarantine_root / f"{uuid.uuid4().hex}.blocked"
             try:
                 os.replace(path, destination)
@@ -1104,6 +1106,22 @@ class PilotStore:
             "Security scanning could not verify this file. This file was not added.",
             503,
         )
+
+    def inspect_staged_load_file(self, path: Path, suffix: str, digest: str, read_validated):
+        """Apply current admission policy to an ephemeral index without saving a source."""
+        def inspect_selected(bound, validated_suffix):
+            with bound.open("rb") as source:
+                if hashlib.file_digest(source, "sha256").hexdigest() != digest:
+                    raise UploadProblem("The selected file changed. Choose the file again.", 409)
+            return read_validated(bound, validated_suffix)
+
+        with self.mutation_guard():
+            self._ensure_writable()
+            self._scan_staged(path, suffix, digest, ephemeral=True)
+            try:
+                return validate_load_file(path, suffix=suffix, read_validated=inspect_selected)
+            except LoadFileAdmissionError as exc:
+                raise LoadFileUploadProblem(exc) from None
 
     def _reconcile_staging(self) -> None:
         directory_fd = os.open(self.staging, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)

@@ -3648,6 +3648,20 @@ html[data-theme="dark"] .workspace-page .conversation-history-item.selected {
   display: none;
 }
 
+exculpata-production-inspection fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+exculpata-production-inspection select { max-width: 100%; }
+exculpata-production-inspection [hidden] { display: none; }
+exculpata-production-inspection summary { cursor: pointer; }
+exculpata-production-inspection dt { font-weight: bold; }
+exculpata-production-inspection dd { margin-inline-start: 1em; white-space: pre-wrap; }
+
 .upload-noscript {
   display: flex;
   align-items: center;
