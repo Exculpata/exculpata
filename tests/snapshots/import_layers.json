@@ -143,6 +143,7 @@
   "case_intelligence.modules.discovery_review.production.service": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.purge": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.reader": "modules.discovery_review",
+  "case_intelligence.modules.discovery_review.reference_qc": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.routes": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.stored_index": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.stored_index.keys": "modules.discovery_review",

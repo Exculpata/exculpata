@@ -310,6 +310,44 @@ def _image_index_selection(driver, input_element, fixtures, *, folder):
     )
 
 
+def _selection_reference_qc_regression(driver, wait, bench, base_url, output):
+    """Compare a late DAT reference and confirm the untouched selection through the UI."""
+    from case_intelligence.intake_receipts import IntakeReceipts
+
+    matter = bench.create_matter("Synthetic reference inspection", "Generated folder selection", ACTOR)
+    navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
+                page_load_timeout=20, readiness_timeout=20)
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp) / "Delivery"
+        folder.mkdir()
+        # The suite's 128-byte file limit also applies to this real upload.
+        data = b"PATH\x14ID\n" + b"\x14x\n" * 20 + b"ok.txt\x14y\nabsent.txt\x14z\n"
+        (folder / "index.dat").write_bytes(data)
+        (folder / "ok.txt").write_bytes(b"Generated companion text.")
+        _select(driver.find_element(By.ID, "source-folder"), [folder])
+        inspect = wait.until(lambda current: (
+            button if (button := current.find_element(By.CSS_SELECTOR, "[data-inspect-production]")).is_displayed()
+            and button.is_enabled() else False))
+        inspect.click()
+        wait.until(lambda current: "Showing 20 of 22 documents" in current.find_element(
+            By.CSS_SELECTOR, "[data-production-inspection-status]").text)
+        for status, expected in (("matched", "1"), ("missing", "1"), ("ambiguous", "0")):
+            element = driver.find_element(By.CSS_SELECTOR, f'[data-reference-count="{status}"]')
+            _require(element.text == expected, f"incorrect complete reference count for {status}")
+        findings = driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text
+        _require("Record 22" in findings and "line 23" in findings and "absent.txt" in findings,
+                 "the path after the record sample has no cited finding")
+        _require("absent.txt" not in driver.find_element(By.CSS_SELECTOR, "[data-production-inspection-rows]").text,
+                 "the late finding was substituted into the record sample")
+        receipts = IntakeReceipts(bench.workspace)
+        _require(not receipts.recent(matter.matter_id, ACTOR)
+                 and not bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR)
+                 and not bench.source_store(matter).documents, "temporary inspection admitted the selection")
+        driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]").send_keys(Keys.ENTER)
+        _wait_until(lambda: len(bench.source_store(matter).documents) == 2, "confirmed originals did not arrive")
+        _require(len(receipts.recent(matter.matter_id, ACTOR)) == 1, "confirmation did not save one receipt")
+
+
 def _image_index_intake_regression(driver, wait, bench, base_url, output):
     """Both pickers reach real confirmation; every safety control remains active."""
     from tests.fixtures.load_files.generate_image_indexes import minimal_image_index
@@ -362,6 +400,8 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
     os.environ["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] = "0"
     try:
         driver.set_window_size(1536, 1024)
+        _selection_reference_qc_regression(driver, wait, bench, base_url, output)
+        completed.append("Whole-index reference counts and late findings precede receipt confirmation")
         for selector in ("source-files", "source-folder"):
             folder = selector == "source-folder"
             matter, element = opened(selector, f"{selector} clean")
