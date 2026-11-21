@@ -3659,6 +3659,14 @@ exculpata-production-inspection fieldset {
 exculpata-production-inspection select { max-width: 100%; }
 exculpata-production-inspection [hidden] { display: none; }
 exculpata-production-inspection summary { cursor: pointer; }
+exculpata-dat-mapping [data-field-roles] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.5rem 1rem;
+  margin-block: 1rem;
+}
+exculpata-dat-mapping [data-field-roles] label { display: grid; }
+exculpata-dat-mapping input { min-width: 0; max-width: 100%; }
 exculpata-production-inspection dt { font-weight: bold; }
 exculpata-production-inspection dd { margin-inline-start: 1em; white-space: pre-wrap; }
 

@@ -73,6 +73,7 @@
   class ProductionInspection extends HTMLElement {
     connectedCallback() {
       if (this.chooser) return;
+      this.mapping = this.querySelector("exculpata-dat-mapping");
       this.chooser = this.querySelector("select");
       this.inspect = this.querySelector("[data-inspect-production]");
       this.cancel = this.querySelector("[data-cancel-inspection]");
@@ -89,6 +90,7 @@
     }
 
     resetReport() {
+      this.mapping?.close?.();
       this.request?.abort();
       this.request = null;
       this.cancel.hidden = true;
@@ -99,6 +101,7 @@
     }
 
     clearSelection() {
+      this.mapping?.drafts?.clear();
       this.resetReport();
       this.hidden = true;
       this.files = [];
@@ -140,6 +143,7 @@
         if (request.signal.aborted) return;
         if (!response.ok) throw new Error(report.message || "The inspection could not be completed.");
         showReport(report, this.details, this.rows, selectedPaths(this.files, this.items, index));
+        this.mapping?.open?.(index, label, report);
         const kind = report.record_kind + (report.record_count === 1 ? "" : "s");
         const encoding = report.encoding ? ` · ${report.encoding}` : "";
         this.status.textContent = `${label} · ${report.format.toUpperCase()}${encoding}. Showing ${report.rows.length} of ${report.record_count.toLocaleString()} ${kind}.`;

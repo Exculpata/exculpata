@@ -329,7 +329,7 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
     def opened(selector, label, *, ready=True, outcome="clean"):
         scanner.ready, scanner.outcome = ready, outcome
         matter = bench.create_matter(f"Synthetic image index {label}", "Generated intake acceptance", ACTOR)
-        navigate_to(driver, f"{base_url}/matters/{matter.slug}", diagnostics=output,
+        navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
                     page_load_timeout=20, readiness_timeout=20)
         for input_id in ("source-files", "source-folder"):
             element = wait.until(lambda current: current.find_element(By.ID, input_id))
@@ -343,6 +343,17 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
             rows if len(rows := current.find_elements(By.CSS_SELECTOR, "[data-upload-preflight-items] > li")) == count
             and current.find_element(By.CSS_SELECTOR, "[data-upload-preflight]").get_attribute("aria-busy") is None
             else False))
+
+    def mapping_form():
+        button = driver.find_element(By.CSS_SELECTOR, "[data-inspect-production]")
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'});", button)
+        button.click()
+        mapping = wait.until(lambda current: (
+            element if (element := current.find_element(By.TAG_NAME, "exculpata-dat-mapping")).is_displayed() else None))
+        details = mapping.find_element(By.TAG_NAME, "details")
+        if not details.get_property("open"):
+            details.find_element(By.TAG_NAME, "summary").click()
+        return mapping
 
     def confirmed(matter, expected):
         confirm = driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]")
@@ -394,6 +405,10 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
                 _require(scanner.scan_calls == before_scans + len(fixtures), "inspection skipped required scans")
                 _require(not bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR)
                          and not bench.source_store(matter).documents, "inspection started an upload")
+                options[2].click()
+                mapping = mapping_form()
+                mapping.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated producer")
+                mapping.find_element(By.CSS_SELECTOR, '[data-role="begin_bates"]').send_keys("A")
             driver.save_screenshot(str(output / f"lfp-dii-{selector}-preflight.png"))
             items = confirmed(matter, len(fixtures))
             _require(all(item.state != "failed" for item in items), "supported image-index admission failed")
@@ -413,6 +428,36 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
                          "image-index admission invented searchable text or pages")
             _require(scanner.scan_calls > before_scans, "confirmation bypassed the required content scan")
             completed.append(f"{selector}:LFP,DII,DAT,OPT saved through real confirmation")
+            if folder:
+                from case_intelligence.intake_receipts import IntakeReceipts
+
+                receipts = IntakeReceipts(bench.workspace)
+                saved = receipts.producer_profile(matter.matter_id, ACTOR, "Generated producer")
+                _require(saved and saved["fields"] == {"A": "begin_bates"}, "producer mapping did not reach receipt")
+                navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
+                            page_load_timeout=20, readiness_timeout=20)
+                element = wait.until(lambda current: current.find_element(By.ID, selector))
+                _image_index_selection(driver, element, [("another.DAT", fixtures[2][1])], folder=True)
+                reviewed(1)
+                mapping = mapping_form()
+                mapping.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated producer")
+                mapping.find_element(By.CSS_SELECTOR, "[data-load-profile]").click()
+                wait.until(lambda _: mapping.find_element(By.CSS_SELECTOR, '[data-role="begin_bates"]').get_property("value") == "A")
+                _require(len(receipts.recent(matter.matter_id, ACTOR)) == 1, "looking up a mapping created a receipt")
+                _require("Generated producer" not in driver.execute_script("return JSON.stringify(localStorage);"),
+                         "producer name persisted in browser storage")
+                _image_index_selection(driver, element, [("changed.DAT", "X\x14B\none\x14two\n".encode())], folder=True)
+                reviewed(1)
+                mapping = mapping_form()
+                mapping.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated producer")
+                mapping.find_element(By.CSS_SELECTOR, "[data-load-profile]").click()
+                wait.until(lambda _: "Unavailable headings: A" in mapping.text)
+                confirm = driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]")
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'instant'});", confirm)
+                confirm.click()
+                wait.until(lambda _: "Choose exact headings" in mapping.text)
+                _require(len(receipts.recent(matter.matter_id, ACTOR)) == 1, "a missing mapped heading reached a receipt")
+                completed.append("producer DAT mapping reaches the receipt, can be reused and detects missing headings")
 
             matter, element = opened(selector, f"{selector} blocked types")
             rejected = [("blocked_type.unsupported", b"generated"), ("oversize_index.LFP", b"x" * 129),
@@ -438,9 +483,11 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
             rows = reviewed(2)
             _require(all(row.get_attribute("data-state") == "needs_attention" for row in rows),
                      "unavailable required scanner allowed image-index eligibility")
-            _require(not driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]").is_enabled()
-                     and scanner.scan_calls == before_scans,
-                     "scanner-unavailable preview was admitted or scanned")
+            _require(driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]").text == "Save selection receipt"
+                     and not driver.find_element(By.TAG_NAME, "exculpata-production-inspection").is_displayed()
+                     and not bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR)
+                     and not bench.source_store(matter).documents and scanner.scan_calls == before_scans,
+                     "scanner-unavailable selection offered inspection or an upload")
 
             for outcome in ("infected", "indeterminate"):
                 matter, element = opened(selector, f"{selector} {outcome}", outcome=outcome)

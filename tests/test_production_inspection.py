@@ -74,3 +74,12 @@ def test_malformed_tail_never_returns_a_successful_preview(tmp_path):
     with pytest.raises(LoadFileError) as exc:
         inspect_load_file(write_file(tmp_path, "opt", body.encode()), ".opt")
     assert (exc.value.code, exc.value.line) == ("field_count_mismatch", 29)
+
+
+def test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions(tmp_path):
+    headers = [" Begin Bates ", "BEGDOC", "NATIVE PATH", "Vendor date", "é" * 201, "__proto__"]
+    staged = write_file(tmp_path, "staged", (dat_record(headers) + dat_record(["value"] * len(headers))).encode())
+    profile = inspect_load_file(staged, ".dat")["mapping"]
+    assert profile["headers"] == [*headers[:4], "__proto__"]
+    assert profile["header_count"] == 6
+    assert profile["suggestions"] == {"NATIVE PATH": "native_path"}
