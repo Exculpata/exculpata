@@ -233,6 +233,24 @@ def node_expressions(relative, node_type, predicate):
     return sorted(found)
 
 
+def test_production_inspection_route_contains_only_the_recognized_format():
+    relative = 'src/case_intelligence/static/production-inspection.js'
+    endpoints = node_expressions(relative, 'binary_expression',
+                                 lambda expression: expression.startswith('this.dataset.inspectionUrl +'))
+    [(_, endpoint)] = endpoints
+    run_node("const assert = require('node:assert/strict');\n" + declaration('suffixOf', relative)
+             + "\nfunction endpointFor(file) {return " + endpoint + ";}\n" + r'''
+const component = {dataset: {inspectionUrl: '/matters/m-synthetic/production-inspection/'}};
+for (const format of ['dat', 'opt', 'dii', 'lfp']) {
+  const file = {name: 'Folder # and ?/' + format + '.' + format.toUpperCase()};
+  assert.equal(endpointFor.call(component, file), component.dataset.inspectionUrl + format);
+}
+for (const name of ['Indexed.dat.txt', 'Index.opt?file=name', 'lfp', 'Index.dii/other']) {
+  assert.equal(suffixOf({name}), undefined);
+}
+''')
+
+
 @pytest.mark.parametrize('filename', [
     'browser-accept-assistant-passage.cjs', 'browser-accept-manual-review.cjs',
     'browser-accept-static-site.cjs', 'qa-people-browser.cjs', 'qa-team-groups-browser.cjs',
