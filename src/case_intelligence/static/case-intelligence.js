@@ -433,6 +433,7 @@
   const uploadPreflightStatus = document.querySelector("[data-upload-preflight-status]");
   const uploadPreflightCounts = document.querySelector("[data-upload-preflight-counts]");
   const uploadPreflightItems = document.querySelector("[data-upload-preflight-items]");
+  const productionInspection = document.querySelector("exculpata-production-inspection");
   const uploadPreflightConfirm = document.querySelector("[data-upload-preflight-confirm]");
   const uploadPreflightCancel = document.querySelector("[data-upload-preflight-cancel]");
   let confirmingUploadPreflight = false;
@@ -541,7 +542,7 @@
     }
     if (uploadPreflightStatus) {
       uploadPreflightStatus.textContent = preview.status === "ready"
-        ? `${selected.toLocaleString()} selected ${selected === 1 ? "file is" : "files are"} ready. Nothing has been copied yet.`
+        ? `${selected.toLocaleString()} selected ${selected === 1 ? "file is" : "files are"} ready for upload.`
         : preview.status === "partial"
           ? `${eligible.toLocaleString()} of ${selected.toLocaleString()} selected files can proceed. Files needing attention will stay visible and will not be uploaded.`
           : `None of the ${selected.toLocaleString()} selected files can proceed. Nothing has been copied.`;
@@ -590,7 +591,7 @@
         const scan = item.scan || {};
         const scanText = scan.required
           ? scan.capability === "ready"
-            ? "Security scan required and not run yet"
+            ? "Security scan required and not run yet for upload"
             : "Security scan required, unavailable, and not run"
           : "Security scan not required";
         pending.textContent = `Detected type, readability, source version, and content duplicates pending upload · ${scanText}`;
@@ -1177,6 +1178,7 @@
     document.querySelector('[data-intake-receipt-open]')?.removeAttribute('href');
     const version = preflightVersion + 1;
     preflightVersion = version;
+    productionInspection?.clearSelection?.();
     preflightAbortController?.abort();
     const controller = new AbortController();
     preflightAbortController = controller;
@@ -1241,6 +1243,7 @@
       if (version !== preflightVersion) return;
       activePreflight = preview;
       renderUploadPreflight(preview);
+      productionInspection?.setSelection?.(preflightFiles, preview.items);
       const eligible = preview.eligible_indexes.length;
       const total = preflightFiles.reduce((sum, file) => sum + Number(file.size || 0), 0);
       if (fileSummary) fileSummary.textContent = `${preflightFiles.length.toLocaleString()} selected · ${eligible.toLocaleString()} ready · ${formatBytes(total)}`;
@@ -1920,6 +1923,7 @@
       return;
     }
     setUploadConfirmationBusy(true);
+    productionInspection?.clearSelection?.();
     if (uploadPreflightConfirm) uploadPreflightConfirm.disabled = true;
     if (uploadPreflightState) uploadPreflightState.textContent = "Saving selected-file receipt";
     try {
@@ -1953,6 +1957,7 @@
   uploadPreflightCancel?.addEventListener("click", () => {
     if (confirmingUploadPreflight) return;
     preflightVersion += 1;
+    productionInspection?.clearSelection?.();
     preflightAbortController?.abort();
     preflightAbortController = null;
     preflightFiles = [];

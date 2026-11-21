@@ -363,9 +363,10 @@ class _DiiBlock:
         if self.directory_seen:
             self.problem("dii_duplicate")
             self.retain("@D", text[len("@D "):])
-            return
+            return ""
         self.directory_seen = True
         rest = text[len(grammar["directory_prefix"]):]
+        relative = ""
         if rest and not rest.endswith(grammar["directory_terminator"]):
             self.problem("unsafe_reference")
         else:
@@ -373,6 +374,7 @@ class _DiiBlock:
             if not _safe_reference(relative, directory=True, empty=not rest):
                 self.problem("unsafe_reference")
         self.retain("@D", text[len("@D "):])
+        return relative
 
     def finish(self, next_line=None):
         grammar = DII_GRAMMAR
@@ -396,9 +398,10 @@ def _dii_scalar(text):
     return None
 
 
-def _iter_dii_records(lines, *, first_ordinal, expect_preamble):
+def _iter_dii_records(lines, *, first_ordinal, expect_preamble, on_image_name):
     grammar = DII_GRAMMAR
     block, ordinal, first = None, first_ordinal - 1, expect_preamble
+    relative_directory = ""
     try:
         for line in lines:
             line_error = getattr(line, "diagnostic", "")
@@ -428,6 +431,7 @@ def _iter_dii_records(lines, *, first_ordinal, expect_preamble):
                     yield block.finish(line.line)
                 ordinal += 1
                 block = _DiiBlock(ordinal, line.line)
+                relative_directory = ""
                 block.scalar(*scalar)
                 continue
             if block is None:
@@ -457,7 +461,7 @@ def _iter_dii_records(lines, *, first_ordinal, expect_preamble):
             if scalar is not None:
                 block.scalar(*scalar)
             elif line.text.startswith(grammar["directory_prefix"]):
-                block.directory(line.text)
+                relative_directory = block.directory(line.text)
             elif not block.directory_seen:
                 block.problem("dii_order")
             elif (not _safe_reference(line.text)
@@ -467,6 +471,8 @@ def _iter_dii_records(lines, *, first_ordinal, expect_preamble):
                 block.problem("unsafe_reference")
             else:
                 block.image_entries += 1
+                if on_image_name is not None and not block.codes:
+                    on_image_name(block.ordinal, relative_directory, line.text)
         if block is not None:
             yield block.finish()
         elif first_ordinal == 1:
@@ -481,7 +487,8 @@ def _iter_dii_records(lines, *, first_ordinal, expect_preamble):
                                cells=None, diagnostics=(error.code,))
 
 
-def iter_image_index_records(lines, *, source_format, first_ordinal=1, expect_preamble=True):
+def iter_image_index_records(lines, *, source_format, first_ordinal=1, expect_preamble=True,
+                             on_image_name=None):
     """Consume supplied physical lines into bounded, source-cited raw structure.
 
     The input is an iterable of public LoadFileLine or ImageIndexLine records. Admission
@@ -496,7 +503,8 @@ def iter_image_index_records(lines, *, source_format, first_ordinal=1, expect_pr
     if type(first_ordinal) is not int or first_ordinal < 1 or type(expect_preamble) is not bool:
         raise ValueError("The structural stream requires a positive ordinal and explicit preamble policy.")
     if source_format == "dii":
-        yield from _iter_dii_records(lines, first_ordinal=first_ordinal, expect_preamble=expect_preamble)
+        yield from _iter_dii_records(lines, first_ordinal=first_ordinal, expect_preamble=expect_preamble,
+                                     on_image_name=on_image_name)
     elif source_format == "lfp":
         ordinal = first_ordinal - 1
         try:
@@ -697,12 +705,13 @@ def _check_records(path: Path, suffix: str) -> None:
         raise LoadFileAdmissionError("missing_records")
 
 
-def validate_load_file(path: str | os.PathLike[str], *, suffix: str) -> None:
+def validate_load_file(path: str | os.PathLike[str], *, suffix: str, read_validated=None):
     """Exhaust the staged file under its owner's mutation guard without changing it.
 
     The caller enforces configured upload byte limits before this boundary. The
     opened descriptor and pathname must retain the same regular-file identity
-    throughout signature and parser reads. Supplied paths in records stay inert.
+    throughout signature and parser reads. Optional inspection reads the same
+    verified descriptor. Supplied paths in records stay inert.
     Decoder reopens require Linux procfs descriptor paths; unavailable procfs
     fails closed with read_error rather than validating an unbound pathname.
     """
@@ -732,9 +741,11 @@ def validate_load_file(path: str | os.PathLike[str], *, suffix: str) -> None:
             _check_image_records(bound)
         else:
             _check_records(bound, suffix)
+        result = read_validated(bound, suffix) if read_validated is not None else None
         if (_identity(os.fstat(descriptor)) != _identity(opened)
                 or _identity(path.stat(follow_symlinks=False)) != _identity(opened)):
             raise LoadFileAdmissionError("changed_file", format_group=format_group)
+        return result
     except OSError:
         raise LoadFileAdmissionError("read_error", format_group=format_group) from None
     finally:

@@ -928,6 +928,9 @@ def test_setup_exposes_review_before_upload_and_no_script_fallback(tmp_path):
     assert f'data-max-preflight-request-bytes="{PREFLIGHT_REQUEST_BYTES}"' in response.text
     assert 'data-upload-preflight' in response.text
     assert 'data-upload-preflight-items' in response.text
+    assert f'data-inspection-url="/matters/{slug}/production-inspection/"' in response.text
+    assert 'id="production-index"' in response.text
+    assert 'Inspect production' in response.text
     assert 'data-upload-preflight-confirm' in response.text
     folder_input = re.search(r'<input\b[^>]*\bid="source-folder"[^>]*>', response.text)
     assert folder_input is not None

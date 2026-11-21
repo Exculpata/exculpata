@@ -7,9 +7,9 @@ def parse_lfp(path, *, findings=None, on_event=None, cursor=None):
     return parse(path, findings=findings, on_event=on_event, cursor=cursor)
 
 
-def parse_dii(path, *, findings=None, on_event=None, cursor=None):
+def parse_dii(path, *, findings=None, on_event=None, cursor=None, on_image_name=None):
     from .dii import parse_dii as parse
-    return parse(path, findings=findings, on_event=on_event, cursor=cursor)
+    return parse(path, findings=findings, on_event=on_event, cursor=cursor, on_image_name=on_image_name)
 
 
 def detect_image_load_file(path, *, name=None):
