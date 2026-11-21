@@ -28,6 +28,8 @@ _FIELD_ALIASES = {
     "TEXT": "text_path", "TEXTPATH": "text_path", "NATIVE": "native_path",
     "NATIVEPATH": "native_path", "DATE": "date", "MD5": "md5", "SHA1": "sha1", "SHA256": "sha256",
 }
+DAT_INTAKE_ROLES = frozenset({"begin_bates", "end_bates", "begin_attachment",
+                              "end_attachment", "native_path", "date"})
 
 
 @dataclass(frozen=True)
