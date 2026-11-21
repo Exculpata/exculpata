@@ -7,7 +7,7 @@ import json
 import re
 import unicodedata
 
-from case_intelligence.source_load_files import DAT_INTAKE_ROLES
+from case_intelligence.source_load_files import DAT_INTAKE_ROLES, DAT_TEXT_HEADER_KEYS
 from ..fields import MAX_HEADER_CHARS, normalize_header
 
 
@@ -56,6 +56,17 @@ def profile_positions(headers, fields):
     return positions
 
 
+def dat_text_paths(headers, cells, mapped_positions=()):
+    """An explicit companion role replaces defaults; reassigned headings lose their old role."""
+    assigned = dict(mapped_positions)
+    for position, role in assigned.items():
+        if role == "text_path":
+            return (cells[position],)
+    return tuple(value for position, (header, value) in enumerate(zip(headers, cells))
+                 if position not in assigned and len(header) <= MAX_HEADER_CHARS
+                 and normalize_header(header) in DAT_TEXT_HEADER_KEYS)
+
+
 def project_record(headers, cells, definition, mapped_positions=()) -> Projection:
     """Preserve every field; an ambiguous alias never establishes a value."""
     if headers is None or cells is None or len(headers) != len(cells):
@@ -68,7 +79,7 @@ def project_record(headers, cells, definition, mapped_positions=()) -> Projectio
     for index, header in enumerate(headers):
         if index not in assigned and len(header) <= MAX_HEADER_CHARS:
             positions.setdefault(normalize_header(header), []).append(index)
-    values = {key: value for key, value in overrides.items() if key != "native_path"}
+    values = {key: value for key, value in overrides.items() if key not in {"native_path", "text_path"}}
     diagnostics = set()
     for field in definition.fields:
         if field.computed or not field.headers or field.key in overrides:
@@ -98,8 +109,12 @@ def project_record(headers, cells, definition, mapped_positions=()) -> Projectio
     keys = {key: label_key(values.get(key, "")) for key in (
         "begin_bates", "end_bates", "control_number", "begin_attachment", "end_attachment")}
     keys["path"] = path_key(paths[0]) if len(paths) == 1 else ""
-    fingerprint = hashlib.sha256(json.dumps(
-        {"values": sorted(values.items()), "raw": sorted(raw)},
+    facts = {"values": sorted(values.items()), "raw": sorted(raw)}
+    if mapped_positions:
+        text_paths = dat_text_paths(headers, cells, mapped_positions)
+        if text_paths != dat_text_paths(headers, cells):
+            facts["mapped_text_paths"] = text_paths
+    fingerprint = hashlib.sha256(json.dumps(facts,
         ensure_ascii=False, separators=(",", ":"),
     ).encode()).hexdigest()
     return Projection(values, raw, paths, keys, fingerprint, tuple(sorted(diagnostics)))

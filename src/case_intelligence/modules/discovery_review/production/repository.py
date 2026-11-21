@@ -19,8 +19,7 @@ from pathlib import PurePosixPath
 from typing import Callable, Mapping
 
 from case_intelligence.modules import ModuleDatabase
-from ..fields import MAX_HEADER_CHARS, normalize_header
-from .matching import path_key
+from .matching import dat_text_paths, path_key
 
 MAX_ORDINAL = 9_223_372_036_854_775_807
 MAX_BATCH_RECORDS = 256
@@ -957,8 +956,7 @@ class ProductionRepository:
         """Resolve one explicitly supplied DAT text path within its source receipt."""
         if attempt["source_format"] != "dat" or record["kind"] != "accepted":
             return "", "absent", None
-        paths = [value for header, value in zip(record["headers"] or (), record["cells"] or ())
-                 if len(header) <= MAX_HEADER_CHARS and normalize_header(header) in {"text", "textpath"}]
+        paths = dat_text_paths(record["headers"] or (), record["cells"] or (), record["profile_positions"])
         if len(paths) > 1:
             return "", "ambiguous", None
         if not paths or not paths[0].strip():

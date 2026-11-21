@@ -409,6 +409,7 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
                 mapping = mapping_form()
                 mapping.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated producer")
                 mapping.find_element(By.CSS_SELECTOR, '[data-role="begin_bates"]').send_keys("A")
+                mapping.find_element(By.CSS_SELECTOR, '[data-role="text_path"]').send_keys("B")
             driver.save_screenshot(str(output / f"lfp-dii-{selector}-preflight.png"))
             items = confirmed(matter, len(fixtures))
             _require(all(item.state != "failed" for item in items), "supported image-index admission failed")
@@ -433,7 +434,7 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
 
                 receipts = IntakeReceipts(bench.workspace)
                 saved = receipts.producer_profile(matter.matter_id, ACTOR, "Generated producer")
-                _require(saved and saved["fields"] == {"A": "begin_bates"}, "producer mapping did not reach receipt")
+                _require(saved and saved["fields"] == {"A": "begin_bates", "B": "text_path"}, "producer mapping did not reach receipt")
                 navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
                             page_load_timeout=20, readiness_timeout=20)
                 element = wait.until(lambda current: current.find_element(By.ID, selector))
@@ -443,6 +444,8 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
                 mapping.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated producer")
                 mapping.find_element(By.CSS_SELECTOR, "[data-load-profile]").click()
                 wait.until(lambda _: mapping.find_element(By.CSS_SELECTOR, '[data-role="begin_bates"]').get_property("value") == "A")
+                _require(mapping.find_element(By.CSS_SELECTOR, '[data-role="text_path"]').get_property("value") == "B",
+                         "produced text path was lost when reusing a mapping")
                 _require(len(receipts.recent(matter.matter_id, ACTOR)) == 1, "looking up a mapping created a receipt")
                 _require("Generated producer" not in driver.execute_script("return JSON.stringify(localStorage);"),
                          "producer name persisted in browser storage")

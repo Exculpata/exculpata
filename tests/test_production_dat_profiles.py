@@ -13,6 +13,16 @@ from tests.test_discovery_review_dat_opt import (
     all_records, complete_listing, dat_bytes, import_paths, opened_review, source_text, upload_production,
 )
 from tests.test_intake_receipt_http import descriptor, selection
+from tests.test_production_text_companions import dat_files, file_link, open_production_list
+
+
+def upload_mapped_files(review, files, index, mapping, *, expected_digest=None):
+    profile = {"producer": index.split("/")[0], "sha256": expected_digest or hashlib.sha256(files[index]).hexdigest(),
+               "fields": mapping}
+    items = [descriptor(path, len(body)) for path, body in files.items()]
+    items[list(files).index(index)]["dat_profile"] = profile
+    receipt = selection(review.client, review.matter.slug, items, list(range(len(files))), key=uuid.uuid4().hex)
+    upload_production(review, files, receipt=receipt)
 
 
 def profiled_volume(review, root, columns, mapping, *, expected_digest=None):
@@ -20,12 +30,7 @@ def profiled_volume(review, root, columns, mapping, *, expected_digest=None):
     native = root + "/NATIVES/original.txt"
     data = dat_bytes(columns, [("RX001", "RX002", "NATIVES/original.txt", "2025-02-04", root)])
     files = {index: data, native: source_text(len(root))}
-    profile = {"producer": root, "sha256": expected_digest or hashlib.sha256(data).hexdigest(),
-               "fields": mapping}
-    items = [dict(descriptor(index, len(data)), dat_profile=profile),
-             descriptor(native, len(files[native]))]
-    receipt = selection(review.client, review.matter.slug, items, [0, 1], key=uuid.uuid4().hex)
-    upload_production(review, files, receipt=receipt)
+    upload_mapped_files(review, files, index, mapping, expected_digest=expected_digest)
     return index, native, data
 
 
@@ -96,3 +101,58 @@ def test_explicit_family_and_native_roles_supersede_default_aliases():
     assert projected.raw_fields == tuple(zip(headers, values))
     with pytest.raises(DatProfileError, match="header"):
         profile_positions((*headers, "Household"), mapping)
+
+
+def test_projection_distinguishes_conflicting_interpretations_of_identical_text_cells():
+    headers = ("BEGBATES", "NATIVEPATH", "TEXTPATH", "Transcript")
+    cells = ("R001", "NATIVES/R001.pdf", "OCR/first.txt", "OCR/second.txt")
+    definition = fields.load_definition()
+    automatic = project_record(headers, cells, definition)
+    confirmed = project_record(headers, cells, definition, [[2, "text_path"]])
+    other = project_record(headers, cells, definition, [[3, "text_path"]])
+    assert automatic.fingerprint == confirmed.fingerprint != other.fingerprint
+    assert automatic.raw_fields == other.raw_fields == tuple(zip(headers, cells))
+    assert automatic.paths == other.paths == ("NATIVES/R001.pdf",)
+    assert automatic.values == other.values == {"begin_bates": "R001"}
+
+
+def test_custom_text_column_links_the_admitted_companion_without_establishing_identity(tmp_path):
+    with opened_review(tmp_path / "runtime") as review:
+        index = "Volume/DATA/index.dat"
+        files = {index: dat_bytes(("BEGBATES", "Original", "Transcript", "TEXTPATH"), [
+                     ("RX001", r"NATIVES\RX001.txt", r"TEXT\RX001.txt", "OTHER/old.txt"),
+                     ("RX002", "", "TEXT/RX002.txt", ""),
+                     ("RX003", "NATIVES/RX003.txt", "TEXT/RX003.txt", "")]),
+                 "Volume/NATIVES/RX001.txt": source_text(1), "Volume/TEXT/RX001.txt": source_text(2),
+                 "Volume/OTHER/old.txt": source_text(3), "Volume/TEXT/RX002.txt": source_text(4),
+                 "Volume/NATIVES/RX003.txt": source_text(5), "Volume/TEXT/RX003.txt": source_text(6),
+                 "Volume/OTHER/RX003.txt": source_text(7)}
+        upload_mapped_files(review, files, index, {"Original": "native_path", "Transcript": "text_path"})
+        open_production_list(review)
+        for selected in (index, "Volume/NATIVES/RX001.txt"):
+            article = dat_files(review, selected)
+            assert r"TEXT\RX001.txt" in article and "OTHER/old.txt" in article
+            for role, path in (("matched", "Volume/NATIVES/RX001.txt"), ("text", "Volume/TEXT/RX001.txt")):
+                url = file_link(article, role)
+                assert url == f"/matters/{review.matter.slug}/sources/{review.token(path)}"
+                assert review.client.get(url + "/content").content == files[path]
+        text_only = dat_files(review, index, 2)
+        assert file_link(text_only, "matched") is None
+        assert file_link(text_only, "text") == f"/matters/{review.matter.slug}/sources/{review.token('Volume/TEXT/RX002.txt')}"
+        conflict = dat_files(review, index, 3)
+        assert file_link(conflict, "text") is None and file_link(conflict, "matched") is None
+        assert "ambiguous_match" in conflict
+
+
+def test_standard_text_column_remapped_to_native_loses_text_authority(tmp_path):
+    with opened_review(tmp_path / "runtime") as review:
+        index = "Volume/DATA/index.dat"
+        files = {index: dat_bytes(("BEGBATES", "TEXTPATH", "NATIVEPATH"), [
+                     ("RX001", "confirmed/file.txt", "former/decoy.txt")]),
+                 "Volume/confirmed/file.txt": source_text(1), "Volume/former/decoy.txt": source_text(2)}
+        upload_mapped_files(review, files, index, {"TEXTPATH": "native_path", "NATIVEPATH": "date"})
+        open_production_list(review)
+        article = dat_files(review, index)
+        assert file_link(article, "matched") == f"/matters/{review.matter.slug}/sources/{review.token('Volume/confirmed/file.txt')}"
+        assert file_link(article, "text") is None
+        assert "former/decoy.txt" in article

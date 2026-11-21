@@ -25,7 +25,7 @@ from case_intelligence.source_load_file_qc import (
     family_record, family_diagnostics, family_pair_diagnostics, family_order_key,
 )
 
-PARSER_REVISION = "production-record-events-2"
+PARSER_REVISION = "production-record-events-3"
 MAX_RESTARTS = 3
 def source_identity(store):
     return store.source_changes.epoch

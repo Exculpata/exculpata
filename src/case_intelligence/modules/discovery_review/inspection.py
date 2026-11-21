@@ -4,7 +4,7 @@ from itertools import islice
 import unicodedata
 
 from case_intelligence.source_image_load_files import detect_image_load_file, parse_dii, parse_lfp
-from case_intelligence.source_load_files import DAT_INTAKE_ROLES, LoadFileError, parse_dat, parse_opt, propose_field_map
+from case_intelligence.source_load_files import DAT_INTAKE_ROLES, DAT_TEXT_HEADER_KEYS, LoadFileError, parse_dat, parse_opt
 
 from .fields import MAX_HEADER_CHARS, load_definition, normalize_header
 
@@ -19,8 +19,8 @@ PATH_LENGTH = 1024
 def _mapping_choices(headers, definition):
     offered = [header for header in headers if header.strip() and len(header) <= MAX_HEADER_CHARS
                and not any(unicodedata.category(char) in {"Cc", "Cf", "Cs"} for char in header)]
-    aliases = {"native_path": definition.path_headers}
-    for role in DAT_INTAKE_ROLES - {"native_path"}:
+    aliases = {"native_path": definition.path_headers, "text_path": DAT_TEXT_HEADER_KEYS}
+    for role in DAT_INTAKE_ROLES - aliases.keys():
         field = definition.by_key.get("document_date" if role == "date" else role)
         if field:
             aliases[role] = {normalize_header(alias) for alias in field.headers}
@@ -81,7 +81,7 @@ def inspect_load_file(path, suffix):
                 key = normalize_header(header)
                 if key in definition.path_headers:
                     roles.append((position, "native"))
-                elif "text_path" in propose_field_map((key.upper(),)).values():
+                elif key in DAT_TEXT_HEADER_KEYS:
                     roles.append((position, "text"))
             return
         record_count += 1

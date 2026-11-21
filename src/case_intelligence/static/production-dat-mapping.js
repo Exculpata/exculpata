@@ -2,7 +2,7 @@
   const roles = [
     ["begin_bates", "Begin Bates"], ["end_bates", "End Bates"],
     ["begin_attachment", "Family begins"], ["end_attachment", "Family ends"],
-    ["native_path", "Native file path"], ["date", "Document date"],
+    ["native_path", "Native file path"], ["text_path", "Produced text path"], ["date", "Document date"],
   ];
 
   class DatMapping extends HTMLElement {
