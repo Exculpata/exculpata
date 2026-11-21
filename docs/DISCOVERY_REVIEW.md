@@ -237,6 +237,21 @@ together. A path cannot override a contradictory identifier, and a Team ID is
 never an import match key. Ambiguous or unproven matches remain inspectable and
 unassociated. Adding an admitted source can resolve a formerly unmatched row.
 
+Open the DAT source's **Fields** and select a record. **Open matched source**
+opens the admitted file associated with that record. If the DAT supplies a
+`TEXT` or `TEXTPATH` column, **Open produced text** opens the separately
+uploaded plain-text file at that exact production-relative path. Both links
+use the actual source version and show its admitted path. The same links are
+available in the matched source's **Fields**. A record with no matched native
+can still open its explicitly identified text file.
+
+A filename alone cannot locate a text file in another directory. A missing,
+ambiguous or unsafe text reference stays visible in the record, along with
+the reason a link is unavailable. A conflicting document association also
+withholds the links. The text file keeps its own source page and bytes when
+it shares a filename stem with the native. The native's **Text** view
+continues to identify text extracted from that native.
+
 Equivalent repeated DAT rows retain every locator. Unequal competing rows do
 not select a winner or merge complementary values: their whole DAT association
 is withheld with a cited conflict. Conflicting CSV or TSV metadata likewise
@@ -252,7 +267,7 @@ million-record cutoff, including records visible only on the OPT source.
 Expired generation links require reloading rather than silently rebinding.
 
 Only explicit, valid OPT or LFP document groups can associate through an unambiguous
-accepted DAT class. Rejected records break group continuity. Without OPT or LFP there are no
+accepted document metadata record (DAT or supported DII, for example). Rejected records break group continuity. Without OPT or LFP there are no
 per-page Bates labels; labels are never expanded from a range or page count.
 A uniquely admitted JPEG or PNG can appear beside its explicit record. Missing
 images, TIFF images without rendering support, and ambiguous references show

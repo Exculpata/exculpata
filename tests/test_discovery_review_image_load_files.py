@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import hashlib
 from contextlib import ExitStack
-from io import BytesIO
 import json
 from pathlib import Path
+import subprocess
 import time
 import uuid
 import zipfile
 
-from PIL import Image
 import pytest
 
 from case_intelligence.matter_archive import ArchiveProblem, build_matter_archive, cleanup_archive
@@ -30,9 +29,10 @@ from tests.test_load_file_admission import forbid_path_io
 
 
 def image_bytes(kind, color):
-    output = BytesIO()
-    Image.new("RGB", (7, 5), color).save(output, format=kind)
-    return output.getvalue()
+    return subprocess.run(
+        ["convert", "-size", "7x5", f"xc:{color}", "-strip", f"{kind}:-"],
+        check=True, capture_output=True, timeout=15,
+    ).stdout
 
 
 def upload_image_production(review, files):
