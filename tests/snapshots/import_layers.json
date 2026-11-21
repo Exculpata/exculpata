@@ -166,6 +166,7 @@
   "case_intelligence.pilot_uploads": "core.sources",
   "case_intelligence.playback_process_helper": "core.sources",
   "case_intelligence.private_media_jobs": "modules.transcription",
+  "case_intelligence.production_field_profile_routes": "app_shell",
   "case_intelligence.production_inspection_routes": "app_shell",
   "case_intelligence.production_summary": "modules.deliverables",
   "case_intelligence.production_summary_routes": "app_shell",

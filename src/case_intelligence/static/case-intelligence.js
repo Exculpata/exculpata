@@ -1714,11 +1714,14 @@
     if (/[\p{Cc}\p{Cf}\p{Cs}]/u.test(normalized)) throw new Error("The collection name contains unsupported characters. Edit the name and try again.");
     return normalized;
   };
-  const recordConfirmedSelection = async (files, preview, version) => {
+  const recordConfirmedSelection = async (files, preview, version, profiles = new Map()) => {
     const root = uploadForm?.dataset.intakeUrl;
     if (!root) throw new Error("The selected-file receipt is unavailable. Refresh Sources and try again.");
-    const fingerprint = await rawSelectionFingerprint(files);
-    if (!fingerprint) throw new Error("This browser cannot save a resumable selection receipt. Use a current browser and try again.");
+    const rawFingerprint = await rawSelectionFingerprint(files);
+    const fingerprint = profiles.size ? await sha256Fingerprint({
+      selection: rawFingerprint, profiles: Array.from(profiles).sort(([left], [right]) => left - right),
+    }) : rawFingerprint;
+    if (!rawFingerprint || !fingerprint) throw new Error("This browser cannot save a resumable selection receipt. Use a current browser and try again.");
     const indexes = preview.eligible_indexes.slice();
     let checkpoint = null;
     let saved = memoryIntakeCheckpoint;
@@ -1727,6 +1730,10 @@
       try { saved.collection_name = intakeCollectionName(saved.collection_name); }
       catch (_error) { saved = null; clearIntakeResumeState(); }
     }
+    if (saved?.version === 1 && (saved.raw_selection_fingerprint || saved.selection_fingerprint) === rawFingerprint
+      && saved.selection_fingerprint !== fingerprint) {
+      throw new Error("Reapply the producer mappings used when this selection receipt was started to resume it.");
+    }
     {
       if (saved?.version === 1 && /^[0-9a-f]{32}$/.test(saved.selection_key)
         && saved.selection_fingerprint === fingerprint && saved.selected_count === files.length
@@ -1734,6 +1741,7 @@
         && typeof saved.collection_name === "string" && saved.collection_name.length <= 160) checkpoint = saved;
     }
     checkpoint ||= { version: 1, selection_key: selectionNonce(), selection_fingerprint: fingerprint,
+      ...(profiles.size ? { raw_selection_fingerprint: rawFingerprint } : {}),
       selected_count: files.length, eligible_indexes: indexes,
       collection_name: intakeCollectionName(uploadCollectionName?.value || "Uploaded sources") };
     memoryIntakeCheckpoint = checkpoint;
@@ -1755,7 +1763,7 @@
       linkBox.hidden = false;
     }
     const descriptors = files.map((file, index) => preview.items[index]?.path_safety_validated
-      ? preflightDescriptor(file)
+      ? { ...preflightDescriptor(file), ...(profiles.has(index) ? { dat_profile: profiles.get(index) } : {}) }
       : { name: "", relative_path: "", size: Number.isSafeInteger(file.size) ? file.size : null,
           media_type: preview.items[index]?.supplied_type || "" });
     const encoder = new TextEncoder();
@@ -1923,11 +1931,27 @@
       return;
     }
     setUploadConfirmationBusy(true);
-    productionInspection?.clearSelection?.();
+    const mapping = productionInspection?.mapping?.collect?.() || { profiles: new Map() };
+    if (mapping.message) {
+      setUploadConfirmationBusy(false);
+      if (!productionInspection.mapping.hidden && Number(productionInspection.chooser.value) === mapping.index) {
+        productionInspection.mapping.querySelector("details").open = true;
+        productionInspection.mapping.status.textContent = mapping.message;
+        productionInspection.mapping.producer.focus();
+      } else {
+        productionInspection.chooser.value = String(mapping.index);
+        productionInspection.resetReport();
+        productionInspection.status.textContent = mapping.message + " Inspect this DAT to review its mapping.";
+        productionInspection.inspect.focus();
+      }
+      return;
+    }
+    productionInspection?.resetReport?.();
+    if (productionInspection) productionInspection.hidden = true;
     if (uploadPreflightConfirm) uploadPreflightConfirm.disabled = true;
     if (uploadPreflightState) uploadPreflightState.textContent = "Saving selected-file receipt";
     try {
-      const intake = await recordConfirmedSelection(files, preview, version);
+      const intake = await recordConfirmedSelection(files, preview, version, mapping.profiles);
       collectionNameEdited = false;
       if (!eligibleFiles.length) {
         clearIntakeResumeState();
@@ -1940,6 +1964,7 @@
       await startResumableUpload(eligibleFiles, intake, version);
     } catch (error) {
       if (version !== preflightVersion) return;
+      if (productionInspection?.chooser.length) productionInspection.hidden = false;
       if (uploadPreflightState) uploadPreflightState.textContent = "Selection receipt paused";
       if (uploadPreflightStatus) uploadPreflightStatus.textContent = `${error.message} Your selection is still here. Try confirming again, or reselect the same files to resume.`;
       if (uploadPreflightConfirm) uploadPreflightConfirm.disabled = false;

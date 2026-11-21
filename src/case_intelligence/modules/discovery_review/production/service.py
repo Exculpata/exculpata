@@ -13,8 +13,8 @@ import uuid
 from .. import load_files
 from .image_references import IMAGE_WINDOW, dii_paths, image_reference
 from .matching import (
-    candidate_agrees, compatible_metadata, finish_match, initial_match, label_key,
-    literal_identifiers, observe_candidate, path_key, project_record,
+    DatProfileError, candidate_agrees, compatible_metadata, finish_match, initial_match, label_key,
+    literal_identifiers, observe_candidate, path_key, profile_positions, project_record,
 )
 from .repository import (
     MAX_BATCH_BYTES, MAX_BATCH_RECORDS, MAX_ORDINAL, ProductionRepository,
@@ -26,7 +26,7 @@ from case_intelligence.source_load_file_qc import (
     family_record, family_diagnostics, family_pair_diagnostics, family_order_key,
 )
 
-PARSER_REVISION = "production-record-events-2"
+PARSER_REVISION = "production-record-events-3"
 MAX_RESTARTS = 3
 def source_identity(store):
     return store.source_changes.epoch
@@ -410,9 +410,13 @@ class ProductionService:
             batch, size, exhausted = [], 0, True
             cursor = attempt["cursor"].get("parser")
             failure = ""
+            mapping = ()
+            positions = attempt["profile_positions"]
 
             def collect(event):
-                nonlocal size, cursor
+                nonlocal size, cursor, positions
+                if mapping and event.kind == "header":
+                    positions = profile_positions(event.headers, mapping)
                 amount = decoded_payload_bytes(event)
                 if batch and (len(batch) >= max_records or size + amount > max_bytes):
                     raise BatchBoundary
@@ -428,10 +432,14 @@ class ProductionService:
             iterator = load_files.parse_events(path, source_format=source.source_format,
                                               on_event=collect, cursor=cursor)
             try:
+                if source.source_format == "dat" and cursor is None:
+                    mapping = self.repository.dat_profile(matter_id, source)
                 for unused in iterator:
                     del unused
             except BatchBoundary:
                 exhausted = False
+            except DatProfileError as error:
+                failure = str(error)
             except (OSError, ValueError) as error:
                 failure = "The load file could not be read completely; saved records remain incomplete."
                 del error
@@ -447,10 +455,12 @@ class ProductionService:
                 target=target, expected_cursor=attempt["cursor"],
                 validate=lambda: self.valid(matter_id, source, target, revision)):
             if batch:
+                if positions and mapping:
+                    self.repository.set_dat_profile_positions(matter_id, attempt_id, positions)
                 self.repository.append_events(matter_id, attempt_id, batch, cursor={"parser": cursor})
                 for event in batch:
                     if event.kind == "accepted":
-                        self.prepare_record(matter_id, attempt_id, event, definition)
+                        self.prepare_record(matter_id, attempt_id, event, definition, positions)
             current = self.repository.attempt(matter_id, attempt_id)
             failure = failure or current["file_failure"]
             self.repository.update_attempt(matter_id, attempt_id,
@@ -459,9 +469,9 @@ class ProductionService:
         self.changed(matter_id)
         return self.repository.attempt(matter_id, attempt_id)
 
-    def prepare_record(self, matter_id, attempt_id, event, definition):
+    def prepare_record(self, matter_id, attempt_id, event, definition, positions=()):
         if event.category == "document":
-            projection = project_record(event.headers, event.cells, definition)
+            projection = project_record(event.headers, event.cells, definition, positions)
             keys = projection.keys
             family = family_record(projection.values).attachment_bounds
             self.repository.set_projection_fields(matter_id, attempt_id, event.ordinal,
@@ -602,7 +612,7 @@ class ProductionService:
                                            phase="conflicts", cursor={"ordinal": 0})
             return
         row = rows[0]
-        projection = project_record(row["headers"], row["cells"], definition)
+        projection = project_record(row["headers"], row["cells"], definition, row["profile_positions"])
         status, document_id, basis = "unmatched", "", ""
         if row["kind"] == "rejected":
             status = "rejected"
@@ -666,17 +676,18 @@ class ProductionService:
                     sorted(set(row.get("association_diagnostics", ())) | {"duplicate_begin"}))
         active = cursor.get("active", {"after": None, "conflict": ""})
         if row["document_id"] and row["kind"] == "accepted":
-            projection = project_record(row["headers"], row["cells"], definition)
+            projection = project_record(row["headers"], row["cells"], definition, row["profile_positions"])
             others = self.repository.competing_records(matter_id, row["document_id"], after=active["after"], limit=1)
             for other in others:
                 active["after"] = [other["attempt_id"], other["ordinal"]]
                 if (other["attempt_id"], other["ordinal"]) == (row["attempt_id"], row["ordinal"]):
                     continue
-                other_projection = project_record(other["headers"], other["cells"], definition)
+                other_projection = project_record(other["headers"], other["cells"], definition, other["profile_positions"])
                 policy = load_files.comparison_policy(other["source_format"], row["source_format"])
                 if policy == "compatible" and not compatible_metadata(projection, other_projection):
                     active["conflict"] = "conflicting_load_file_metadata"
-                elif policy != "compatible" and other_projection.fingerprint != projection.fingerprint:
+                elif policy != "compatible" and (other_projection.fingerprint != projection.fingerprint
+                        or set(other_projection.paths) != set(projection.paths)):
                     active["conflict"] = "conflicting_dat_rows"
             if others:
                 self.repository.update_attempt(matter_id, attempt["attempt_id"], status="building", phase="conflicts",
@@ -922,6 +933,7 @@ class ProductionService:
             if prior is not None and self.dependency_state(prior).get('paused'):
                 continue
             if (prior is not None and prior["version_id"] == source.version_id and prior["digest"] == source.digest
+                    and prior["root_key"] == source.root_key
                     and prior["definition_digest"] == binding["digest"] and prior["parser_revision"] == PARSER_REVISION):
                 continue
             target = binding["target"] or f"{self.epoch}:{binding['store'].revision}:{binding['digest']}"
@@ -1098,7 +1110,7 @@ class ProductionService:
             result["diagnostics"] = (self.repository.document_problem(matter_id, document_id)
                 or row["association_status"],)
             return result
-        projection = project_record(row["headers"], row["cells"], binding["definition"])
+        projection = project_record(row["headers"], row["cells"], binding["definition"], row["profile_positions"])
         result.update(values=projection.values, raw_fields=projection.raw_fields,
                       diagnostics=tuple(row["diagnostics"]) + tuple(row.get("association_diagnostics", ())),
                       family=row["family"] if row["family"].get("root") else {})

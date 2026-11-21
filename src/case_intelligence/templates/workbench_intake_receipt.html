@@ -47,6 +47,12 @@
       <div class="intake-receipt-file"><strong>{{ item.relative_path or item.display_name }}</strong>{% if item.source_url %}<a href="{{ item.source_url }}">Open source</a>{% endif %}</div>
       <dl><div><dt>Selection</dt><dd>{{ intake_labels[item.selection_state] }}</dd></div><div><dt>Transfer</dt><dd>{{ intake_labels[item.transfer_state] }}</dd></div><div><dt>Availability</dt><dd>{{ intake_labels[item.availability] }}</dd></div></dl>
       <p>{{ item.reviewed_reason }}</p>
+      {% if item.dat_profile %}
+      <details><summary>DAT field mapping for {{ item.dat_profile.producer }}</summary>
+        <p>SHA-256 of the inspected load file <code>{{ item.dat_profile.sha256 }}</code></p>
+        <dl>{% for header, role in item.dat_profile.fields.items() %}<div><dt>{{ header }}</dt><dd>{{ role|replace('_', ' ') }}</dd></div>{% endfor %}</dl>
+      </details>
+      {% endif %}
       {% if item.upload_message %}<p>{{ item.upload_message }}</p>{% endif %}
       <small>{{ item.received_size }} bytes received{% if item.expected_size is not none %} of {{ item.expected_size }} selected{% endif %} · Reported selection review: {{ intake_labels[item.reviewed_state] }} · Filename check: {{ intake_labels[item.preflight_state] }}</small>
     </li>

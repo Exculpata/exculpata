@@ -2,7 +2,7 @@
 
 {% block title %}Review sources · {{ matter.display_name }} · {{ product_name }}{% endblock %}
 {% block body_class %}setup-page{% endblock %}
-{% block extra_head %}<script src="{{ asset_url('production-inspection.js') }}" defer></script>{% endblock %}
+{% block extra_head %}<script src="{{ asset_url('production-inspection.js') }}" defer></script><script src="{{ asset_url('production-dat-mapping.js') }}" defer></script>{% endblock %}
 
 {% block content %}
 <main id="main-content" tabindex="-1" class="setup-main">
@@ -78,6 +78,19 @@
             <button type="button" class="button button-secondary" data-inspect-production>Inspect production</button>
             <button type="button" class="button button-secondary" data-cancel-inspection hidden>Cancel inspection</button>
             <p role="status" data-production-inspection-status></p>
+            <exculpata-dat-mapping data-lookup-url="/matters/{{ matter.slug }}/production-field-profile" hidden>
+              <details>
+                <summary>Producer field mapping</summary>
+                <p>Choose the exact headings to use for this DAT. Confirmation saves the mapping for this producer in this matter. Empty roles use standard field recognition.</p>
+                <label>Producer <input type="text" maxlength="160" autocomplete="off" data-profile-producer></label>
+                <button type="button" class="button button-secondary" data-load-profile>Load saved mapping</button>
+                <p data-header-coverage></p>
+                <div data-field-roles></div>
+                <datalist id="production-dat-headings"></datalist>
+                <button type="button" class="button button-secondary" data-clear-profile>Clear mapping</button>
+                <p role="status"></p>
+              </details>
+            </exculpata-dat-mapping>
             <div data-production-inspection-details></div>
             <ol data-production-inspection-rows></ol>
           </fieldset>

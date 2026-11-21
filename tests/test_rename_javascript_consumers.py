@@ -167,6 +167,7 @@ def test_selection_receipt_routes_require_valid_identity_and_preserve_retry_key(
 const uploadForm={dataset:{matterSlug:'m-000000000001',intakeUrl:'/matters/m-000000000001/intake-receipts'}};
 const uploadCollectionName={value:'Synthetic selection'};
 const rawSelectionFingerprint=async()=>'a'.repeat(64),selectionNonce=()=>'b'.repeat(32);
+const sha256Fingerprint=async value=>require('node:crypto').createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const preflightVersion=1,maximumUploadBatchItems=1,maximumPreflightRequestBytes=10000,csrfToken='synthetic';
 const uploadPreflightStatus={textContent:''},link={},linkBox={hidden:true};
 const document={querySelector:selector=>selector==='[data-intake-receipt-open]'?link:linkBox};
@@ -175,7 +176,7 @@ const calls=[];let receiptId='intake-'+'c'.repeat(32);
 const fetch=async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {json:async()=>({receipt_id:receiptId,state:'ready',recorded_count:2})};};
 ''' + source + r'''
 (async()=>{
- const files=[{name:'a.txt',size:1,type:'text/plain'},{name:'b.txt',size:2,type:'text/plain'}];
+ const files=[{name:'index.dat',size:1,type:'text/plain'},{name:'b.txt',size:2,type:'text/plain'}];
  const preview={eligible_indexes:[0,1],items:files.map(()=>({path_safety_validated:true,state:'ready'}))};
  const result=await recordConfirmedSelection(files,preview,1);
  assert.equal(result.receipt_id,receiptId);
@@ -190,6 +191,16 @@ const fetch=async(url,options)=>{calls.push([url,JSON.parse(options.body)]);retu
   assert.equal(calls.length,1);
  }
  calls.length=0;await assert.rejects(recordConfirmedSelection(files,preview,2),/selection changed/);assert.equal(calls.length,0);
+ clearIntakeResumeState();receiptId='intake-'+'c'.repeat(32);
+ const profile={producer:'Generated producer',sha256:'d'.repeat(64),fields:{'Vendor heading':'begin_bates'}};
+ const profiles=new Map([[0,profile]]);calls.length=0;
+ await recordConfirmedSelection(files,preview,1,profiles);
+ assert.deepEqual(calls[1][1].files[0].dat_profile,profile);
+ assert(!JSON.stringify(calls[0][1]).includes('Vendor heading'));
+ const mappedCheckpoint=storage.getItem(intakeResumeKey);assert(!mappedCheckpoint.includes('Generated producer'));
+ assert(!mappedCheckpoint.includes('Vendor heading'));
+ calls.length=0;await assert.rejects(recordConfirmedSelection(files,preview,1),/Reapply/);assert.equal(calls.length,0);
+ await recordConfirmedSelection(files,preview,1,profiles);assert.equal(mappedCheckpoint,storage.getItem(intakeResumeKey));
 })().catch(error=>{console.error(error);process.exitCode=1;});
 ''')
 
