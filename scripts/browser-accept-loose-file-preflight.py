@@ -372,8 +372,6 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
     os.environ["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] = "0"
     try:
         driver.set_window_size(1536, 1024)
-        driver.execute_cdp_cmd("Emulation.setEmulatedMedia", {
-            "features": [{"name": "prefers-reduced-motion", "value": "reduce"}]})
         for selector in ("source-files", "source-folder"):
             folder = selector == "source-folder"
             matter, element = opened(selector, f"{selector} clean")
@@ -438,7 +436,7 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
                 navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
                             page_load_timeout=20, readiness_timeout=20)
                 element = wait.until(lambda current: current.find_element(By.ID, selector))
-                _image_index_selection(driver, element, [("another.DAT", fixtures[2][1])], folder=True)
+                _image_index_selection(driver, element, [("Second production.DAT", fixtures[2][1])], folder=True)
                 reviewed(1)
                 mapping = mapping_form()
                 mapping.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated producer")
@@ -449,7 +447,7 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
                 _require(len(receipts.recent(matter.matter_id, ACTOR)) == 1, "looking up a mapping created a receipt")
                 _require("Generated producer" not in driver.execute_script("return JSON.stringify(localStorage);"),
                          "producer name persisted in browser storage")
-                _image_index_selection(driver, element, [("changed.DAT", "X\x14B\none\x14two\n".encode())], folder=True)
+                _image_index_selection(driver, element, [("Changed headings.DAT", "X\x14B\none\x14two\n".encode())], folder=True)
                 reviewed(1)
                 mapping = mapping_form()
                 mapping.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated producer")
@@ -515,7 +513,6 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
                          "non-clean image index escaped the real scan decision")
             completed.append(f"{selector}:type,size,empty,count,duplicate and scanner controls retained")
     finally:
-        driver.execute_cdp_cmd("Emulation.setEmulatedMedia", {"features": []})
         bench.malware_scanner = original_scanner
         if original_reserve is None:
             os.environ.pop("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", None)
@@ -601,6 +598,7 @@ def main() -> int:
         options.page_load_strategy = "none"
         options.binary_location = str(args.chrome_binary)
         options.add_argument("--headless=new")
+        options.add_argument("--force-prefers-reduced-motion")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
