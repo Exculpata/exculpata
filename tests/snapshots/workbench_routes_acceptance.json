@@ -152,6 +152,7 @@
   [["POST"], "/matters/{slug}/production/codes/{code_id}/retire"],
   [["POST"], "/matters/{slug}/production/items/{token}/codes/{code_id}"],
   [["GET"], "/matters/{slug}/connections"],
+  [["POST"], "/matters/{slug}/production-inspection/{suffix}"],
   [["POST"], "/matters/{slug}/model-grants"],
   [["GET"], "/matters/{slug}/purpose"],
   [["PUT"], "/matters/{slug}/purpose"],
