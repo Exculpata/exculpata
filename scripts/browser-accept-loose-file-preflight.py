@@ -337,7 +337,7 @@ def _selection_reference_qc_regression(driver, wait, bench, base_url, output):
         folder = Path(tmp) / "Delivery"
         folder.mkdir()
         # The suite's 128-byte file limit also applies to this real upload.
-        data = b"PATH\x14SIDE\n" + b"\x14\n" * 20 + b"case note.txt\x14case note.txt\nmissing note.txt\x14missing copy.txt\n"
+        data = b"PATH\x14SIDE\ncase note.txt\x14case note.txt\n" + b"\x14\n" * 20 + b"missing note.txt\x14missing copy.txt\n"
         (folder / "main index.dat").write_bytes(data)
         (folder / "case note.txt").write_bytes(b"Generated companion text.")
         _select(driver.find_element(By.ID, "source-folder"), [folder])
@@ -353,8 +353,9 @@ def _selection_reference_qc_regression(driver, wait, bench, base_url, output):
         findings = driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text
         _require("Record 22" in findings and "line 23" in findings and "missing note.txt" in findings,
                  "the path after the record sample has no cited finding")
-        _require("missing note.txt" not in driver.find_element(By.CSS_SELECTOR, "[data-production-inspection-rows]").text,
-                 "the late finding was substituted into the record sample")
+        sample = driver.find_element(By.CSS_SELECTOR, "[data-production-inspection-rows]").text
+        _require("case note.txt" in sample and "Exact path match" in sample and "missing note.txt" not in sample,
+                 "the sample did not show its exact match separately from the late finding")
         editor = mapping_editor()
         editor.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated inspection producer")
         editor.find_element(By.CSS_SELECTOR, '[data-role="native_path"]').send_keys("SIDE")
@@ -371,7 +372,7 @@ def _selection_reference_qc_regression(driver, wait, bench, base_url, output):
 
         navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
                     page_load_timeout=20, readiness_timeout=20)
-        second = folder.rename(Path(tmp) / "Second")
+        second = folder.rename(Path(tmp) / "Second livraison α")
         (second / "alternate index.dat").write_bytes(b"PATH\x14SIDE\ncase note.txt\x14missing copy.txt\n")
         _select(driver.find_element(By.ID, "source-folder"), [second])
         wait.until(lambda current: current.find_element(By.CSS_SELECTOR, "[data-inspect-production]").is_displayed())
@@ -398,8 +399,18 @@ def _selection_reference_qc_regression(driver, wait, bench, base_url, output):
                  == "Incomplete producer", "the unfinished mapping could not be reopened")
         editor.find_element(By.CSS_SELECTOR, "[data-clear-profile]").send_keys(Keys.ENTER)
         choose_dat("main index.dat")
-        # Apply the same byte-limit boundary against the small synthetic fixture.
-        driver.execute_script("document.querySelector('[data-upload-form]').dataset.maxPreflightRequestBytes = '16'")
+        # Check the UTF-8 wire boundary with real Unicode folder paths and a saved mapping.
+        chooser = driver.find_element(By.CSS_SELECTOR, "exculpata-production-inspection select")
+        manifest = {
+            "index": int(chooser.get_attribute("value")),
+            "dat_profile": {"sha256": hashlib.sha256(data).hexdigest(), "fields": {"SIDE": "native_path"}},
+            "files": [[f"{second.name}/{path.name}", True] for path in second.iterdir()],
+        }
+        size = len(json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        set_limit = "document.querySelector('[data-upload-form]').dataset.maxPreflightRequestBytes = arguments[0]"
+        driver.execute_script(set_limit, size)
+        inspect_for("custom")
+        driver.execute_script(set_limit, size - 1)
         driver.find_element(By.CSS_SELECTOR, "[data-inspect-production]").send_keys(Keys.ENTER)
         wait.until(lambda current: "Only the index was inspected." in current.find_element(
             By.CSS_SELECTOR, "[data-production-inspection-details]").text)

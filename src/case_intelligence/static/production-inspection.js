@@ -35,7 +35,11 @@
         return fallback("The selected files include a path that could not be validated.");
       }
       const path = files[position].webkitRelativePath || files[position].name;
-      const row = encoder.encode((position ? "," : "") + JSON.stringify([path, item.eligible]));
+      if (position) {
+        parts.push(",");
+        size++;
+      }
+      const row = encoder.encode(JSON.stringify([path, item.eligible]));
       size += row.byteLength;
       if (size > maxBytes) {
         return fallback("The selected filenames exceed the inspection metadata limit.");
