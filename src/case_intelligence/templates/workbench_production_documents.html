@@ -30,8 +30,12 @@
   {% for report in load_files %}{% if report.matched or report.problem %}
   <p class="dr-load-file{% if report.problem %} dr-notice-warning{% endif %}">Load file <strong>{{ report.name }}</strong>: {{ report.matched }} of {{ report.rows }} rows matched an item{% if report.extra %}; {{ report.extra }} more rows named an item that already had a row and were not used{% endif %}.{% if report.problem %} {{ report.problem }}{% endif %}</p>
   {% endif %}{% endfor %}
-  {% if document_count and listing.complete and not index_summary.matched and not production_coverage %}
-  <p class="dr-load-file dr-muted">No load file is matched to these items, so Bates, custodian and other load-file fields are empty. Add the production's CSV load file to this matter with its files and those fields fill in.</p>
+  {% if document_count and listing.complete and not index_summary.matched and not listing.last_known %}
+    {% if not production_coverage and not index_summary.report_total and not load_files %}
+    <p class="dr-load-file dr-muted">No load file was recognized for these items. To import a production, choose its folder in Add sources and confirm its load files and discovery files together.</p>
+    {% elif not production_coverage.values()|sum(attribute='matched') %}
+    <p class="dr-load-file dr-muted">No matches are reported for these load files. Open a load file in the list to inspect its records and findings. Check the selected-file receipt to see which originals were received.</p>
+    {% endif %}
   {% endif %}
   {% if listing.hidden %}<p class="dr-load-file dr-muted">Hidden because no item has a value: {{ listing.hidden|join(', ') }}. <a href="{{ listing.show_all }}" data-review-navigation>Show anyway</a></p>{% endif %}
 

@@ -143,7 +143,8 @@ def test_other_matters_and_non_members_see_nothing(production):
     page = client.get(f"/matters/{neighbor.slug}/production")
     assert "1 document in this matter" in page.text and "SYN000010" not in page.text
     # With no load file the empty standard columns step aside, and the page says so.
-    assert "No load file is matched to these items" in page.text
+    assert "No load file was recognized for these items" in page.text
+    assert "choose its folder in Add sources" in page.text
     assert "Hidden because no item has a value: Begin Bates, End Bates" in page.text
     assert "Begin Bates" not in headers(page.text)
     assert "Begin Bates" in headers(client.get(f"/matters/{neighbor.slug}/production?all_columns=1").text)

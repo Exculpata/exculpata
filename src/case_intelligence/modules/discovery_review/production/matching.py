@@ -116,7 +116,7 @@ def observe_candidate(state: dict, projection: Projection, candidate: dict) -> N
     for key, tiers in state["evidence"].items():
         if key.startswith("path:"):
             supplied = path_key(projection.paths[int(key.split(":")[1])])
-            if supplied == candidate_path:
+            if supplied in (candidate_path, candidate_path.partition("/")[2]):
                 remember(tiers["exact"], document_id)
             elif (basename == supplied.rsplit("/", 1)[-1]
                     and (candidate_path.endswith("/" + supplied) or supplied.endswith("/" + candidate_path))):
@@ -125,8 +125,10 @@ def observe_candidate(state: dict, projection: Projection, candidate: dict) -> N
             value = projection.keys[key]
             if values.get(key) and label_key(values[key]) == value:
                 remember(tiers["produced"], document_id)
-            if key == "begin_bates" and stem == value:
+            if key == "begin_bates" and stem == value and document_id != state.get("excluded_stem_id"):
                 remember(tiers["stem"], document_id)
+                if state.get("unresolved_text") and candidate.get("media_type") == "text/plain":
+                    state["unproved_text_stem"] = True
     state["after"] = document_id
 
 
@@ -139,11 +141,16 @@ def finish_match(state: dict, projection: Projection) -> tuple[str, str, str]:
         if len(selected) > 1:
             return "", "", "ambiguous_match"
         if selected:
+            if key.startswith("path:") and selected[0] == state.get("text_companion_id"):
+                return "", "", "conflicting_match"
             choices.add(selected[0])
             bases.append("path" if key.startswith("path:") else key)
     if len(choices) > 1:
         return "", "", "conflicting_match"
-    if not choices:
+    if state.get("unproved_text_stem") and not any(
+            tiers.get("exact") or tiers.get("produced") for tiers in state["evidence"].values()):
+        return "", "", "unmatched"
+    if not choices or choices == {state.get("text_companion_id")}:
         return "", "", "unmatched"
     return next(iter(choices)), ", ".join(bases), "matched"
 

@@ -934,6 +934,107 @@ def test_candidate_limits_apply_after_source_and_ready_filters(tmp_path):
         assert case.store.source_path(source.document_id, verify_digest=True).read_bytes() == supplied
 
 
+@pytest.mark.parametrize("case,expected", [
+    ("text", "matched"), ("textpath", "matched"), ("second-native", "ambiguous_match"),
+    ("missing-native", "unmatched"), ("bare-text-name", "ambiguous_match"),
+    ("same-file", "conflicting_match"),
+])
+def test_dat_companion_role_disambiguates_only_the_declared_native(tmp_path, case, expected):
+    from tests.test_discovery_review_dat_opt_storage import finish_import, storage_case
+
+    text_path = "Text/A1.txt"
+    native = "Natives/A1.txt"
+    supplied_native = {"missing-native": "Missing/A1.txt", "same-file": text_path}.get(case, native)
+    supplied_text = "A1.txt" if case == "bare-text-name" else text_path
+    data = dat_bytes(("BEGBATES", "NATIVEPATH", "TEXTPATH" if case == "textpath" else "TEXT"),
+                     [("A1", supplied_native, supplied_text)])
+    # Explicit historical IDs put the text and native before the third stem witness.
+    files = [(text_path, source_text(1))]
+    if case != "missing-native":
+        files.append((native, source_text(2)))
+    if case == "second-native":
+        files.append(("Other/A1.txt", source_text(3)))
+    with storage_case(tmp_path, count=1, primary_bytes=data, extra_files=files) as current:
+        attempt = finish_import(current)
+        row, = current.repository.records(current.matter.matter_id, attempt["attempt_id"], category="document")
+        assert row["association_status"] == expected
+        if expected == "matched":
+            assert current.store.get(row["document_id"]).relative_path == "Generated/" + native
+        else:
+            assert not row["document_id"]
+
+
+def test_dat_text_role_preserves_contradictory_produced_ids(review):
+    files = {"Generated/Natives/A1.txt": source_text(1), "Generated/Text/A1.txt": source_text(2),
+        "Generated/legacy.csv": b"CONTROLNUMBER,NATIVEPATH\nC2,Generated/Text/A1.txt\n",
+        "Generated/load.dat": dat_bytes(("BEGBATES", "CONTROLNUMBER", "NATIVEPATH", "TEXTPATH"),
+            [("A1", "C2", "Natives/A1.txt", "Text/A1.txt")])}
+    upload_production(review, files)
+    attempts = import_paths(review, ["Generated/legacy.csv", "Generated/load.dat"])
+    control, = all_records(review, attempts["Generated/legacy.csv"])
+    assert control["document_id"] == review.document("Generated/Text/A1.txt").document_id
+    row, = all_records(review, attempts["Generated/load.dat"])
+    assert row["association_status"] == "conflicting_match" and not row["document_id"]
+
+
+@pytest.mark.parametrize("headers,values,expected", [
+    (("TEXT", "TEXTPATH"), ("Text/A1.txt", "Text/other.txt"), "unmatched"),
+    (("TEXT",), ("A1.txt",), "unmatched"),
+    (("TEXT",), ("../Text/A1.txt",), "unmatched"),
+    (("TEXT", "TEXTPATH", "NATIVEPATH"), ("Text/other.txt", "Text/different.txt", "Text/A1.txt"), "matched"),
+])
+def test_unresolved_text_role_cannot_establish_native_by_stem(tmp_path, headers, values, expected):
+    from tests.test_discovery_review_dat_opt_storage import finish_import, storage_case
+
+    data = dat_bytes(("BEGBATES", *headers), [("A1", *values)])
+    files = [("Text/A1.txt", source_text(1)), ("Text/other.txt", source_text(2))]
+    with storage_case(tmp_path, count=1, primary_bytes=data, extra_files=files) as current:
+        attempt = finish_import(current)
+        row, = current.repository.records(current.matter.matter_id, attempt["attempt_id"], category="document")
+        assert row["association_status"] == expected
+        assert bool(row["document_id"]) is (expected == "matched")
+
+
+@pytest.mark.parametrize("role,collision", [("NATIVEPATH", True), ("TEXT", True), ("TEXT", False)])
+def test_volume_named_subfolder_requires_a_unique_exact_path(tmp_path, role, collision):
+    from tests.test_discovery_review_dat_opt_storage import finish_import, storage_case
+
+    supplied = "Generated/Documents/A1.txt"
+    other = "Other/companion.txt"
+    headers = ("BEGBATES", "NATIVEPATH", "TEXT")
+    data = dat_bytes(headers, [("S1", supplied, other) if role == "NATIVEPATH" else ("S1", other, supplied)])
+    files = [(supplied, source_text(1)), (other, source_text(2))]
+    if collision:
+        files.append(("Documents/A1.txt", source_text(3)))
+    with storage_case(tmp_path, count=1, primary_bytes=data, extra_files=files) as current:
+        attempt = finish_import(current)
+        row, = current.repository.records(current.matter.matter_id, attempt["attempt_id"], category="document")
+        if role == "NATIVEPATH":
+            assert row["association_status"] == "ambiguous_match"
+        else:
+            _, status, candidate = current.repository.dat_text_companion(current.matter.matter_id, attempt, row)
+            assert status == ("ambiguous" if collision else "matched")
+            if candidate:
+                assert candidate["relative_path"] == "Generated/" + supplied
+
+
+def test_reopening_prior_matcher_rebuilds_dat_associations(tmp_path, monkeypatch):
+    from case_intelligence.modules.discovery_review.production import service
+    from tests.test_discovery_review_dat_opt_storage import finish_import, reopen_storage_case, storage_case
+
+    with storage_case(tmp_path, count=1) as current:
+        with monkeypatch.context() as previous:
+            previous.setattr(service, "PARSER_REVISION", "production-record-events-1")
+            old = finish_import(current)
+        reopen_storage_case(current, tmp_path)
+        for _ in range(30):
+            if current.service.advance(current.matter.matter_id, max_steps=128)["state"] == "complete":
+                break
+        new = current.repository.current_attempt(current.matter.matter_id, old["document_id"])
+        assert new["status"] == "complete" and new["parser_revision"] == service.PARSER_REVISION
+        assert new["attempt_id"] != old["attempt_id"] and new["digest"] == old["digest"]
+
+
 def test_reopened_store_requires_new_production_validation(tmp_path):
     runtime = tmp_path / "runtime"
     with opened_review(runtime) as current:
