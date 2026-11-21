@@ -394,7 +394,7 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
                 _require(len(options) == len(fixtures), "inspection did not offer every eligible load file")
                 for option, (name, _) in zip(options, fixtures, strict=True):
                     option.click()
-                    driver.find_element(By.CSS_SELECTOR, "[data-inspect-production]").click()
+                    driver.find_element(By.CSS_SELECTOR, "[data-inspect-production]").send_keys(Keys.ENTER)
                     result = wait.until(lambda current: (
                         summary if name in (summary := current.find_element(
                             By.CSS_SELECTOR, "[data-production-inspection-status]").text)
