@@ -1941,7 +1941,7 @@
       } else {
         productionInspection.chooser.value = String(mapping.index);
         productionInspection.resetReport();
-        productionInspection.status.textContent = mapping.message + " Inspect this DAT to review its mapping.";
+        productionInspection.status.replaceChildren(mapping.message, " Inspect this DAT to review its mapping.");
         productionInspection.inspect.focus();
       }
       return;

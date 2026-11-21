@@ -3349,12 +3349,12 @@
           "source_line_sha256": "e7eb82ae8424cfc2741344e4551de1fbbed5884689d57f58e18181589ad2fdc6"
         },
         {
-          "line": 544,
-          "identifier": "unsupported JavaScript construction (interpolated template) at 11-544:130 sha256=3d870301ac221ccb8e902ba66856c849e2734c5d0d7e9a141a7e7f06c7e3b574; use the rename-compat contract helper",
-          "function": "source columns 11-544:130",
-          "reason": "Retain this exact existing interface text, selector, route or persisted-key expression at its pinned use site. Preserve native interpolation conversion/evaluation order, output bytes and escaping. Literal namespaces remain checked and no arbitrary template family is exempted.",
-          "validation": "tests/test_gateway_static_assets.py; tests/test_rename_javascript_consumers.py",
-          "source_line_sha256": "da2706c3fc6ad9514e5894435f1a584fd57e6e4ade6ca2a7fc3528fdd34481eb"
+          "line": 545,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 11-545:112 sha256=461125b89c33f1ed257d9bd98d6d1ded07f3180168bfdba82d8d3ffa6902d8e2; use the rename-compat contract helper",
+          "function": "source columns 11-545:112",
+          "reason": "Report the selected file count and plural agreement in the preflight status text.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "d154fb5f19fc6e03d8403a8d598e273281cd531b73a8170a241f74d0ae7ba986"
         },
         {
           "line": 546,
@@ -4854,6 +4854,114 @@
         }
       ]
     },
+    "src/case_intelligence/static/production-inspection.js": {
+      "diagnostics": [
+        {
+          "line": 25,
+          "identifier": "unsupported JavaScript construction (+) at 42-25:57 sha256=ddfd19d17264e899e2d1210eeb02770cc64e516c833804cf06536ffcc819c959; use the rename-compat contract helper",
+          "function": "source columns 42-25:57",
+          "reason": "Skip the chosen browser folder name and its single separator when building a selection-relative lookup key.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "9605b873c5a22e1ea4046dd1e2c33c76fe648c09c0e7bfbecd159c1de2356e33"
+        },
+        {
+          "line": 38,
+          "identifier": "unsupported JavaScript construction (.join()) at 19-38:34 sha256=03ebb87428813d7e1819b61c9e1fa149b1768bc6088d349c916fa51ace0312d2; use the rename-compat contract helper",
+          "function": "source columns 19-38:34",
+          "reason": "Join validated reference components into an in-memory comparison key for paths under the same selected root.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "9c91b8985bdd7bee3f839dc7537759a0906c2eb3247a63eb359e6ae9274d1189"
+        },
+        {
+          "line": 41,
+          "identifier": "unsupported JavaScript construction (.join()) at 43-41:67 sha256=9041dd535277f0e5fffd07b198d4e4f027b8460742c5074ab93cc4cc59124073; use the rename-compat contract helper",
+          "function": "source columns 43-41:67",
+          "reason": "Remove the explicit selected-root component before comparing the remaining reference components with the same in-memory inventory.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "698ca11de5aade75fdd8208942c8b6e37272346648f57060965bcb5911ab8884"
+        },
+        {
+          "line": 46,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 14-46:128 sha256=ad522358770ca6c51baaaad889a466e7558523246027bcdfbbfa729ee98fd18a; use the rename-compat contract helper",
+          "function": "source columns 14-46:128",
+          "reason": "Show the comparison result, selected display path and upload eligibility as DOM text.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "dc7d352b9e6a1eb3a3f09ea183e0e019d0bdce4e47d15635254c465f3229e15a"
+        },
+        {
+          "line": 53,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 32-53:68 sha256=12dd462e909e523f58b536982fba511edcdebcb55934f68bcfef6665646b70bc; use the rename-compat contract helper",
+          "function": "source columns 32-53:68",
+          "reason": "Show the parser diagnostic code and localized count as DOM text.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "ceb1501dadb4ad21baec7bce36b1b2585d08883bd5f4246adbda4b6de3461607"
+        },
+        {
+          "line": 59,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 37-59:80 sha256=f7a0f19da65de3ad97f1954d3534fa6de370dab0392c2731ccf4ad25a12fefa0; use the rename-compat contract helper",
+          "function": "source columns 37-59:80",
+          "reason": "Show the parser record ordinal and source line as the sample summary text.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "e268c69a3a063ef9fc601efbf65989140424ad04bcf101642e2c67dde41b8dce"
+        },
+        {
+          "line": 65,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 33-65:84 sha256=48912588a8f0b2e360d8c782ec53d70e8346a4f4a4f6fc552e5f10f6500aeba0; use the rename-compat contract helper",
+          "function": "source columns 33-65:84",
+          "reason": "Show the parser reference role, literal path and comparison result in a text node.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "54f392b4a0f10fa21d2ec7f18e29c4281a7e010e31ac3e28002f202a3453cf0b"
+        },
+        {
+          "line": 132,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 33-132:57 sha256=246e86af66930a1c4087746f41586e90ca27b6c75e067a8bd4c47795b5bae17c; use the rename-compat contract helper",
+          "function": "source columns 33-132:57",
+          "reason": "Show the selected option label as progress text while the inspection request runs.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "afe2b919cf64bf200b866b3a5793344f039cb41c69da364d9e52a420dfc4f5a0"
+        },
+        {
+          "line": 134,
+          "identifier": "unsupported JavaScript construction (+) at 38-134:81 sha256=465eb6c9ee7bb7d5ec91df0321df21b424bf3b5ac8cbec9b07c4a5d6053b7e4f; use the rename-compat contract helper",
+          "function": "source columns 38-134:81",
+          "reason": "Append only the recognized lowercase DAT, OPT, LFP or DII extension to the server-rendered inspection route for the current matter.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py; tests/test_rename_javascript_consumers.py",
+          "source_line_sha256": "c1379dd44ccb9cbe49d666936748c844b1ec281105bfff8ad77a2da501613810"
+        },
+        {
+          "line": 143,
+          "identifier": "unsupported JavaScript construction (+) at 22-143:81 sha256=fd42ac23e776c6ada9c1874f95b8e42f8ce050b495fbfd948e01f7c037357fec; use the rename-compat contract helper",
+          "function": "source columns 22-143:81",
+          "reason": "Pluralize the parser record kind for the sample count displayed to the operator.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "a4ffb8b59148c87e8556d04d282dc8242ec26ae38a872b22e762e6f9919ba95d"
+        },
+        {
+          "line": 144,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 44-144:68 sha256=b4aacb5279104e496ecf80cda84973e5c53527965f7c32a5ad43a3be90b748ef; use the rename-compat contract helper",
+          "function": "source columns 44-144:68",
+          "reason": "Format the optional detected encoding for display in the inspection status text.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "09e2c6448fa7c6960d7b817ecda8a65e205b996c8174603c2eb25a1aa3dcd298"
+        },
+        {
+          "line": 145,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 35-145:173 sha256=c33900e04519682dc1e2c00146970643c1e8be23cbc084a2ce76e13d6e801ed8; use the rename-compat contract helper",
+          "function": "source columns 35-145:173",
+          "reason": "Show the selected label, format, encoding and sample/record counts as DOM status text.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "d3dd6d1ae1dcebb59975e26434e7fb398f523a5aa0f255a73af8117b9314843e"
+        },
+        {
+          "line": 150,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 37-150:83 sha256=f63e3fdb0e90f9f273c9623eeae1539aa148b7e938939c533be6fd6c99917e80; use the rename-compat contract helper",
+          "function": "source columns 37-150:83",
+          "reason": "Show the selected display label and request error message in the status text node.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py",
+          "source_line_sha256": "4d5b9742e01dc09b6891c7e7d4967bb872119eeacbc4a2fec073a15fefd94472"
+        }
+      ]
+    },
     "src/case_intelligence/static/review-bench.js": {
       "diagnostics": [
         {
@@ -5083,6 +5191,50 @@
           "reason": "Return the existing full-review JSON artifact with the registered retained schema, unchanged legacy fields, size check and sanitized filename.",
           "validation": "tests/test_work_product_exports.py; tests/test_byom_review_regressions.py",
           "source_line_sha256": "7082a031fa73539334e72da44ac0c40a4a8c50a4633f4c0a674da1bb3e89b29a"
+        }
+      ]
+    },
+    "src/case_intelligence/static/production-dat-mapping.js": {
+      "diagnostics": [
+        {
+          "line": 67,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 53-67:90 sha256=2ab4033b3dd89bc39e1898cd88e473c1a4cbc242c8615e989c26d437da30c715; use the rename-compat contract helper",
+          "function": "source columns 53-67:90",
+          "reason": "Show the exact suggested heading from the inspected DAT in a role input placeholder. The input value and saved mapping still require the reviewer to choose a heading.",
+          "validation": "tests/test_production_inspection.py::test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions; scripts/browser-accept-loose-file-preflight.py::_image_index_intake_regression; tests/test_rename_javascript_consumers.py::test_producer_mapping_messages_are_display_text",
+          "source_line_sha256": "9744e7da786a163621893fb88e6bc0a7310012db7944e5d7a7ffe69ebb2f51db"
+        },
+        {
+          "line": 71,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 11-71:116 sha256=954ba99244be83730476528daffcef54232a074c3042c7ec33e275121ac9df07; use the rename-compat contract helper",
+          "function": "source columns 11-71:116",
+          "reason": "Explain the numeric difference between the inspected header count and the set of admissible exact headings in the textContent of the coverage notice.",
+          "validation": "tests/test_production_inspection.py::test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions; scripts/browser-accept-loose-file-preflight.py::_image_index_intake_regression; tests/test_rename_javascript_consumers.py::test_producer_mapping_messages_are_display_text",
+          "source_line_sha256": "d25a78687d22e9e9ff1681f4b7e3b0c507db0db711cb5acf4344ed04f69ced6c"
+        },
+        {
+          "line": 114,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 47-114:75 sha256=76107d94b5e891286e47d06e12e2fb5137eb38a2edfd33eca281dcde1f50eb87; use the rename-compat contract helper",
+          "function": "source columns 47-114:75",
+          "reason": "Identify which selected load file needs a correction by combining its display label with one of the fixed draft validation explanations. The receiver writes the message as status text.",
+          "validation": "tests/test_production_inspection.py::test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions; scripts/browser-accept-loose-file-preflight.py::_image_index_intake_regression; tests/test_rename_javascript_consumers.py::test_producer_mapping_messages_are_display_text",
+          "source_line_sha256": "c306a8ec098efb8b661f09203b489a59ff9389b10710679d84353a8e9edf1f86"
+        },
+        {
+          "line": 143,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 37-143:178 sha256=97a8f9e0c77095237b9b084c10d16fa7f42debaab070e5f5406ee292faaf0525; use the rename-compat contract helper",
+          "function": "source columns 37-143:178",
+          "reason": "Display the absent saved headings inside a fixed lookup diagnostic. Status textContent preserves each heading as text and the absent heading blocks receipt confirmation.",
+          "validation": "tests/test_production_inspection.py::test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions; scripts/browser-accept-loose-file-preflight.py::_image_index_intake_regression; tests/test_rename_javascript_consumers.py::test_producer_mapping_messages_are_display_text",
+          "source_line_sha256": "e23f01d3ab2e9b07ae32a4d2b78f61265c5c777b89c55b2f432e9bb220f14944"
+        },
+        {
+          "line": 143,
+          "identifier": "unsupported JavaScript construction (.join()) at 98-143:142 sha256=48bec2d039018ee9de2cb55dc478bb1baad24c157378e48da4e14f8be5ef0c5b; use the rename-compat contract helper",
+          "function": "source columns 98-143:142",
+          "reason": "Separate each unavailable saved heading with a comma for the lookup status. This list is solely diagnostic; the exact field-role pairs remain separately validated.",
+          "validation": "tests/test_production_inspection.py::test_mapping_headers_keep_exact_spelling_and_omit_ambiguous_suggestions; scripts/browser-accept-loose-file-preflight.py::_image_index_intake_regression; tests/test_rename_javascript_consumers.py::test_producer_mapping_messages_are_display_text",
+          "source_line_sha256": "e23f01d3ab2e9b07ae32a4d2b78f61265c5c777b89c55b2f432e9bb220f14944"
         }
       ]
     }
