@@ -308,10 +308,12 @@ for(const raw of EXPRESSIONS){
 
 
 def test_application_route_suffixes_preserve_scope_and_encoding():
-    wanted = [66,1394,1602,1605,1630,3746,4700]
-    expressions = dict(node_expressions('src/case_intelligence/static/case-intelligence.js',
-                                       'template_string', lambda source: '${' in source))
-    source = '[' + ','.join(expressions[line] for line in wanted) + ']'
+    route_roots = ('details.dataset.contextUrl', 'activeUpload.status_url', 'sessionRoot',
+                   'sessionUrl', 'next.pathname', 'base')
+    prefixes = tuple('`${' + root + '}' for root in route_roots)
+    expressions = node_expressions('src/case_intelligence/static/case-intelligence.js',
+                                   'template_string', lambda source: source.startswith(prefixes))
+    source = '[' + ','.join(expression for _, expression in sorted(expressions)) + ']'
     run_node("const assert=require('node:assert/strict');\n" + r'''
 const details={dataset:{contextUrl:'/matters/m-1/conversations/c-1/messages/msg-1/cited-context/0/1'}};
 const activeUpload={status_url:'/matters/m-1/upload-sessions/upload-session-1?existing=1'},separator='&';

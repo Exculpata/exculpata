@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to, refresh_page
+from browser_navigation import navigate_to, refresh_page, wait_for_replacement
 
 import argparse
 import base64
@@ -575,7 +575,9 @@ def main() -> int:
             driver.find_element(By.ID, "matter-descriptor").send_keys(
                 "Generated selection preflight acceptance"
             )
-            driver.find_element(By.CSS_SELECTOR, ".matter-form button[type='submit']").click()
+            submit_matter = driver.find_element(By.CSS_SELECTOR, ".matter-form button[type='submit']")
+            submit_matter.click()
+            wait_for_replacement(driver, wait, submit_matter)
             wait.until(lambda current: "/setup" in current.current_url)
             slug = urlparse(driver.current_url).path.split("/")[2]
             driver.find_element(By.CSS_SELECTOR, "[data-assistant-collapse]").click()
