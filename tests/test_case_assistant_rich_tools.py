@@ -542,6 +542,65 @@ def test_pr589_round5_duplicate_coord_rejection_and_per_span_transcript_groundin
         fab_res = CaseAssistant(_LocatorDigitModel(src_map["padded.csv"])).investigate("What was the amount?", fab_rt)
         assert fab_res.answerable is False and fab_res.omitted_findings == 1
 
+        # Synthetic count premises ('1') cannot authorize 'The amount is 1.' without a calculation receipt.
+        cnt_fab_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        cnt_fab_res = CaseAssistant(_CountPremiseLeakModel(src_map["padded.csv"])).investigate("What was the amount?", cnt_fab_rt)
+        assert cnt_fab_res.answerable is False and cnt_fab_res.omitted_findings == 1
+
+        # Malformed base64 inline attachment causing read_eml error surfaces incomplete_threading/error instead of truncated=False.
+        bad_eml = (
+            b"From: a@example.test\r\nTo: b@example.test\r\nSubject: Broken Attach\r\n"
+            b"Message-ID: <broken-1@example.test>\r\nMIME-Version: 1.0\r\n"
+            b"Content-Type: multipart/mixed; boundary=\"bnd\"\r\n\r\n"
+            b"--bnd\r\nContent-Type: text/html\r\n\r\n<p>See note.</p>\r\n"
+            b"--bnd\r\nContent-Type: text/plain; name=\"note.txt\"\r\n"
+            b"Content-Disposition: inline; filename=\"note.txt\"\r\n"
+            b"Content-Transfer-Encoding: base64\r\n\r\n!!!NOT_BASE64!!!\r\n--bnd--\r\n"
+        )
+        reply_to_bad = _eml("reply-broken", "Re: Broken Attach", "Following up.", in_reply_to="broken-1")
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("bad_attach.eml", bad_eml, "message/rfc822")),
+            ("files", ("reply_bad.eml", reply_to_bad, "message/rfc822")),
+        ]).status_code == 200
+        src_map = {s["source_name"]: s["document_id"] for s in rt_init.invoke("list_sources", {"limit": 30})["sources"]}
+        with pytest.raises(AssistantToolError, match="could not be parsed"):
+            rt_init.invoke("read_email_thread", {"document_id": src_map["bad_attach.eml"], "limit": 10})
+        rep_thread = rt_init.invoke("read_email_thread", {"document_id": src_map["reply_bad.eml"], "limit": 10})
+        assert rep_thread["incomplete_threading"] is True and rep_thread["truncated"] is True
+        assert any(e["source_name"] == "bad_attach.eml" for e in rep_thread["unthreaded_email_errors"])
+
+
+class _CountPremiseLeakModel:
+    def __init__(self, doc_id: str) -> None:
+        self._doc_id = doc_id
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if not tool_msgs:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("q1", "query_table", {"document_id": self._doc_id, "aggregate_op": "count"}),
+            ))
+        row = tool_msgs[0]["rows"][0]
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "The amount is 1.",
+            "findings": [{
+                "text": "The amount is 1.",
+                "citations": [{
+                    "document_id": tool_msgs[0]["document_id"],
+                    "source_name": tool_msgs[0]["source_name"],
+                    "location": row["_location"],
+                    "source_version_id": row["_source_version_id"],
+                }],
+                "calculation_ids": [],
+            }],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
+
 
 class _LocatorDigitModel:
     def __init__(self, doc_id: str) -> None:

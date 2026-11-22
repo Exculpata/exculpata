@@ -402,6 +402,7 @@ class WorkbenchToolBackend:
             except Exception as exc:
                 raise AssistantToolError(f"Original email integrity check failed for {target.display_name}.") from exc
             records, by_source = [], {}
+            unthreaded_errors: list[dict[str, str]] = []
             for doc in store.documents.values():
                 if allowed_document_ids is not None and doc.document_id not in allowed_document_ids:
                     continue
@@ -412,6 +413,17 @@ class WorkbenchToolBackend:
                         raise AssistantToolError(f"Original email integrity check failed for {doc.display_name}.") from exc
                     if verified_path.is_file():
                         rec = read_eml(verified_path)
+                        if rec.error:
+                            if doc.document_id == target.document_id:
+                                raise AssistantToolError(
+                                    f"Email headers/thread links could not be parsed for {doc.display_name}: {rec.error}"
+                                )
+                            unthreaded_errors.append({
+                                "document_id": doc.document_id,
+                                "source_name": doc.display_name,
+                                "error": str(rec.error),
+                            })
+                            continue
                         records.append(rec)
                         by_source[rec.source] = doc
             target_path = str(target_verified)
@@ -470,7 +482,8 @@ class WorkbenchToolBackend:
                     "truncated": msg_truncated, "weak_link": node.weak_link,
                 })
             has_more = (effective_offset + len(messages)) < total_messages
-            truncated = (len(messages) < total_messages) or any_body_truncated
+            incomplete_threading = bool(unthreaded_errors)
+            truncated = (len(messages) < total_messages) or any_body_truncated or incomplete_threading
             return {
                 "document_id": target.document_id,
                 "count": len(messages),
@@ -481,6 +494,8 @@ class WorkbenchToolBackend:
                 "next_offset": (effective_offset + len(messages)) if has_more else None,
                 "previous_offset": max(0, effective_offset - limit) if effective_offset > 0 else None,
                 "body_truncated": any_body_truncated,
+                "incomplete_threading": incomplete_threading,
+                "unthreaded_email_errors": unthreaded_errors,
                 "truncated": truncated,
                 "messages": messages,
             }

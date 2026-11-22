@@ -462,7 +462,7 @@ class CaseAssistant:
                             )
                             inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + cell_text).strip()
                     calc_payload = result.get("calculation")
-                    if isinstance(calc_payload, Mapping):
+                    if isinstance(calc_payload, Mapping) and calc_payload.get("operation") != "count":
                         for inp in calc_payload.get("inputs") or ():
                             if not isinstance(inp, Mapping):
                                 continue
