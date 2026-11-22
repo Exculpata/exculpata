@@ -10,7 +10,7 @@ from .case_assistant import (
     AssistantInvestigationResult, CaseAssistant, OllamaAssistantClient, OpenAIAssistantClient,
 )
 from .case_assistant_tools import (
-    AssistantAccessError, MatterToolRuntime, SearchHit, SourcePage, SourceReadResult, SourceSummary,
+    AssistantAccessError, MatterToolRuntime, SearchHit, SearchResponse, SourcePage, SourceReadResult, SourceSummary,
 )
 from .exact_search_results import ExactSearchUnavailable
 from .generation import OllamaGenerator, OpenAICompatibleGenerator
@@ -20,6 +20,8 @@ from .matter_knowledge import MatterKnowledgeService
 from .review_bench_v2 import Candidate
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
+_VERIFIED_INTRO = "Verified findings from inspected discovery:"
+_ABSTENTION_INTRO = "The inspected sources did not support a verified finding for that question."
 
 
 def case_assistant_enabled() -> bool:
@@ -44,9 +46,10 @@ def assistant_client_from_generator(client: object) -> tuple[object, str]:
 class WorkbenchToolBackend:
     """Authorized MatterToolBackend bound to a live WorkbenchService instance."""
 
-    def __init__(self, bench, actor_id: str) -> None:
+    def __init__(self, bench, actor_id: str, *, allowed_notebook_items: Sequence[object] | None = None) -> None:
         self.bench = bench
         self.actor_id = actor_id
+        self.allowed_notebook_items = None if allowed_notebook_items is None else tuple(allowed_notebook_items)
         self.citations_by_key: dict[tuple[str, str], object] = {}
 
     def authorize(self, matter_id: str, actor_id: str) -> bool:
@@ -67,7 +70,7 @@ class WorkbenchToolBackend:
 
     def list_sources(
         self, matter_id: str, *, query: str = "", kind: str = "", status: str = "",
-        offset: int = 0, limit: int = 50,
+        offset: int = 0, limit: int = 50, document_ids: frozenset[str] | None = None,
     ) -> tuple[Sequence[SourceSummary], int]:
         matter = self.bench._matter_by_id(matter_id)
         store = self.bench.source_store(matter)
@@ -76,7 +79,9 @@ class WorkbenchToolBackend:
         rows: list[SourceSummary] = []
         needle = query.strip().casefold()
         for doc in docs:
-            norm_status = "ready" if doc.state == "Searchable" else "failed"
+            if document_ids is not None and doc.document_id not in document_ids:
+                continue
+            norm_status = "ready" if doc.state == "ready" else "failed"
             doc_kind = doc.media_type.split("/")[-1] if "/" in doc.media_type else (doc.media_type or "document")
             if status and norm_status != status:
                 continue
@@ -94,44 +99,61 @@ class WorkbenchToolBackend:
 
     def search_discovery(
         self, matter_id: str, query: str, *, mode: str = "hybrid",
-        limit: int = 20, document_ids: frozenset[str] | None = None,
-    ) -> Sequence[SearchHit]:
+        limit: int = 20, offset: int = 0, document_ids: frozenset[str] | None = None,
+    ) -> SearchResponse:
         matter = self.bench._matter_by_id(matter_id)
         if mode == "exact":
-            try:
-                page = self.bench.exact_search(matter, query, page_size=25 if limit <= 25 else 50)
-            except (ValueError, ExactSearchUnavailable):
-                return ()
             store = self.bench.source_store(matter)
-            hits: list[SearchHit] = []
-            with store._lock:
-                for item in page.items:
-                    if document_ids is not None and item.document_id not in document_ids:
-                        continue
-                    try:
-                        doc = store.get(item.document_id)
-                    except KeyError:
-                        continue
-                    unit_ordinals = {
-                        (u.number, u.line_start, u.line_end, u.excerpt_digest): idx
-                        for idx, u in enumerate(doc.iter_parsed_units(), 1)
-                    }
-                    for unit in item.passages:
-                        ordinal = unit_ordinals.get((unit.number, unit.line_start, unit.line_end, unit.excerpt_digest), 1)
-                        wc = self._unit_citation(matter, store, doc, ordinal, unit)
-                        self.citations_by_key[(wc.document_id, wc.location)] = wc
-                        hits.append(SearchHit(wc.document_id, wc.source_name, wc.location, wc.excerpt, 1.0,
-                                              wc.source_version_id, wc.excerpt_digest, wc.evidence_kind))
-                        if len(hits) >= limit:
-                            return hits
-            return hits
-        citations = self.bench.search(matter, query, limit=min(limit, 20), document_ids=document_ids)
+            all_hits: list[SearchHit] = []
+            excluded_unavail = 0
+            try:
+                with store._lock:
+                    store._ensure_active()
+                    scoped_docs = [d for d in store.documents.values() if document_ids is None or d.document_id in document_ids]
+                    page_num = 1
+                    total_pages = 1
+                    while page_num <= total_pages:
+                        page = self.bench.exact_search_backend.search(
+                            scoped_docs, query, scope=(matter.matter_id, "assistant", str(len(scoped_docs))),
+                            page=page_num, page_size=50,
+                        )
+                        if page_num == 1:
+                            excluded_unavail = sum(page.exclusions.values())
+                            total_pages = max(1, page.pages)
+                        for item in page.items:
+                            try:
+                                doc = store.get(item.document_id)
+                            except KeyError:
+                                continue
+                            unit_ordinals = {
+                                (u.number, u.line_start, u.line_end, u.excerpt_digest): idx
+                                for idx, u in enumerate(doc.iter_parsed_units(), 1)
+                            }
+                            for unit in item.passages:
+                                ordinal = unit_ordinals.get((unit.number, unit.line_start, unit.line_end, unit.excerpt_digest), 1)
+                                wc = self._unit_citation(matter, store, doc, ordinal, unit)
+                                self.citations_by_key[(wc.document_id, wc.location)] = wc
+                                all_hits.append(SearchHit(
+                                    wc.document_id, wc.source_name, wc.location, wc.excerpt, 1.0,
+                                    wc.source_version_id, wc.excerpt_digest, wc.evidence_kind,
+                                ))
+                        page_num += 1
+            except (ValueError, ExactSearchUnavailable):
+                return SearchResponse(hits=(), total_matches=0, offset=offset, has_more=False, excluded_unavailable_count=0)
+            sliced = tuple(all_hits[offset:offset + limit])
+            return SearchResponse(
+                hits=sliced, total_matches=len(all_hits), offset=offset,
+                has_more=(offset + len(sliced) < len(all_hits)),
+                excluded_unavailable_count=excluded_unavail,
+            )
+        citations = self.bench.search(matter, query, limit=min(limit + offset, 20), document_ids=document_ids)
         result: list[SearchHit] = []
         for wc in citations:
             self.citations_by_key[(wc.document_id, wc.location)] = wc
             result.append(SearchHit(wc.document_id, wc.source_name, wc.location, wc.excerpt, 1.0,
                                     wc.source_version_id, wc.excerpt_digest, wc.evidence_kind))
-        return result
+        sliced = tuple(result[offset:offset + limit])
+        return SearchResponse(hits=sliced, total_matches=len(result), offset=offset, has_more=(offset + len(sliced) < len(result)))
 
     def read_source(
         self, matter_id: str, document_id: str, *, start_page: int = 1, end_page: int | None = None,
@@ -144,32 +166,66 @@ class WorkbenchToolBackend:
             except KeyError:
                 return None
             all_units = list(enumerate(doc.iter_parsed_units(), 1))
-            total = len(all_units)
-            stop = total if end_page is None else min(end_page, total)
+            is_pdf = doc.media_type == "application/pdf" or bool(doc.page_count)
+            total_pages = max(doc.page_count or 0, max((u.number for _, u in all_units), default=0)) if is_pdf else len(all_units)
+            stop = total_pages if end_page is None else min(end_page, total_pages)
             pages: list[SourcePage] = []
-            for ordinal, unit in all_units[max(start_page - 1, 0):stop]:
+            for ordinal, unit in all_units:
+                page_key = unit.number if is_pdf else ordinal
+                if page_key < start_page or page_key > stop:
+                    continue
                 wc = self._unit_citation(matter, store, doc, ordinal, unit)
                 self.citations_by_key[(wc.document_id, wc.location)] = wc
-                pages.append(SourcePage(ordinal, wc.location, unit.text, doc.version_id, unit.excerpt_digest))
-            return SourceReadResult(doc.document_id, doc.display_name, total, tuple(pages))
+                pages.append(SourcePage(page_key, wc.location, unit.text, doc.version_id, unit.excerpt_digest))
+            return SourceReadResult(doc.document_id, doc.display_name, total_pages, tuple(pages))
 
-    def get_case_knowledge(self, matter_id: str, *, section: str = "all", limit: int = 50) -> Mapping[str, object]:
+    def get_case_knowledge(
+        self, matter_id: str, *, section: str = "all", limit: int = 50,
+        document_ids: frozenset[str] | None = None,
+    ) -> Mapping[str, object]:
         matter = self.bench._matter_by_id(matter_id)
         output: dict[str, object] = {}
         if section in {"all", "notes"}:
-            notes = self.bench.workspace.all_notebook_items(matter_id, self.actor_id, include_dismissed=False, limit=limit)
-            output["notes"] = [{"title": n.title, "body": n.body[:600], "status": n.status, "date_label": n.date_label} for n in notes]
+            if self.allowed_notebook_items is not None:
+                notes = list(self.allowed_notebook_items)[:limit]
+            else:
+                notes = list(self.bench.workspace.all_notebook_items(matter_id, self.actor_id, include_dismissed=False, limit=limit))
+            note_rows: list[dict[str, object]] = []
+            for n in notes:
+                ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
+                if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
+                    continue
+                row: dict[str, object] = {"title": n.title, "body": n.body[:600], "status": n.status, "date_label": n.date_label}
+                if ref_ids:
+                    row["source_document_ids"] = ref_ids
+                note_rows.append(row)
+            output["notes"] = note_rows
         if section in {"all", "entities", "assertions"}:
+            if document_ids is not None:
+                if section in {"all", "entities"}:
+                    output["entities"] = []
+                if section in {"all", "assertions"}:
+                    output["assertions"] = []
+                return output
             try:
                 page = MatterKnowledgeService(self.bench.assertion_service(matter)).page(matter_id, self.actor_id)
             except Exception:
                 page = {"entities": {"items": []}, "assertions": {"items": []}}
             if section in {"all", "entities"}:
-                output["entities"] = [{"name": e.get("canonical_name"), "type": e.get("entity_type"), "status": e.get("status")}
-                                      for e in page["entities"]["items"][:limit]]
+                output["entities"] = [
+                    {"name": e.get("display_name") or e.get("canonical_name"), "type": e.get("entity_type"), "status": e.get("status")}
+                    for e in page["entities"]["items"][:limit]
+                ]
             if section in {"all", "assertions"}:
-                output["assertions"] = [{"summary": a.get("summary"), "date": a.get("date_label"), "status": a.get("status")}
-                                        for a in page["assertions"]["items"][:limit]]
+                output["assertions"] = [
+                    {
+                        "title": a.get("title"),
+                        "summary": a.get("statement") or a.get("summary"),
+                        "date": a.get("raw_date") or a.get("date_label"),
+                        "status": a.get("status"),
+                    }
+                    for a in page["assertions"]["items"][:limit]
+                ]
         return output
 
 
@@ -192,21 +248,23 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
                    "elapsed_ms": rec.elapsed_ms, "cited_count": len(rec.cited_refs), "error": rec.error}
                   for rec in result.trace]
     receipt_rows = [asdict(receipt) for receipt in result.receipts.values()]
+    supported = bool(result.answerable and claims_payload)
+    intro = _VERIFIED_INTRO if supported else _ABSTENTION_INTRO
     payload: dict[str, object] = {
-        "kind": "generated" if result.answerable and claims_payload else "not-supported",
-        "answerable": bool(result.answerable and claims_payload),
+        "kind": "generated" if supported else "not-supported",
+        "answerable": supported,
         "model_called": True,
-        "introduction": result.summary,
+        "introduction": intro,
         "claims": claims_payload,
         "limitation": None,
-        "missing_information": "" if result.answerable and claims_payload else result.summary,
+        "missing_information": "" if supported else _ABSTENTION_INTRO,
         "case_assistant": {
             "receipts": receipt_rows, "gaps": list(result.gaps),
             "competing_accounts": list(result.competing_accounts),
             "trace": trace_rows, "turns_used": result.turns_used, "omitted_findings": result.omitted_findings,
         },
     }
-    text_parts = [result.summary, *(f.text for f in result.findings)]
+    text_parts = [f.text for f in result.findings] if supported else [_ABSTENTION_INTRO]
     return AnswerResult("\n".join(p for p in text_parts if p), payload, tuple(used_citations),
                         retrieval_source_fingerprint=source_fingerprint)
 
@@ -214,11 +272,11 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
 def run_workbench_assistant_job(
     bench, job, matter, *, prior: Sequence[object], scoped_document_ids: frozenset[str] | None,
     retrieval_boundary: Mapping[str, str], report_stage: Callable[[str, str], None],
-    cancelled: Callable[[], bool],
+    cancelled: Callable[[], bool], notebook_items: Sequence[object] | None = None,
 ) -> AnswerResult:
     """Execute one AnswerJobRecord through the tool-using CaseAssistant."""
     client, tool_style = assistant_client_from_generator(getattr(bench.generator, "client", None))
-    backend = WorkbenchToolBackend(bench, job.actor_id)
+    backend = WorkbenchToolBackend(bench, job.actor_id, allowed_notebook_items=notebook_items)
     runtime = MatterToolRuntime(matter.matter_id, job.actor_id, backend, allowed_document_ids=scoped_document_ids)
     history = tuple((m.role, m.content) for m in prior[-8:])
 

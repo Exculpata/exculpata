@@ -4951,7 +4951,8 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             if selected_snapshot is None and case_assistant_enabled():
                 return run_workbench_assistant_job(
                     self, job, matter, prior=prior, scoped_document_ids=scoped_document_ids,
-                    retrieval_boundary=retrieval_boundary, report_stage=report_stage, cancelled=cancelled,
+                    retrieval_boundary=retrieval_boundary, notebook_items=notebook_items,
+                    report_stage=report_stage, cancelled=cancelled,
                 )
 
             def retrieval_stage(stage_key: str) -> None:
