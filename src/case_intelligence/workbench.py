@@ -4947,6 +4947,12 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
                 raise AnswerJobFailure(
                     "The selected source set is empty. Add sources to it or use all searchable sources."
                 )
+            from .workbench_assistant import case_assistant_enabled, run_workbench_assistant_job
+            if selected_snapshot is None and case_assistant_enabled():
+                return run_workbench_assistant_job(
+                    self, job, matter, prior=prior, scoped_document_ids=scoped_document_ids,
+                    retrieval_boundary=retrieval_boundary, report_stage=report_stage, cancelled=cancelled,
+                )
 
             def retrieval_stage(stage_key: str) -> None:
                 report_stage(stage_key, ANSWER_STAGE_MESSAGES[stage_key])

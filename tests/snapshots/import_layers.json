@@ -248,6 +248,7 @@
   "case_intelligence.witness_inconsistency": "modules.insight",
   "case_intelligence.work_product_exports": "modules.deliverables",
   "case_intelligence.workbench": "app_shell",
+  "case_intelligence.workbench_assistant": "app_shell",
   "case_intelligence.workbench_retrieval": "app_shell",
   "case_intelligence.workflow_jobs": "modules.workflows",
   "case_intelligence.workflow_quality_gold": "evals",

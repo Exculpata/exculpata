@@ -180,6 +180,7 @@
           {% else %}
             <p>{{ message.content }}</p>
           {% endif %}
+          {% include "workbench_assistant_trace.html" %}
           {% include "workbench_deeper_investigation.html" %}
         </div>
       </article>
