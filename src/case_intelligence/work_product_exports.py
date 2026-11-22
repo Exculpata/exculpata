@@ -757,7 +757,8 @@ def _answer_blocks(message: MessageRecord) -> list[ExportBlock]:
             if expr or res:
                 prefix = f"Calculation [{rid}]: " if rid else "Calculation: "
                 suffix = f" {unit}" if unit else ""
-                blocks.append(ExportBlock(f"{prefix}{expr} = {res}{suffix}".strip(), "note"))
+                rendered = expr if (not res or expr.endswith(f"= {res}")) else f"{expr} = {res}"
+                blocks.append(ExportBlock(f"{prefix}{rendered}{suffix}".strip(), "note"))
     if not blocks:
         blocks.append(ExportBlock(message.content))
     return blocks

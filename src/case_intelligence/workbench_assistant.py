@@ -52,6 +52,26 @@ class WorkbenchToolBackend:
         self.actor_id = actor_id
         self.allowed_notebook_items = None if allowed_notebook_items is None else tuple(allowed_notebook_items)
         self.citations_by_key: dict[tuple[str, str], object] = {}
+        self.citations_by_identity: dict[tuple[str, str, str, str], object] = {}
+
+    def _remember_citation(self, wc) -> None:
+        self.citations_by_key[(wc.document_id, wc.location)] = wc
+        identity = (wc.document_id, wc.location, wc.source_version_id, wc.excerpt_digest)
+        self.citations_by_identity.setdefault(identity, wc)
+
+    def citation_for_ref(self, ref) -> object | None:
+        """Resolve a verified SourceRef only against its exact inspected source identity."""
+        doc_id = str(getattr(ref, "document_id", "") or "")
+        location = str(getattr(ref, "location", "") or "")
+        version_id = str(getattr(ref, "source_version_id", "") or "")
+        digest = str(getattr(ref, "excerpt_digest", "") or "")
+        if digest:
+            return self.citations_by_identity.get((doc_id, location, version_id, digest))
+        matches = [
+            wc for (d, loc, ver, _dig), wc in self.citations_by_identity.items()
+            if d == doc_id and loc == location and (not version_id or ver == version_id)
+        ]
+        return matches[0] if len(matches) == 1 else None
 
     def authorize(self, matter_id: str, actor_id: str) -> bool:
         try:
@@ -158,7 +178,7 @@ class WorkbenchToolBackend:
                             omitted_preview += max(0, item.matching_unit_count - len(matched_pairs))
                             for ordinal, unit in matched_pairs:
                                 wc = self._unit_citation(matter, store, doc, ordinal, unit)
-                                self.citations_by_key[(wc.document_id, wc.location)] = wc
+                                self._remember_citation(wc)
                                 all_hits.append(SearchHit(
                                     wc.document_id, wc.source_name, wc.location, wc.excerpt, 1.0,
                                     wc.source_version_id, wc.excerpt_digest, wc.evidence_kind,
@@ -179,7 +199,7 @@ class WorkbenchToolBackend:
         citations = self.bench.search(matter, query, limit=fetch_limit, document_ids=document_ids)
         result: list[SearchHit] = []
         for wc in citations:
-            self.citations_by_key[(wc.document_id, wc.location)] = wc
+            self._remember_citation(wc)
             result.append(SearchHit(wc.document_id, wc.source_name, wc.location, wc.excerpt, 1.0,
                                     wc.source_version_id, wc.excerpt_digest, wc.evidence_kind))
         sliced = tuple(result[offset:offset + limit])
@@ -207,7 +227,7 @@ class WorkbenchToolBackend:
                 if page_key < start_page or page_key > stop:
                     continue
                 wc = self._unit_citation(matter, store, doc, ordinal, unit)
-                self.citations_by_key[(wc.document_id, wc.location)] = wc
+                self._remember_citation(wc)
                 pages.append(SourcePage(page_key, wc.location, unit.text, doc.version_id, unit.excerpt_digest))
             return SourceReadResult(doc.document_id, doc.display_name, total_pages, tuple(pages))
 
@@ -346,6 +366,12 @@ class WorkbenchToolBackend:
         return output
 
 
+def _verified_receipt_expression(receipt) -> str:
+    """Format verified calculation arithmetic from operation, verified numeric inputs, and result only."""
+    values = ", ".join(str(inp.value) for inp in receipt.inputs)
+    return f"{receipt.operation}({values}) = {receipt.result}"
+
+
 def format_assistant_qualifications(payload: Mapping[str, object]) -> str:
     """Render saved Case Assistant gaps, competing accounts, and calculation receipts for reports."""
     ca = payload.get("case_assistant")
@@ -368,7 +394,8 @@ def format_assistant_qualifications(payload: Mapping[str, object]) -> str:
             unit = str(r.get("unit", "")).strip()
             label = f"[{rid}] " if rid else ""
             suffix = f" {unit}" if unit else ""
-            lines.append(f"- {label}{expr} = {res}{suffix}".strip())
+            rendered = expr if (not res or expr.endswith(f"= {res}")) else f"{expr} = {res}"
+            lines.append(f"- {label}{rendered}{suffix}".strip())
         if lines:
             sections.append("Calculation receipts:\n" + "\n".join(lines))
     return "\n\n".join(sections)
@@ -402,32 +429,50 @@ def _collect_calc_premise_refs(calc_ids: Sequence[str], receipts: Mapping[str, o
 
 def _result_to_answer(bench, result: AssistantInvestigationResult, backend: WorkbenchToolBackend, source_fingerprint: str) -> AnswerResult:
     claims_payload: list[dict[str, object]] = []
+    retained_findings: list[object] = []
     used_citations: list[object] = []
     seen_tokens: set[str] = set()
-
-    def register_wc(ref) -> object | None:
-        wc = backend.citations_by_key.get((ref.document_id, ref.location))
-        if wc is None:
-            return None
-        if wc.support_token not in seen_tokens:
-            seen_tokens.add(wc.support_token)
-            used_citations.append(wc)
-        return wc
+    extra_omitted = 0
 
     for finding in result.findings:
+        combined_refs = (*finding.citations, *_collect_calc_premise_refs(finding.calculation_ids, result.receipts))
+        resolved_wcs = [backend.citation_for_ref(ref) for ref in combined_refs]
+        if not resolved_wcs or any(wc is None for wc in resolved_wcs):
+            extra_omitted += 1
+            continue
         cite_rows: list[dict[str, object]] = []
         seen_claim_tokens: set[str] = set()
-        for ref in (*finding.citations, *_collect_calc_premise_refs(finding.calculation_ids, result.receipts)):
-            wc = register_wc(ref)
-            if wc is None or wc.support_token in seen_claim_tokens:
+        for wc in resolved_wcs:
+            assert wc is not None
+            if wc.support_token not in seen_tokens:
+                seen_tokens.add(wc.support_token)
+                used_citations.append(wc)
+            if wc.support_token in seen_claim_tokens:
                 continue
             seen_claim_tokens.add(wc.support_token)
             cite_rows.append(bench._saved_answer_citation_payload(wc))
+        if not cite_rows:
+            extra_omitted += 1
+            continue
+        retained_findings.append(finding)
         claims_payload.append({"text": finding.text, "citations": cite_rows, "calculation_ids": list(finding.calculation_ids)})
     trace_rows = [{"call_id": rec.call_id, "tool_name": rec.tool_name, "status": rec.status,
                    "elapsed_ms": rec.elapsed_ms, "cited_count": len(rec.cited_refs), "error": rec.error}
                   for rec in result.trace]
-    receipt_rows = [asdict(receipt) for receipt in result.receipts.values()]
+    receipt_rows = [
+        {
+            "receipt_id": receipt.receipt_id,
+            "operation": receipt.operation,
+            "expression": _verified_receipt_expression(receipt),
+            "result": receipt.result,
+            "unit": receipt.unit,
+            "inputs": [
+                {"value": inp.value, "source_refs": [asdict(sref) for sref in inp.source_refs]}
+                for inp in receipt.inputs
+            ],
+        }
+        for receipt in result.receipts.values()
+    ]
     supported = bool(result.answerable and claims_payload)
     intro = _VERIFIED_INTRO if supported else _ABSTENTION_INTRO
     payload: dict[str, object] = {
@@ -441,10 +486,11 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
         "case_assistant": {
             "receipts": receipt_rows, "gaps": list(result.gaps),
             "competing_accounts": list(result.competing_accounts),
-            "trace": trace_rows, "turns_used": result.turns_used, "omitted_findings": result.omitted_findings,
+            "trace": trace_rows, "turns_used": result.turns_used,
+            "omitted_findings": result.omitted_findings + extra_omitted,
         },
     }
-    text_parts = [f.text for f in result.findings] if supported else [_ABSTENTION_INTRO]
+    text_parts = [f.text for f in retained_findings] if supported else [_ABSTENTION_INTRO]
     return AnswerResult("\n".join(p for p in text_parts if p), payload, tuple(used_citations),
                         retrieval_source_fingerprint=source_fingerprint)
 

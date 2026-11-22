@@ -87,7 +87,7 @@ def test_workbench_case_assistant_end_to_end_http_and_trace_rendering(tmp_path, 
         _, page = _answer_and_wait(client, slug, conv_id, "Did controlled accounts exceed 10% after the buyback?")
         assert page.status_code == 200
         assert "11.25%" in page.text
-        assert "post_buyback_outstanding(800000)" in page.text
+        assert "percent(90000, 800000) = 11.25" in page.text
         assert "damaged-scan.pdf" in page.text
         assert "Witness A claimed no instructions" in page.text
         assert "Work trace" in page.text
@@ -425,6 +425,86 @@ def test_pr587_round3_exact_filter_exports_reports_and_knowledge_pagination(tmp_
         assert "October statement is missing from production." in section.body
         assert "Witness A denies control while email directs trades." in section.body
         assert "calc-1" in section.body and "12.50" in section.body
+
+
+def test_pr587_round4_identity_bound_citations_and_label_free_receipts(tmp_path):
+    from types import SimpleNamespace
+    from case_intelligence.case_assistant import AssistantFinding, AssistantInvestigationResult
+    from case_intelligence.case_assistant_tools import CalculationInput, CalculationReceipt, SourceRef
+    from case_intelligence.workbench_assistant import (
+        WorkbenchToolBackend, _result_to_answer, format_assistant_qualifications,
+    )
+
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Round 4 Identity Matter")
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("ledger.txt", b"Balance 10 on page one.", "text/plain")),
+        ]).status_code == 200
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        backend = WorkbenchToolBackend(bench, actor)
+        orig_wc = bench.search(matter, "Balance 10", limit=1)[0]
+        edited_wc = SimpleNamespace(
+            matter_id=orig_wc.matter_id,
+            document_id=orig_wc.document_id,
+            source_version_id=orig_wc.source_version_id,
+            source_name=orig_wc.source_name,
+            location=orig_wc.location,
+            unit_number=orig_wc.unit_number,
+            chunk_id=orig_wc.chunk_id,
+            excerpt="Balance 15 on page one.",
+            excerpt_digest="changed-digest-0002",
+            evidence_kind=orig_wc.evidence_kind,
+            support_token="changed-token-0002",
+        )
+        backend._remember_citation(orig_wc)
+        backend._remember_citation(edited_wc)
+
+        # 1a. Ref carrying the original digest resolves strictly to the original citation, never the edited one.
+        orig_ref = SourceRef(orig_wc.document_id, orig_wc.source_name, orig_wc.location,
+                             orig_wc.source_version_id, orig_wc.excerpt_digest)
+        resolved = backend.citation_for_ref(orig_ref)
+        assert resolved is orig_wc and resolved.excerpt_digest == orig_wc.excerpt_digest
+
+        # 1b. Digestless ref fails closed when multiple digests exist for the same (doc, location, version).
+        ambiguous_ref = SourceRef(orig_wc.document_id, orig_wc.source_name, orig_wc.location,
+                                  orig_wc.source_version_id, "")
+        assert backend.citation_for_ref(ambiguous_ref) is None
+        ambiguous_result = AssistantInvestigationResult(
+            answerable=True, summary="Balance 10.",
+            findings=(AssistantFinding("Balance 10.", (ambiguous_ref,), ()),),
+            omitted_findings=0, gaps=(), competing_accounts=(),
+            citations=(ambiguous_ref,), receipts={}, trace=(), turns_used=1, elapsed_ms=1,
+        )
+        ans_amb = _result_to_answer(bench, ambiguous_result, backend, "fp")
+        assert ans_amb.payload["kind"] == "not-supported"
+        assert ans_amb.payload["claims"] == []
+        assert ans_amb.payload["case_assistant"]["omitted_findings"] == 1
+
+        # 2. Unverified model labels in calculation inputs never appear in verified calculation display.
+        receipt = CalculationReceipt(
+            receipt_id="calc-1",
+            operation="sum",
+            expression="fabricated 87.65(10) = 10",
+            result="10",
+            unit="USD",
+            inputs=(CalculationInput("fabricated 87.65", "10", (orig_ref,)),),
+        )
+        calc_result = AssistantInvestigationResult(
+            answerable=True, summary="Total is 10.",
+            findings=(AssistantFinding("Balance is 10.", (orig_ref,), ("calc-1",)),),
+            omitted_findings=0, gaps=(), competing_accounts=(),
+            citations=(orig_ref,), receipts={"calc-1": receipt}, trace=(), turns_used=1, elapsed_ms=1,
+        )
+        ans_calc = _result_to_answer(bench, calc_result, backend, "fp")
+        saved_receipt = ans_calc.payload["case_assistant"]["receipts"][0]
+        assert saved_receipt["expression"] == "sum(10) = 10"
+        assert "fabricated" not in saved_receipt["expression"] and "87.65" not in saved_receipt["expression"]
+        qual = format_assistant_qualifications(ans_calc.payload)
+        assert "sum(10) = 10 USD" in qual and "fabricated" not in qual and "87.65" not in qual
+
 
 
 

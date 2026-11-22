@@ -476,8 +476,9 @@ def snapshot_report_materials(bench, matter, actor: str, selections: tuple[str, 
                     if expr or res:
                         label = f"[{rid}] " if rid else ""
                         suffix = f" {unit}" if unit else ""
+                        rendered = expr if (not res or expr.endswith(f"= {res}")) else f"{expr} = {res}"
                         add(material_id=f"{prefix}:assistant_receipt:{idx}", origin=origin,
-                            title="Calculation receipt", text=f"{label}{expr} = {res}{suffix}".strip(),
+                            title="Calculation receipt", text=f"{label}{rendered}{suffix}".strip(),
                             revision=revision, category="fact", author="AI assistance")
         coverage(payload, prefix, revision, origin, generated=generated)
 
