@@ -124,8 +124,9 @@ TOOL_DEFINITIONS: tuple[dict[str, object], ...] = (
                            "value": {"type": "string", "minLength": 1, "maxLength": 64},
                            "source_refs": {"type": "array", "items": {"type": "object"}}}}},
         "unit": {"type": "string", "maxLength": 32}, "precision": {"type": "integer", "minimum": 0, "maximum": 12}}, required=("operation", "inputs")),
-    _tool_spec("query_table", "Filter CSV/TSV source rows and optionally compute exact Decimal column aggregates.", {
+    _tool_spec("query_table", "Filter CSV/TSV/XLSX source rows and optionally compute exact Decimal column aggregates.", {
         "document_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "sheet": {"type": "string", "maxLength": 120},
         "filters": {"type": "object"}, "aggregate_column": {"type": "string", "maxLength": 120},
         "aggregate_op": {"type": "string", "enum": sorted(ALLOWED_TABLE_AGG_OPS)},
         "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIST_LIMIT}}, required=("document_id",)),
@@ -297,7 +298,13 @@ def _format_exact_decimal(value: Decimal) -> str:
 
 
 _XLSX_CELL_COORD_RE = re.compile(r"^([A-Za-z]+)\d+$")
+_XLSX_SHEET_LOC_RE = re.compile(r"^(.+?),\s*rows\s+\d+[–-]\d+", re.IGNORECASE)
 _ALLOWED_FILTER_OPS = frozenset({"min", "max"})
+
+
+def _extract_sheet_name(location: str) -> str | None:
+    match = _XLSX_SHEET_LOC_RE.match(location.strip())
+    return match.group(1).strip() if match else None
 
 
 def _normalize_cell_coord(coord: str) -> str:
@@ -337,6 +344,10 @@ def _parse_table_sections(
         headers = [col for _, col in coord_headers]
         rows: list[tuple[dict[str, str], str, str]] = []
         for line, loc, ver in tagged_lines[1:]:
+            if line.startswith("Row 1:"):
+                raise AssistantToolError(
+                    "Table source spans multiple worksheets or separate header blocks; specify 'sheet' to query one worksheet."
+                )
             parsed = _parse_extracted_cells(line)
             if parsed is None:
                 raise AssistantToolError(
@@ -365,12 +376,29 @@ def query_table_rows(
     document_id: str, source_name: str, text: str = "", *, filters: Mapping[str, object] | None = None,
     aggregate_column: str = "", aggregate_op: str = "", limit: int = 50,
     source_version_id: str = "", location: str = "Line 1", receipt_id: str = "calc-1",
-    sections: Sequence[tuple[str, str, str]] | None = None,
+    sections: Sequence[tuple[str, str, str]] | None = None, sheet: str = "",
 ) -> tuple[dict[str, object], CalculationReceipt | None]:
     """Filter CSV/TSV/extracted spreadsheet rows and compute exact Decimal aggregates with per-section provenance."""
     if aggregate_op and aggregate_op not in ALLOWED_TABLE_AGG_OPS:
         raise AssistantToolError(f"Unsupported table aggregate operation: {aggregate_op!r}.")
     section_list = list(sections) if sections is not None else [(location, source_version_id, text)]
+    detected_sheets = list(dict.fromkeys(
+        name for loc, _, _ in section_list if (name := _extract_sheet_name(loc)) is not None
+    ))
+    requested_sheet = sheet.strip()
+    if requested_sheet:
+        filtered_sections = [
+            sec for sec in section_list
+            if (name := _extract_sheet_name(sec[0])) is not None and name.casefold() == requested_sheet.casefold()
+        ]
+        if not filtered_sections:
+            avail = ", ".join(detected_sheets) if detected_sheets else "none"
+            raise AssistantToolError(f"Worksheet {requested_sheet!r} not found (available: {avail}).")
+        section_list = filtered_sections
+    elif len(detected_sheets) > 1:
+        raise AssistantToolError(
+            f"Workbook contains multiple worksheets ({', '.join(detected_sheets)}); specify 'sheet' to query one worksheet."
+        )
     columns, all_rows = _parse_table_sections(section_list)
     if not columns:
         raise AssistantToolError("Source does not contain a tabular header row.")
@@ -709,6 +737,7 @@ class MatterToolRuntime:
                 aggregate_column=str(args.get("aggregate_column", "")).strip(),
                 aggregate_op=str(args.get("aggregate_op", "")).strip(), limit=limit,
                 receipt_id=receipt_id, sections=sections,
+                sheet=str(args.get("sheet", "")).strip(),
             )
             if receipt is not None:
                 self._receipts[receipt_id] = receipt
@@ -764,8 +793,15 @@ class MatterToolRuntime:
             data = handler(self.matter_id, document_id, **kwargs)
             if data is None:
                 raise AssistantAccessError("Transcript source not found in this matter.")
-            refs = [SourceRef(data["document_id"], data["source_name"], c["location"], c.get("source_version_id", ""))
-                    for c in data.get("cues", ()) if isinstance(c, Mapping)]
+            refs = []
+            for c in data.get("cues", ()):
+                if not isinstance(c, Mapping):
+                    continue
+                ver = str(c.get("source_version_id", ""))
+                refs.append(SourceRef(data["document_id"], data["source_name"], str(c["location"]), ver))
+                for extra_loc in c.get("continuation_locations") or ():
+                    if isinstance(extra_loc, str) and extra_loc:
+                        refs.append(SourceRef(data["document_id"], data["source_name"], extra_loc, ver))
             return dict(data), refs, None
         receipt_id = f"calc-{len(self._receipts) + 1}"
         precision = _int_arg(args, "precision", 6, minimum=0, maximum=12)

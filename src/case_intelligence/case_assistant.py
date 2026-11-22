@@ -484,7 +484,6 @@ class CaseAssistant:
                             inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(m.get("body", ""))).strip()
                 elif call.name == "read_transcript_window" and "document_id" in result:
                     for c in result.get("cues") or ():
-                        key = (result["document_id"], c["location"], str(c.get("source_version_id") or ""))
                         parts: list[str] = []
                         for ts_key in ("start_seconds", "end_seconds"):
                             raw_sec = c.get(ts_key)
@@ -497,7 +496,12 @@ class CaseAssistant:
                         if speaker:
                             parts.append(speaker)
                         parts.append(str(c.get("text", "")))
-                        inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + " ".join(p for p in parts if p)).strip()
+                        cue_text = " ".join(p for p in parts if p)
+                        ver = str(c.get("source_version_id") or "")
+                        for loc in (c["location"], *(c.get("continuation_locations") or ())):
+                            if isinstance(loc, str) and loc:
+                                key = (result["document_id"], loc, ver)
+                                inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + cue_text).strip()
                 messages.append({"role": "tool", "tool_call_id": call.call_id, "name": call.name, "content": json.dumps(result, ensure_ascii=False)})
         else:
             budget_exhausted = True

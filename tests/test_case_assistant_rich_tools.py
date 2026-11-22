@@ -380,4 +380,52 @@ def test_pr589_round3_xlsx_filter_ops_email_truncation_transcript_pagination_and
         assert g_res.answerable is True and g_res.omitted_findings == 0 and len(g_res.findings) == 1
 
 
+def test_pr589_round4_multisheet_xlsx_and_multiline_transcript_continuations(tmp_path):
+    # 1. Multi-sheet XLSX refuses silent schema merging and scopes cleanly when sheet= is specified.
+    sections = [
+        ("Wires, rows 1–2", "v1", "Row 1: A1: id | B1: amount\nRow 2: A2: w1 | B2: 100"),
+        ("Balances, rows 1–2", "v1", "Row 1: A1: id | B1: balance\nRow 2: A2: w2 | B2: 999"),
+    ]
+    with pytest.raises(AssistantToolError, match="multiple worksheets"):
+        query_table_rows(
+            "doc-wb", "book.xlsx", filters={"id": "w"},
+            aggregate_column="amount", aggregate_op="sum", sections=sections,
+        )
+    wires_res, wires_rcpt = query_table_rows(
+        "doc-wb", "book.xlsx", filters={"id": "w"},
+        aggregate_column="amount", aggregate_op="sum", sections=sections, sheet="Wires",
+    )
+    assert wires_res["matched_rows"] == 1 and wires_rcpt is not None and wires_rcpt.result == "100"
+    bal_res, bal_rcpt = query_table_rows(
+        "doc-wb", "book.xlsx", filters={"id": "w"},
+        aggregate_column="balance", aggregate_op="sum", sections=sections, sheet="Balances",
+    )
+    assert bal_res["matched_rows"] == 1 and bal_rcpt is not None and bal_rcpt.result == "999"
+
+    # 2. Multi-line timestamped transcript preserves continuation lines and discloses untimestamped preamble.
+    multiline_tr = (
+        "Header note before timestamps\n"
+        "[00:00:05] Speaker 1: First sentence.\n"
+        "The scheduled amount is 9876.\n"
+        "[00:00:10] Speaker 2: Acknowledged.\n"
+    )
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Multiline Transcript Matter")
+        up = client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("multi.txt", multiline_tr.encode("utf-8"), "text/plain")),
+        ])
+        assert up.status_code == 200
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        runtime = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        doc_id = runtime.invoke("list_sources", {"limit": 10})["sources"][0]["document_id"]
+        win = runtime.invoke("read_transcript_window", {"document_id": doc_id, "start_seconds": 0, "limit": 10})
+        assert win["count"] == 2
+        assert "The scheduled amount is 9876." in win["cues"][0]["text"]
+        assert win["untimestamped_lines_omitted"] == 1 and win["truncated"] is True
+
+
+
 

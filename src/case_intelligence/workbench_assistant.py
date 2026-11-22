@@ -405,36 +405,61 @@ class WorkbenchToolBackend:
                 doc = store.get(document_id)
             except KeyError:
                 return None
-            all_cues: list[tuple[dict[str, object], object]] = []
+            all_cues: list[tuple[dict[str, object], list[object]]] = []
+            active_cue: dict[str, object] | None = None
+            active_wcs: list[object] = []
+            untimestamped_omitted = 0
             for ordinal, unit in enumerate(doc.iter_parsed_units(), 1):
                 wc = self._unit_citation(matter, store, doc, ordinal, unit)
                 if unit.start_ms is not None:
+                    active_cue = None
+                    active_wcs = []
                     s_sec = unit.start_ms / 1000.0
                     e_sec = (unit.end_ms / 1000.0) if unit.end_ms is not None else s_sec
                     if e_sec >= start_seconds and (end_seconds is None or s_sec <= end_seconds):
                         all_cues.append((
                             {"start_seconds": s_sec, "end_seconds": e_sec, "speaker": unit.speaker_cluster,
                              "text": unit.text, "location": wc.location, "source_version_id": doc.version_id},
-                            wc,
+                            [wc],
                         ))
                 else:
-                    for line in unit.text.splitlines():
-                        m = ts_re.match(line.strip())
-                        if not m:
+                    for raw_line in unit.text.splitlines():
+                        stripped = raw_line.strip()
+                        if not stripped:
                             continue
-                        a, b, c = int(m.group(1)), int(m.group(2)), int(m.group(3)) if m.group(3) else None
-                        sec = float(a * 3600 + b * 60 + c) if c is not None else float(a * 60 + b)
-                        if sec >= start_seconds and (end_seconds is None or sec <= end_seconds):
-                            all_cues.append((
-                                {"start_seconds": sec, "end_seconds": sec, "speaker": (m.group(4) or "").strip(),
-                                 "text": m.group(5).strip(), "location": wc.location, "source_version_id": doc.version_id},
-                                wc,
-                            ))
+                        m = ts_re.match(stripped)
+                        if m:
+                            a, b, c = int(m.group(1)), int(m.group(2)), int(m.group(3)) if m.group(3) else None
+                            sec = float(a * 3600 + b * 60 + c) if c is not None else float(a * 60 + b)
+                            cue_dict: dict[str, object] = {
+                                "start_seconds": sec,
+                                "end_seconds": sec,
+                                "speaker": (m.group(4) or "").strip(),
+                                "text": m.group(5).strip(),
+                                "location": wc.location,
+                                "source_version_id": doc.version_id,
+                            }
+                            active_cue = cue_dict
+                            active_wcs = [wc]
+                            if sec >= start_seconds and (end_seconds is None or sec <= end_seconds):
+                                all_cues.append((cue_dict, active_wcs))
+                        elif active_cue is not None:
+                            prev = str(active_cue.get("text") or "")
+                            active_cue["text"] = f"{prev}\n{stripped}".strip() if prev else stripped
+                            if wc.location != active_cue["location"]:
+                                cont_locs = active_cue.setdefault("continuation_locations", [])
+                                if isinstance(cont_locs, list) and wc.location not in cont_locs:
+                                    cont_locs.append(wc.location)
+                                if not any(existing.location == wc.location for existing in active_wcs):
+                                    active_wcs.append(wc)
+                        else:
+                            untimestamped_omitted += 1
             total_cues = len(all_cues)
             sliced = all_cues[offset:offset + limit]
             page_cues: list[dict[str, object]] = []
-            for cue, wc in sliced:
-                self.citations_by_key[(wc.document_id, wc.location)] = wc
+            for cue, wcs in sliced:
+                for wc in wcs:
+                    self.citations_by_key[(wc.document_id, wc.location)] = wc
                 page_cues.append(cue)
             omitted_cues = max(0, total_cues - (offset + len(page_cues)))
             has_more = omitted_cues > 0
@@ -448,9 +473,10 @@ class WorkbenchToolBackend:
                 "count": len(page_cues),
                 "total_cues": total_cues,
                 "omitted_cues": omitted_cues,
+                "untimestamped_lines_omitted": untimestamped_omitted,
                 "has_more": has_more,
                 "next_offset": (offset + len(page_cues)) if has_more else None,
-                "truncated": len(page_cues) < total_cues,
+                "truncated": (len(page_cues) < total_cues) or (untimestamped_omitted > 0),
                 "cues": page_cues,
             }
 
