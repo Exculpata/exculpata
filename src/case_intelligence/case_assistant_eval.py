@@ -32,6 +32,7 @@ class EvalCase:
     required_source_kinds: tuple[str, ...] = ()
     require_gap_notice: bool = False
     require_competing_accounts: bool = False
+    expected_conclusion_pattern: str = ""
 
 
 @dataclass(frozen=True)
@@ -51,14 +52,16 @@ class InMemoryEvalBackend:
         return matter_id == self.matter_id
 
     def list_sources(self, matter_id: str, *, query: str = "", kind: str = "",
-                     status: str = "", offset: int = 0, limit: int = 50):
+                     status: str = "", offset: int = 0, limit: int = 50,
+                     document_ids: frozenset[str] | None = None):
         rows = [d.summary for d in self.docs.values()
-                if (not kind or d.summary.kind == kind) and (not status or d.summary.status == status)
+                if (document_ids is None or d.summary.document_id in document_ids)
+                and (not kind or d.summary.kind == kind) and (not status or d.summary.status == status)
                 and (not query or query.casefold() in (d.summary.source_name + d.summary.bates).casefold())]
         return rows[offset:offset + limit], len(rows)
 
     def search_discovery(self, matter_id: str, query: str, *, mode: str = "hybrid",
-                         limit: int = 20, document_ids: frozenset[str] | None = None):
+                         limit: int = 20, offset: int = 0, document_ids: frozenset[str] | None = None):
         terms = [t for t in re.findall(r"[a-z0-9_-]+", query.casefold()) if len(t) > 1]
         hits = [
             SearchHit(d.summary.document_id, d.summary.source_name, p.location, p.text,
@@ -68,7 +71,7 @@ class InMemoryEvalBackend:
             for p in d.pages if any(t in p.text.casefold() for t in terms)
         ]
         hits.sort(key=lambda item: (-item.score, item.document_id, item.location))
-        return hits[:limit]
+        return hits[offset:offset + limit]
 
     def read_source(self, matter_id: str, document_id: str, *, start_page: int = 1, end_page: int | None = None):
         doc = self.docs.get(document_id)
@@ -78,7 +81,8 @@ class InMemoryEvalBackend:
         return SourceReadResult(doc.summary.document_id, doc.summary.source_name, len(doc.pages),
                                 tuple(p for p in doc.pages if start_page <= p.page_number <= stop))
 
-    def get_case_knowledge(self, matter_id: str, *, section: str = "all", limit: int = 50) -> Mapping[str, object]:
+    def get_case_knowledge(self, matter_id: str, *, section: str = "all", limit: int = 50,
+                           document_ids: frozenset[str] | None = None) -> Mapping[str, object]:
         return {}
 
 
@@ -117,6 +121,7 @@ def build_stock_eval_suite(seed: int = 7) -> tuple[tuple[EvalCase, ...], InMemor
             "associate_contradiction",
             "Are the associate's interview statements consistent with the email record regarding trading instructions?",
             expected_answerable=True, required_source_kinds=("interview", "email"), require_competing_accounts=True,
+            expected_conclusion_pattern=r"\b(?:contradict\w*|inconsistent|inconsistenc\w*|conflict\w*|discrepanc\w*|not consistent)\b",
         ),
         EvalCase(
             "unrecorded_market_price_trap",
@@ -150,19 +155,34 @@ def score_eval_case(case: EvalCase, result: AssistantInvestigationResult) -> dic
         if result.answerable:
             return {"case_id": case.case_id, "score": 0.0, "penalties": ["trap_false_answer"],
                     "turns_used": result.turns_used, "receipts": len(result.receipts)}
+        if result.omitted_findings > 0 or result.findings:
+            return {"case_id": case.case_id, "score": 0.0, "penalties": ["trap_rejected_claim"],
+                    "turns_used": result.turns_used, "receipts": len(result.receipts)}
+        if any(
+            token in g.casefold()
+            for g in result.gaps
+            for token in ("unstructured output", "invalid ", "turn budget")
+        ):
+            return {"case_id": case.case_id, "score": 0.0, "penalties": ["trap_unstructured_or_incomplete"],
+                    "turns_used": result.turns_used, "receipts": len(result.receipts)}
         return {"case_id": case.case_id, "score": 100.0, "penalties": [],
                 "turns_used": result.turns_used, "receipts": len(result.receipts)}
 
     accuracy, citations_pts, math_pts, honesty_pts = 0.0, 0.0, 0.0, 15.0
+    answer_texts = [result.summary, *(f.text for f in result.findings)]
     if result.answerable:
-        if case.expected_value is None:
-            accuracy = 40.0
-        else:
-            texts = [result.summary, *(f.text for f in result.findings), *(r.result for r in result.receipts.values())]
-            if _matches_numeric(case.expected_value, texts, case.tolerance):
+        if case.expected_value is not None:
+            if _matches_numeric(case.expected_value, answer_texts, case.tolerance):
                 accuracy = 40.0
             else:
                 penalties.append("numeric_mismatch")
+        elif case.expected_conclusion_pattern:
+            if any(re.search(case.expected_conclusion_pattern, text, flags=re.IGNORECASE) for text in answer_texts):
+                accuracy = 40.0
+            else:
+                penalties.append("conclusion_mismatch")
+        else:
+            accuracy = 40.0
     else:
         penalties.append("false_abstention")
 
@@ -176,7 +196,8 @@ def score_eval_case(case: EvalCase, result: AssistantInvestigationResult) -> dic
         citations_pts = 25.0 if cited_names else 0.0
 
     if case.require_receipt:
-        receipt_vals = [r.result for r in result.receipts.values()]
+        used_ids = {cid for f in result.findings for cid in f.calculation_ids}
+        receipt_vals = [result.receipts[cid].result for cid in used_ids if cid in result.receipts]
         if case.expected_value and _matches_numeric(case.expected_value, receipt_vals, case.tolerance):
             math_pts = 20.0
         else:
@@ -229,16 +250,16 @@ class _ScriptedEvalModel:
                 buy = next(h for m in tool_msgs for h in m.get("hits", ()) if "-filing." in h["source_name"])
                 sale = next(h for m in tool_msgs for h in m.get("hits", ()) if "-confirmation." in h["source_name"])
                 return AssistantTurn(tool_calls=(AssistantModelCall("d3", "calculate", {"operation": "days_between", "inputs": [
-                    {"label": "buyback", "value": "2024-09-01", "source_refs": [{k: buy[k] for k in ("document_id", "source_name", "location")}]},
-                    {"label": "sale", "value": "2024-10-15", "source_refs": [{k: sale[k] for k in ("document_id", "source_name", "location")}]},
+                    {"label": "buyback", "value": "2024-09-01", "source_refs": [{k: buy[k] for k in ("document_id", "source_name", "location", "source_version_id")}]},
+                    {"label": "sale", "value": "2024-10-15", "source_refs": [{k: sale[k] for k in ("document_id", "source_name", "location", "source_version_id")}]},
                 ]}),))
             buy = next(h for m in tool_msgs for h in m.get("hits", ()) if "-filing." in h["source_name"])
             sale = next(h for m in tool_msgs for h in m.get("hits", ()) if "-confirmation." in h["source_name"])
             return AssistantTurn(content=json.dumps({
                 "answerable": True, "summary": "44 calendar days elapsed between 2024-09-01 and 2024-10-15.",
                 "findings": [{"text": "44 days elapsed between the 2024-09-01 buyback and the 2024-10-15 sales.",
-                              "citations": [{k: buy[k] for k in ("document_id", "source_name", "location")},
-                                            {k: sale[k] for k in ("document_id", "source_name", "location")}],
+                              "citations": [{k: buy[k] for k in ("document_id", "source_name", "location", "source_version_id")},
+                                            {k: sale[k] for k in ("document_id", "source_name", "location", "source_version_id")}],
                               "calculation_ids": ["calc-1"]}],
                 "gaps": [], "competing_accounts": [],
             }))
@@ -252,9 +273,9 @@ class _ScriptedEvalModel:
             em = next(h for m in tool_msgs for h in m.get("hits", ()) if "-email." in h["source_name"])
             return AssistantTurn(content=json.dumps({
                 "answerable": True, "summary": "No. The associate's interviews contradict the email instructions.",
-                "findings": [{"text": "An interview states 'I never received trading instructions' while emails send monthly share orders for stk-4.",
-                              "citations": [{k: iv[k] for k in ("document_id", "source_name", "location")},
-                                            {k: em[k] for k in ("document_id", "source_name", "location")}],
+                "findings": [{"text": "The associate's interview ('I never received trading instructions') contradicts emails sending monthly share orders for stk-4.",
+                              "citations": [{k: iv[k] for k in ("document_id", "source_name", "location", "source_version_id")},
+                                            {k: em[k] for k in ("document_id", "source_name", "location", "source_version_id")}],
                               "calculation_ids": []}],
                 "gaps": [], "competing_accounts": ["Interview denies trading instructions while emails instruct stk-4 share orders."],
             }))
@@ -272,16 +293,16 @@ class _ScriptedEvalModel:
                 for acc in ("stk-0", "stk-1", "stk-2", "stk-3")]
         if not calcs:
             inputs = [{"label": f"stk-{i}", "value": re.search(r"shares=(\d+)", h["excerpt"]).group(1),
-                       "source_refs": [{k: h[k] for k in ("document_id", "source_name", "location")}]} for i, h in enumerate(accs)]
+                       "source_refs": [{k: h[k] for k in ("document_id", "source_name", "location", "source_version_id")}]} for i, h in enumerate(accs)]
             return AssistantTurn(tool_calls=(AssistantModelCall("o7", "calculate", {"operation": "sum", "inputs": inputs, "unit": "shares"}),))
         if len(calcs) == 1:
             buy_shares = re.search(r"shares=(\d+)", buy["excerpt"]).group(1)
             return AssistantTurn(tool_calls=(AssistantModelCall("o8", "calculate", {"operation": "percent", "inputs": [
-                {"label": "combined", "value": calcs[0]["result"], "source_refs": [{k: h[k] for k in ("document_id", "source_name", "location")} for h in accs]},
-                {"label": "outstanding", "value": buy_shares, "source_refs": [{k: buy[k] for k in ("document_id", "source_name", "location")}]},
+                {"label": "combined", "value": calcs[0]["result"], "source_refs": [{k: h[k] for k in ("document_id", "source_name", "location", "source_version_id")} for h in accs]},
+                {"label": "outstanding", "value": buy_shares, "source_refs": [{k: buy[k] for k in ("document_id", "source_name", "location", "source_version_id")}]},
             ]}),))
         pct = calcs[1]["result"]
-        cites = [{k: h[k] for k in ("document_id", "source_name", "location")} for h in (*accs, buy)]
+        cites = [{k: h[k] for k in ("document_id", "source_name", "location", "source_version_id")} for h in (*accs, buy)]
         return AssistantTurn(content=json.dumps({
             "answerable": True, "summary": f"Yes. Combined holdings reached {pct}% of outstanding shares.",
             "findings": [{"text": f"Combined holdings across stk-0..stk-3 reached {pct}% after the 2024-09-01 buyback.",
@@ -312,6 +333,12 @@ def render_markdown(report: Mapping[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _write_output_file(path: Path, content: str, *, force: bool) -> None:
+    mode = "w" if force else "x"
+    with path.open(mode, encoding="utf-8") as handle:
+        handle.write(content)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", choices=("scripted", "openai", "ollama"), default="scripted")
@@ -339,10 +366,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         style = args.backend
     report = run_evaluation(client, seed=args.seed, tool_style=style, max_turns=args.max_turns)
     md = render_markdown(report)
-    if args.out_json is not None:
-        args.out_json.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    if args.out_md is not None:
-        args.out_md.write_text(md, encoding="utf-8")
+    try:
+        if args.out_json is not None:
+            _write_output_file(args.out_json, json.dumps(report, indent=2, sort_keys=True) + "\n", force=args.force)
+        if args.out_md is not None:
+            _write_output_file(args.out_md, md, force=args.force)
+    except FileExistsError as exc:
+        print(f"Refusing to overwrite existing file without --force: {exc.filename}", file=sys.stderr)
+        return 2
     print(md, end="")
     return 0
 
