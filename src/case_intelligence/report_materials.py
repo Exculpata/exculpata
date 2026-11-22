@@ -457,6 +457,33 @@ def snapshot_report_materials(bench, matter, actor: str, selections: tuple[str, 
                 add(material_id=f"{prefix}:gap", origin=origin, title="Saved response requiring review",
                     text=presented, citations=references(payload.get("source_matches", []), ledger),
                     revision=revision, category="gap", author="AI assistance", raw_snapshot=(text, ""))
+        case_assistant = payload.get("case_assistant")
+        if isinstance(case_assistant, Mapping):
+            for idx, gap in enumerate(case_assistant.get("gaps") or ()):
+                if isinstance(gap, str) and gap.strip():
+                    add(material_id=f"{prefix}:assistant_gap:{idx}", origin=origin, title="Investigation gap",
+                        text=gap.strip(), revision=revision, category="gap", author="AI assistance")
+            for idx, account in enumerate(case_assistant.get("competing_accounts") or ()):
+                if isinstance(account, str) and account.strip():
+                    add(material_id=f"{prefix}:assistant_competing:{idx}", origin=origin, title="Competing account",
+                        text=account.strip(), revision=revision, category="gap", author="AI assistance")
+            for idx, receipt in enumerate(case_assistant.get("receipts") or ()):
+                if isinstance(receipt, Mapping):
+                    rid = str(receipt.get("receipt_id", "")).strip()
+                    expr = str(receipt.get("expression", "")).strip()
+                    res = str(receipt.get("result", "")).strip()
+                    unit = str(receipt.get("unit", "")).strip()
+                    if expr or res:
+                        raw_cites = receipt.get("citations")
+                        if not isinstance(raw_cites, list) or not raw_cites:
+                            raise WorkspaceProblem("A saved calculation receipt lacks verifiable source citations.")
+                        label = f"[{rid}] " if rid else ""
+                        suffix = f" {unit}" if unit else ""
+                        rendered = expr if (not res or expr.endswith(f"= {res}")) else f"{expr} = {res}"
+                        add(material_id=f"{prefix}:assistant_receipt:{idx}", origin=origin,
+                            title="Calculation receipt", text=f"{label}{rendered}{suffix}".strip(),
+                            citations=references(raw_cites, ledger),
+                            revision=revision, category="fact", author="AI assistance")
         coverage(payload, prefix, revision, origin, generated=generated)
 
     for selection in selections:

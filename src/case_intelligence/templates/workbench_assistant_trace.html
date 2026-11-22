@@ -1,0 +1,45 @@
+{% if message.payload.case_assistant %}
+<details class="assistant-work-trace" data-assistant-work-trace>
+  <summary>Work trace · {{ message.payload.case_assistant.turns_used }} step{% if message.payload.case_assistant.turns_used != 1 %}s{% endif %}{% if message.payload.case_assistant.receipts %} · {{ message.payload.case_assistant.receipts|length }} calculation{% if message.payload.case_assistant.receipts|length != 1 %}s{% endif %}{% endif %}{% if message.payload.case_assistant.gaps %} · {{ message.payload.case_assistant.gaps|length }} gap{% if message.payload.case_assistant.gaps|length != 1 %}s{% endif %}{% endif %}</summary>
+  {% if message.payload.case_assistant.receipts %}
+  <div class="assistant-trace-section">
+    <strong>Verified calculations</strong>
+    <ul>
+      {% for receipt in message.payload.case_assistant.receipts %}
+      <li><code>{{ receipt.receipt_id }}</code>: {{ receipt.expression }}{% if receipt.unit %} {{ receipt.unit }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if message.payload.case_assistant.gaps %}
+  <div class="assistant-trace-section">
+    <strong>Record gaps &amp; unreadable sources</strong>
+    <ul>
+      {% for gap in message.payload.case_assistant.gaps %}
+      <li>{{ gap }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if message.payload.case_assistant.competing_accounts %}
+  <div class="assistant-trace-section">
+    <strong>Competing accounts</strong>
+    <ul>
+      {% for account in message.payload.case_assistant.competing_accounts %}
+      <li>{{ account }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if message.payload.case_assistant.trace %}
+  <div class="assistant-trace-section">
+    <strong>Tool steps</strong>
+    <ol>
+      {% for step in message.payload.case_assistant.trace %}
+      <li><code>{{ step.tool_name }}</code> ({{ step.status }}, {{ step.cited_count }} ref{% if step.cited_count != 1 %}s{% endif %}, {{ step.elapsed_ms }} ms)</li>
+      {% endfor %}
+    </ol>
+  </div>
+  {% endif %}
+</details>
+{% endif %}

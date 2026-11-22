@@ -4351,6 +4351,14 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             limitation_citations = source_limitation.get("citations")
             if isinstance(limitation_citations, list):
                 saved_citations.extend(limitation_citations)
+        case_assistant = payload.get("case_assistant")
+        if isinstance(case_assistant, Mapping):
+            for receipt in case_assistant.get("receipts") or ():
+                if isinstance(receipt, Mapping):
+                    rcites = receipt.get("citations")
+                    if not isinstance(rcites, list) or not rcites:
+                        raise WorkspaceProblem("A saved calculation receipt lacks verifiable source citations.")
+                    saved_citations.extend(rcites)
         references = self._saved_answer_references(matter, saved_citations)
         # Validate every supplied copy before deduplicating rendered passages.
         citations = tuple({value["support_token"]: value for value in references}.values())[:100]
@@ -4369,6 +4377,11 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             body = GENERATED_REVIEW_NOTICE + "\n\n" + body
         elif payload.get("kind") == "not-supported":
             body = rejected_answer_content(body, payload)
+        if payload.get("case_assistant"):
+            from .workbench_assistant import format_assistant_qualifications
+            addendum = format_assistant_qualifications(payload)
+            if addendum:
+                body = f"{body}\n\n{addendum}".strip()
         return self.workspace.add_report_section(
             matter.matter_id,
             report_id,
@@ -4946,6 +4959,13 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             if scoped_document_ids is not None and not scoped_document_ids:
                 raise AnswerJobFailure(
                     "The selected source set is empty. Add sources to it or use all searchable sources."
+                )
+            from .workbench_assistant import case_assistant_enabled, run_workbench_assistant_job
+            if selected_snapshot is None and case_assistant_enabled():
+                return run_workbench_assistant_job(
+                    self, job, matter, prior=prior, scoped_document_ids=scoped_document_ids,
+                    retrieval_boundary=retrieval_boundary, notebook_items=notebook_items,
+                    report_stage=report_stage, cancelled=cancelled,
                 )
 
             def retrieval_stage(stage_key: str) -> None:
