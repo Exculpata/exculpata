@@ -413,6 +413,314 @@ class WorkbenchToolBackend:
         return output
 
 
+    def read_structured_table(
+        self, matter_id: str, document_id: str, *, sheet: str = "",
+    ):
+        """Parse CSV/TSV/XLSX directly from the digest-verified original file with exact per-section citations."""
+        import csv
+        import io
+        from pathlib import Path
+        import re
+        from .case_assistant_tools import AssistantToolError, SourceRef
+        from .extended_extract import (
+            MAX_COLUMNS, MAX_ROWS, MAX_TEXT_CONTAINER_BYTES, _cell_text, extract_xlsx_structured,
+        )
+
+        matter = self.bench._matter_by_id(matter_id)
+        store = self.bench.source_store(matter)
+        with store._lock:
+            try:
+                doc = store.get(document_id)
+            except KeyError:
+                return None
+            suffix = Path(doc.display_name).suffix.casefold()
+            media = (doc.media_type or "").casefold()
+            is_csv = suffix == ".csv" or media == "text/csv"
+            is_tsv = suffix == ".tsv" or media == "text/tab-separated-values"
+            is_xlsx = suffix == ".xlsx" or "spreadsheetml" in media
+            if not (is_csv or is_tsv or is_xlsx):
+                return None
+            if doc.origin != "upload":
+                return None
+            try:
+                verified_path = store.source_path(doc.document_id, verify_digest=True)
+            except Exception as exc:
+                raise AssistantToolError(f"Original table integrity check failed for {doc.display_name}.") from exc
+            all_units = list(enumerate(doc.iter_parsed_units(), 1))
+            if not all_units or len(all_units) > 500:
+                raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
+            unit_meta: list[tuple[str | None, int, int, object]] = []
+            refs: list[SourceRef] = []
+            row_range_re = re.compile(r"^(?:(.+?),\s*)?rows\s+(\d+)[–-](\d+)", re.IGNORECASE)
+            for ordinal, unit in all_units:
+                wc = self._unit_citation(matter, store, doc, ordinal, unit)
+                self._remember_citation(wc)
+                refs.append(SourceRef(wc.document_id, wc.source_name, wc.location, wc.source_version_id, wc.excerpt_digest))
+                m = row_range_re.match((unit.location_label or wc.location).strip())
+                if m:
+                    unit_meta.append(((m.group(1) or "").strip() or None, int(m.group(2)), int(m.group(3)), wc))
+                else:
+                    unit_meta.append((None, (ordinal - 1) * 100 + 1, ordinal * 100, wc))
+
+            def loc_for(row_num: int, sheet_name: str | None = None) -> str:
+                for u_sheet, start_r, end_r, wc in unit_meta:
+                    if sheet_name is not None and (u_sheet or "").casefold() != sheet_name.casefold():
+                        continue
+                    if start_r <= row_num <= end_r:
+                        return wc.location
+                return unit_meta[-1][3].location
+
+            if is_csv or is_tsv:
+                if verified_path.stat().st_size > MAX_TEXT_CONTAINER_BYTES:
+                    raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
+                raw = verified_path.read_bytes()
+                try:
+                    text = raw.decode("utf-8-sig", errors="strict")
+                    rows_iter = csv.reader(io.StringIO(text), delimiter="\t" if is_tsv else ",", strict=True)
+                    header_vals: list[str] | None = None
+                    header_row_num = 1
+                    tagged: list[tuple[dict[str, str], str, str]] = []
+                    for row_num, row in enumerate(rows_iter, 1):
+                        if row_num > MAX_ROWS:
+                            raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
+                        vals = [_cell_text(v) for v in row]
+                        if len(vals) > MAX_COLUMNS:
+                            raise AssistantToolError("Table source exceeds supported column limit.")
+                        if not any(vals):
+                            continue
+                        if header_vals is None:
+                            from .case_assistant_tools import _ensure_unique_headers
+                            _ensure_unique_headers(vals)
+                            header_vals = vals
+                            header_row_num = row_num
+                            continue
+                        row_dict = {col: (vals[idx] if idx < len(vals) else "") for idx, col in enumerate(header_vals) if col}
+                        tagged.append((row_dict, loc_for(row_num), doc.version_id))
+                except (UnicodeDecodeError, csv.Error) as exc:
+                    raise AssistantToolError(f"Malformed delimited table {doc.display_name}: {exc}") from exc
+                columns = [h for h in (header_vals or []) if h]
+                return doc.display_name, columns, tagged, refs, loc_for(header_row_num)
+
+            try:
+                chosen_name, columns, sheet_rows, header_row = extract_xlsx_structured(verified_path, sheet=sheet)
+            except ValueError as exc:
+                raise AssistantToolError(str(exc)) from exc
+            tagged = [(row_dict, loc_for(sheet_row, chosen_name), doc.version_id) for row_dict, sheet_row in sheet_rows]
+            return doc.display_name, columns, tagged, refs, loc_for(header_row, chosen_name)
+
+    def read_email_thread(
+        self, matter_id: str, document_id: str, *, limit: int = 25, offset: int | None = None,
+        allowed_document_ids: frozenset[str] | None = None,
+    ) -> Mapping[str, object] | None:
+        from .case_assistant_tools import AssistantToolError
+        from .source_email_threads import group_threads, read_eml
+        matter = self.bench._matter_by_id(matter_id)
+        store = self.bench.source_store(matter)
+        with store._lock:
+            try:
+                target = store.get(document_id)
+            except KeyError:
+                return None
+            try:
+                target_verified = store.source_path(target.document_id, verify_digest=True)
+            except Exception as exc:
+                raise AssistantToolError(f"Original email integrity check failed for {target.display_name}.") from exc
+            records, by_source = [], {}
+            unthreaded_errors: list[dict[str, str]] = []
+            for doc in store.documents.values():
+                if allowed_document_ids is not None and doc.document_id not in allowed_document_ids:
+                    continue
+                if doc.stored_name and (doc.display_name.casefold().endswith(".eml") or "rfc822" in doc.media_type.casefold()):
+                    try:
+                        verified_path = store.source_path(doc.document_id, verify_digest=True)
+                    except Exception as exc:
+                        raise AssistantToolError(f"Original email integrity check failed for {doc.display_name}.") from exc
+                    if verified_path.is_file():
+                        rec = read_eml(verified_path)
+                        if rec.error:
+                            if doc.document_id == target.document_id:
+                                raise AssistantToolError(
+                                    f"Email headers/thread links could not be parsed for {doc.display_name}: {rec.error}"
+                                )
+                            unthreaded_errors.append({
+                                "document_id": doc.document_id,
+                                "source_name": doc.display_name,
+                                "error": str(rec.error),
+                            })
+                            continue
+                        records.append(rec)
+                        by_source[rec.source] = doc
+            target_path = str(target_verified)
+            full_thread = ()
+            target_index = 0
+            for thread in group_threads(records):
+                for idx, node in enumerate(thread.messages):
+                    if node.message.source == target_path:
+                        full_thread = thread.messages
+                        target_index = idx
+                        break
+                if full_thread:
+                    break
+            total_messages = len(full_thread)
+            if offset is None:
+                effective_offset = max(0, target_index - limit + 1) if target_index >= limit else 0
+            else:
+                effective_offset = offset
+            matched_nodes = full_thread[effective_offset:effective_offset + limit]
+            messages = []
+            any_body_truncated = False
+            for node in matched_nodes:
+                doc = by_source.get(node.message.source)
+                if doc is None:
+                    continue
+                units = list(enumerate(doc.iter_parsed_units(), 1))
+                body_units = [(ord_idx, u) for ord_idx, u in units if (u.location_label or "") != "Email headers"]
+                chosen_units = body_units if body_units else units[:1]
+                body_spans: list[dict[str, object]] = []
+                msg_truncated = False
+                for ord_idx, unit in chosen_units:
+                    wc = self._unit_citation(matter, store, doc, ord_idx, unit)
+                    self._remember_citation(wc)
+                    full_len = len(unit.text)
+                    snippet = unit.text[:4_000]
+                    span_truncated = full_len > len(snippet)
+                    msg_truncated = msg_truncated or span_truncated
+                    body_spans.append({
+                        "location": wc.location,
+                        "page_number": ord_idx,
+                        "source_version_id": doc.version_id,
+                        "excerpt_digest": wc.excerpt_digest,
+                        "text": snippet,
+                        "total_chars": full_len,
+                        "omitted_chars": full_len - len(snippet),
+                        "truncated": span_truncated,
+                        "next_char_offset": len(snippet) if span_truncated else None,
+                    })
+                any_body_truncated = any_body_truncated or msg_truncated
+                primary = body_spans[0] if body_spans else {"location": "Section 1", "text": ""}
+                messages.append({
+                    "document_id": doc.document_id, "source_name": doc.display_name,
+                    "location": primary["location"],
+                    "source_version_id": doc.version_id, "subject": node.message.subject,
+                    "body": primary["text"], "body_spans": body_spans,
+                    "truncated": msg_truncated, "weak_link": node.weak_link,
+                })
+            has_more = (effective_offset + len(messages)) < total_messages
+            incomplete_threading = bool(unthreaded_errors)
+            truncated = (len(messages) < total_messages) or any_body_truncated or incomplete_threading
+            return {
+                "document_id": target.document_id,
+                "count": len(messages),
+                "total_messages": total_messages,
+                "offset": effective_offset,
+                "limit": limit,
+                "has_more": has_more,
+                "next_offset": (effective_offset + len(messages)) if has_more else None,
+                "previous_offset": max(0, effective_offset - limit) if effective_offset > 0 else None,
+                "body_truncated": any_body_truncated,
+                "incomplete_threading": incomplete_threading,
+                "unthreaded_email_errors": unthreaded_errors,
+                "truncated": truncated,
+                "messages": messages,
+            }
+
+    def read_transcript_window(
+        self, matter_id: str, document_id: str, *, start_seconds: float = 0.0,
+        end_seconds: float | None = None, limit: int = 50, offset: int = 0,
+    ) -> Mapping[str, object] | None:
+        import re
+        ts_re = re.compile(r"\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]\s*(?:([^:\n]{1,40}):\s*)?(.*)")
+        matter = self.bench._matter_by_id(matter_id)
+        store = self.bench.source_store(matter)
+        with store._lock:
+            try:
+                doc = store.get(document_id)
+            except KeyError:
+                return None
+            all_cues: list[tuple[dict[str, object], list[object]]] = []
+            active_cue: dict[str, object] | None = None
+            active_wcs: list[object] = []
+            untimestamped_omitted = 0
+            for ordinal, unit in enumerate(doc.iter_parsed_units(), 1):
+                wc = self._unit_citation(matter, store, doc, ordinal, unit)
+                if unit.start_ms is not None:
+                    active_cue = None
+                    active_wcs = []
+                    s_sec = unit.start_ms / 1000.0
+                    e_sec = (unit.end_ms / 1000.0) if unit.end_ms is not None else s_sec
+                    if e_sec >= start_seconds and (end_seconds is None or s_sec <= end_seconds):
+                        all_cues.append((
+                            {"start_seconds": s_sec, "end_seconds": e_sec, "speaker": unit.speaker_cluster,
+                             "text": unit.text, "location": wc.location, "source_version_id": doc.version_id},
+                            [wc],
+                        ))
+                else:
+                    for raw_line in unit.text.splitlines():
+                        stripped = raw_line.strip()
+                        if not stripped:
+                            continue
+                        m = ts_re.match(stripped)
+                        if m:
+                            a, b, c = int(m.group(1)), int(m.group(2)), int(m.group(3)) if m.group(3) else None
+                            sec = float(a * 3600 + b * 60 + c) if c is not None else float(a * 60 + b)
+                            cue_text = m.group(5).strip()
+                            cue_dict: dict[str, object] = {
+                                "start_seconds": sec,
+                                "end_seconds": sec,
+                                "speaker": (m.group(4) or "").strip(),
+                                "text": cue_text,
+                                "location": wc.location,
+                                "source_version_id": doc.version_id,
+                                "spans": [{"location": wc.location, "text": cue_text}],
+                            }
+                            active_cue = cue_dict
+                            active_wcs = [wc]
+                            if sec >= start_seconds and (end_seconds is None or sec <= end_seconds):
+                                all_cues.append((cue_dict, active_wcs))
+                        elif active_cue is not None:
+                            prev = str(active_cue.get("text") or "")
+                            active_cue["text"] = f"{prev}\n{stripped}".strip() if prev else stripped
+                            spans = active_cue.get("spans")
+                            if isinstance(spans, list):
+                                if spans and spans[-1].get("location") == wc.location:
+                                    s_prev = str(spans[-1].get("text") or "")
+                                    spans[-1]["text"] = f"{s_prev}\n{stripped}".strip() if s_prev else stripped
+                                else:
+                                    spans.append({"location": wc.location, "text": stripped})
+                            if wc.location != active_cue["location"]:
+                                cont_locs = active_cue.setdefault("continuation_locations", [])
+                                if isinstance(cont_locs, list) and wc.location not in cont_locs:
+                                    cont_locs.append(wc.location)
+                                if not any(existing.location == wc.location for existing in active_wcs):
+                                    active_wcs.append(wc)
+                        else:
+                            untimestamped_omitted += 1
+            total_cues = len(all_cues)
+            sliced = all_cues[offset:offset + limit]
+            page_cues: list[dict[str, object]] = []
+            for cue, wcs in sliced:
+                for wc in wcs:
+                    self._remember_citation(wc)
+                page_cues.append(cue)
+            omitted_cues = max(0, total_cues - (offset + len(page_cues)))
+            has_more = omitted_cues > 0
+            return {
+                "document_id": doc.document_id,
+                "source_name": doc.display_name,
+                "start_seconds": start_seconds,
+                "end_seconds": end_seconds,
+                "offset": offset,
+                "limit": limit,
+                "count": len(page_cues),
+                "total_cues": total_cues,
+                "omitted_cues": omitted_cues,
+                "untimestamped_lines_omitted": untimestamped_omitted,
+                "has_more": has_more,
+                "next_offset": (offset + len(page_cues)) if has_more else None,
+                "truncated": (len(page_cues) < total_cues) or (untimestamped_omitted > 0),
+                "cues": page_cues,
+            }
+
 def _verified_receipt_expression(receipt) -> str:
     """Format verified calculation arithmetic from operation, verified numeric inputs, and result only."""
     values = ", ".join(str(inp.value) for inp in receipt.inputs)
