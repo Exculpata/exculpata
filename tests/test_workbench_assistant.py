@@ -483,27 +483,56 @@ def test_pr587_round4_identity_bound_citations_and_label_free_receipts(tmp_path)
         assert ans_amb.payload["claims"] == []
         assert ans_amb.payload["case_assistant"]["omitted_findings"] == 1
 
-        # 2. Unverified model labels in calculation inputs never appear in verified calculation display.
+        # 2. Unverified model labels and unverified unit text never appear in verified calculation display.
         receipt = CalculationReceipt(
             receipt_id="calc-1",
             operation="sum",
             expression="fabricated 87.65(10) = 10",
             result="10",
-            unit="USD",
+            unit="USD; fabricated ownership 87.65%",
             inputs=(CalculationInput("fabricated 87.65", "10", (orig_ref,)),),
+        )
+        unreferenced_receipt = CalculationReceipt(
+            receipt_id="calc-2",
+            operation="percent",
+            expression="10 / 100 = 10",
+            result="10",
+            unit="%",
+            inputs=(CalculationInput("part", "10", (orig_ref,)),),
+        )
+        missing_premise_receipt = CalculationReceipt(
+            receipt_id="calc-3",
+            operation="sum",
+            expression="5 = 5",
+            result="5",
+            unit="",
+            inputs=(CalculationInput("ghost", "5", (ambiguous_ref,)),),
         )
         calc_result = AssistantInvestigationResult(
             answerable=True, summary="Total is 10.",
             findings=(AssistantFinding("Balance is 10.", (orig_ref,), ("calc-1",)),),
             omitted_findings=0, gaps=(), competing_accounts=(),
-            citations=(orig_ref,), receipts={"calc-1": receipt}, trace=(), turns_used=1, elapsed_ms=1,
+            citations=(orig_ref,),
+            receipts={"calc-1": receipt, "calc-2": unreferenced_receipt, "calc-3": missing_premise_receipt},
+            trace=(), turns_used=1, elapsed_ms=1,
         )
         ans_calc = _result_to_answer(bench, calc_result, backend, "fp")
-        saved_receipt = ans_calc.payload["case_assistant"]["receipts"][0]
-        assert saved_receipt["expression"] == "sum(10) = 10"
-        assert "fabricated" not in saved_receipt["expression"] and "87.65" not in saved_receipt["expression"]
+        saved_receipts = {r["receipt_id"]: r for r in ans_calc.payload["case_assistant"]["receipts"]}
+        assert set(saved_receipts) == {"calc-1", "calc-2"}
+        assert saved_receipts["calc-1"]["expression"] == "sum(10) = 10"
+        assert saved_receipts["calc-1"]["unit"] == ""
+        assert saved_receipts["calc-2"]["unit"] == "%"
+        assert orig_wc.support_token in {c.support_token for c in ans_calc.citations}
         qual = format_assistant_qualifications(ans_calc.payload)
-        assert "sum(10) = 10 USD" in qual and "fabricated" not in qual and "87.65" not in qual
+        assert "sum(10) = 10" in qual and "fabricated" not in qual and "87.65" not in qual
+
+        # 3. Pure NOT exact search preserves matching documents with empty positive passages.
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("blue.txt", b"Blue ledger with no crimson mention.", "text/plain")),
+        ]).status_code == 200
+        not_red = backend.search_discovery(matter.matter_id, "NOT red", mode="exact", limit=10)
+        assert not_red.total_matches == 2 and len(not_red.hits) == 2
+
 
 
 

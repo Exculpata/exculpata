@@ -170,11 +170,14 @@ class WorkbenchToolBackend:
                                         (unit_ordinals.get((u.number, u.line_start, u.line_end, u.excerpt_digest), 1), u)
                                         for u in item.passages
                                     ]
-                            else:
+                            elif item.passages:
                                 matched_pairs = [
                                     (unit_ordinals.get((u.number, u.line_start, u.line_end, u.excerpt_digest), 1), u)
                                     for u in item.passages
                                 ]
+                            else:
+                                first_unit = next(((idx, u) for idx, u in all_units if u.text.strip()), None)
+                                matched_pairs = [first_unit] if first_unit is not None else []
                             omitted_preview += max(0, item.matching_unit_count - len(matched_pairs))
                             for ordinal, unit in matched_pairs:
                                 wc = self._unit_citation(matter, store, doc, ordinal, unit)
@@ -427,6 +430,23 @@ def _collect_calc_premise_refs(calc_ids: Sequence[str], receipts: Mapping[str, o
     return refs
 
 
+_DETERMINISTIC_OP_UNITS = {"percent": "%", "days_between": "days", "count": "rows"}
+
+
+def _verified_receipt_unit(receipt, premise_wcs: Sequence[object]) -> str:
+    """Retain only operation-derived or source-grounded unit tokens for verified display."""
+    import re
+    raw_unit = str(getattr(receipt, "unit", "") or "").strip()
+    if not raw_unit:
+        return ""
+    if _DETERMINISTIC_OP_UNITS.get(receipt.operation) == raw_unit:
+        return raw_unit
+    if not re.fullmatch(r"[A-Za-z%$]{1,16}", raw_unit):
+        return ""
+    premise_text = "\n".join(str(getattr(wc, "excerpt", "") or "") for wc in premise_wcs)
+    return raw_unit if raw_unit.casefold() in premise_text.casefold() else ""
+
+
 def _result_to_answer(bench, result: AssistantInvestigationResult, backend: WorkbenchToolBackend, source_fingerprint: str) -> AnswerResult:
     claims_payload: list[dict[str, object]] = []
     retained_findings: list[object] = []
@@ -459,20 +479,28 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
     trace_rows = [{"call_id": rec.call_id, "tool_name": rec.tool_name, "status": rec.status,
                    "elapsed_ms": rec.elapsed_ms, "cited_count": len(rec.cited_refs), "error": rec.error}
                   for rec in result.trace]
-    receipt_rows = [
-        {
+    receipt_rows: list[dict[str, object]] = []
+    for receipt in result.receipts.values():
+        premise_refs = _collect_calc_premise_refs((receipt.receipt_id,), result.receipts)
+        premise_wcs = [backend.citation_for_ref(ref) for ref in premise_refs]
+        if not premise_wcs or any(wc is None for wc in premise_wcs):
+            continue
+        for wc in premise_wcs:
+            assert wc is not None
+            if wc.support_token not in seen_tokens:
+                seen_tokens.add(wc.support_token)
+                used_citations.append(wc)
+        receipt_rows.append({
             "receipt_id": receipt.receipt_id,
             "operation": receipt.operation,
             "expression": _verified_receipt_expression(receipt),
             "result": receipt.result,
-            "unit": receipt.unit,
+            "unit": _verified_receipt_unit(receipt, premise_wcs),
             "inputs": [
                 {"value": inp.value, "source_refs": [asdict(sref) for sref in inp.source_refs]}
                 for inp in receipt.inputs
             ],
-        }
-        for receipt in result.receipts.values()
-    ]
+        })
     supported = bool(result.answerable and claims_payload)
     intro = _VERIFIED_INTRO if supported else _ABSTENTION_INTRO
     payload: dict[str, object] = {
@@ -505,6 +533,9 @@ def run_workbench_assistant_job(
     backend = WorkbenchToolBackend(bench, job.actor_id, allowed_notebook_items=notebook_items)
     runtime = MatterToolRuntime(matter.matter_id, job.actor_id, backend, allowed_document_ids=scoped_document_ids)
     history = tuple((m.role, m.content) for m in prior[-8:])
+    fingerprint = retrieval_boundary.get("source_fingerprint") or bench.workspace.source_availability_fingerprint(
+        matter.matter_id, retrieval_boundary.get("source_set_id") or None,
+    )
 
     def stage_bridge(stage_key: str, message: str) -> None:
         persisted = "verifying" if stage_key == "verifying" else "generating"
@@ -519,7 +550,4 @@ def run_workbench_assistant_job(
         raise AnswerJobFailure("Access to this matter was removed before the answer completed.") from exc
     if not backend.authorize(job.matter_id, job.actor_id):
         raise AnswerJobFailure("Access to this matter was removed before the answer completed.")
-    fingerprint = retrieval_boundary.get("source_fingerprint") or bench.workspace.source_availability_fingerprint(
-        matter.matter_id, retrieval_boundary.get("source_set_id") or None,
-    )
     return _result_to_answer(bench, result, backend, fingerprint)
