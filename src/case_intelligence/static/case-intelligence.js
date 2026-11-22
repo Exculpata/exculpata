@@ -4954,7 +4954,7 @@ document.addEventListener("submit", async (event) => {
     if (button) button.textContent = data.created ? "Saved to case memory" : "Already saved";
     if (status) {
       status.dataset.state = "saved";
-      status.textContent = data.created ? `Saved (${data.status || "suggested"}).` : "Already saved in case memory.";
+      status.textContent = data.created ? "Saved to case memory." : "Already saved in case memory.";
     }
   } catch {
     if (button) button.disabled = false;
