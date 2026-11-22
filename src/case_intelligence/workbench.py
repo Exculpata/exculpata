@@ -4369,6 +4369,11 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             body = GENERATED_REVIEW_NOTICE + "\n\n" + body
         elif payload.get("kind") == "not-supported":
             body = rejected_answer_content(body, payload)
+        if payload.get("case_assistant"):
+            from .workbench_assistant import format_assistant_qualifications
+            addendum = format_assistant_qualifications(payload)
+            if addendum:
+                body = f"{body}\n\n{addendum}".strip()
         return self.workspace.add_report_section(
             matter.matter_id,
             report_id,

@@ -300,3 +300,131 @@ def test_pr587_round2_four_page_exact_and_large_unit_compact_citations(tmp_path,
         assert page.status_code == 200 and "red bicycle" in page.text
 
 
+def _five_page_four_match_pdf() -> bytes:
+    """Build a 5-page PDF where 4 pages match 'quadmatch' and page 5 is unrelated."""
+    from io import BytesIO
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    writer = PdfWriter()
+    lines = [
+        "quadmatch entry one",
+        "quadmatch entry two",
+        "quadmatch entry three",
+        "quadmatch entry four",
+        "completely unrelated fifth page",
+    ]
+    for text in lines:
+        page = writer.add_blank_page(width=300, height=144)
+        font = DictionaryObject({
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        })
+        page[NameObject("/Resources")] = DictionaryObject({
+            NameObject("/Font"): DictionaryObject({NameObject("/F1"): writer._add_object(font)}),
+        })
+        stream = DecodedStreamObject()
+        stream.set_data(f"BT /F1 12 Tf 24 72 Td ({text}) Tj ET".encode("ascii"))
+        page[NameObject("/Contents")] = writer._add_object(stream)
+    buf = BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+def test_pr587_round3_exact_filter_exports_reports_and_knowledge_pagination(tmp_path, monkeypatch):
+    from case_intelligence.case_assistant_tools import MatterToolRuntime
+    from case_intelligence.report_materials import snapshot_report_materials
+    from case_intelligence.work_product_exports import _answer_blocks
+    from case_intelligence.workbench_assistant import WorkbenchToolBackend
+
+    monkeypatch.setenv("CASE_INTELLIGENCE_CASE_ASSISTANT", "1")
+    app = create_workbench_app(tmp_path / "runtime", generator=_UnsupportedSummaryAssistantClient(), auth_mode="test")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Round 3 Matter")
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("five.pdf", _five_page_four_match_pdf(), "application/pdf")),
+            ("files", ("note.txt", b"Ledger entry for Entity One through Entity Nine.", "text/plain")),
+        ]).status_code == 200
+
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        backend = WorkbenchToolBackend(bench, actor)
+        runtime = MatterToolRuntime(matter.matter_id, actor, backend)
+
+        # 1. Exact search expansion consumes positional matches and excludes the unrelated 5th page.
+        exact = backend.search_discovery(matter.matter_id, '"quadmatch"', mode="exact", limit=10)
+        assert exact.total_matches == 4 and len(exact.hits) == 4 and exact.has_more is False
+        assert not any("unrelated fifth page" in h.excerpt.casefold() for h in exact.hits)
+
+        # 2. Saved-knowledge pagination traverses service pages beyond 8 entities / 6 assertions.
+        cites = bench.search(matter, "Ledger entry", limit=5)
+        support_token = cites[0].support_token
+        ent_svc = bench.entity_service(matter)
+        asn_svc = bench.assertion_service(matter)
+        entity_ids = []
+        for idx in range(1, 10):
+            ent = ent_svc.create(
+                matter.matter_id, actor, display_name=f"Entity {idx:02d}",
+                entity_type="organization", support=support_token,
+            )
+            entity_ids.append(ent["entity_id"])
+        for idx in range(1, 8):
+            asn_svc.create(
+                matter.matter_id, actor, title=f"Assertion {idx:02d}",
+                statement=f"Statement {idx:02d} in synthetic ledger.",
+                raw_date=f"2024-09-{idx:02d}",
+                attributed_to="Synthetic ledger",
+                roles=[{"entity_id": entity_ids[0], "expected_revision": 1, "role": "subject"}],
+                support=support_token,
+            )
+        full_k = runtime.invoke("get_case_knowledge", {"section": "all", "limit": 50})
+        assert len(full_k["entities"]) == 9 and full_k["entities_total"] == 9 and full_k["entities_omitted"] == 0
+        assert len(full_k["assertions"]) == 7 and full_k["assertions_total"] == 7 and full_k["assertions_omitted"] == 0
+        assert full_k["has_more"] is False and full_k["next_offset"] is None
+
+        p1 = runtime.invoke("get_case_knowledge", {"section": "entities", "limit": 5, "offset": 0})
+        assert len(p1["entities"]) == 5 and p1["entities_omitted"] == 4 and p1["has_more"] is True and p1["next_offset"] == 5
+        p2 = runtime.invoke("get_case_knowledge", {"section": "entities", "limit": 5, "offset": 5})
+        assert len(p2["entities"]) == 4 and p2["entities_omitted"] == 0 and p2["has_more"] is False
+
+        # 3. Export blocks, report_materials, and add_answer_to_report preserve gaps, competing accounts, and receipts.
+        conv = bench.workspace.create_conversation(matter.matter_id, "Qualifications Check", actor_id=actor)
+        bench.workspace.append_message(matter.matter_id, conv.conversation_id, "user", "Summarize holdings.", {})
+        msg = bench.workspace.append_message(
+            matter.matter_id, conv.conversation_id, "assistant", "Holdings reached 12.5%.",
+            {
+                "kind": "generated",
+                "answerable": True,
+                "introduction": "Verified findings from inspected matter sources:",
+                "claims": [{"text": "Holdings reached 12.5%.", "citations": [bench._saved_answer_citation_payload(cites[0])]}],
+                "limitation": None,
+                "case_assistant": {
+                    "gaps": ["October statement is missing from production."],
+                    "competing_accounts": ["Witness A denies control while email directs trades."],
+                    "receipts": [{"receipt_id": "calc-1", "expression": "percent(125, 1000)", "result": "12.50", "unit": "%"}],
+                },
+            },
+        )
+        export_text = "\n".join(b.text for b in _answer_blocks(msg))
+        assert "October statement is missing from production." in export_text
+        assert "Witness A denies control while email directs trades." in export_text
+        assert "calc-1" in export_text and "12.50" in export_text
+
+        materials = snapshot_report_materials(bench, matter, actor, (f"conversation:{conv.conversation_id}",))
+        mat_texts = "\n".join(m.text for m in materials)
+        assert "October statement is missing from production." in mat_texts
+        assert "Witness A denies control while email directs trades." in mat_texts
+        assert "calc-1" in mat_texts and "12.50" in mat_texts
+
+        report = bench.workspace.create_report(matter.matter_id, actor, "Defense Report")
+        section = bench.add_answer_to_report(
+            matter, actor, report.report_id, conv.conversation_id, msg.message_id, expected_status=report.status,
+        )
+        assert "October statement is missing from production." in section.body
+        assert "Witness A denies control while email directs trades." in section.body
+        assert "calc-1" in section.body and "12.50" in section.body
+
+
+

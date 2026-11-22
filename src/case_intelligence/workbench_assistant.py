@@ -133,11 +133,18 @@ class WorkbenchToolBackend:
                                 for idx, u in all_units
                             }
                             if item.matching_unit_count > len(item.passages):
-                                positives = getattr(item.explanation.expression, "operands", ())
-                                matched_pairs = [
-                                    (idx, u) for idx, u in all_units
-                                    if positives and match_positionals(tokenize_text(u.text), positives)
-                                ]
+                                proof = item.explanation.explain_units(u.text for _, u in all_units)
+                                if proof is not None:
+                                    matched_pairs = [
+                                        (idx, u) for idx, u in all_units
+                                        if (
+                                            any(match_positionals(tokenize_text(u.text), proof))
+                                            if proof
+                                            else bool(tokenize_text(u.text))
+                                        )
+                                    ]
+                                else:
+                                    matched_pairs = []
                                 if not matched_pairs:
                                     matched_pairs = [
                                         (unit_ordinals.get((u.number, u.line_start, u.line_end, u.excerpt_digest), 1), u)
@@ -204,22 +211,68 @@ class WorkbenchToolBackend:
                 pages.append(SourcePage(page_key, wc.location, unit.text, doc.version_id, unit.excerpt_digest))
             return SourceReadResult(doc.document_id, doc.display_name, total_pages, tuple(pages))
 
+    def _paginate_knowledge_bucket(
+        self, service: MatterKnowledgeService, matter_id: str, bucket: str, *, offset: int, limit: int,
+    ) -> tuple[list[Mapping[str, object]], int]:
+        """Traverse MatterKnowledgeService pages until offset + limit items are collected."""
+        target = offset + limit
+        collected: list[Mapping[str, object]] = []
+        total = 0
+        page_num = 1
+        total_pages = 1
+        while page_num <= total_pages and len(collected) < target:
+            kwargs = {"entity_page": page_num, "assertion_page": 1} if bucket == "entities" else {
+                "entity_page": 1, "assertion_page": page_num,
+            }
+            page = service.page(matter_id, self.actor_id, **kwargs)
+            part = page.get(bucket) or {}
+            items = list(part.get("items") or ())
+            if page_num == 1:
+                total = int(part.get("total", len(items)))
+                total_pages = max(1, int(part.get("pages", 1)))
+            if not items:
+                break
+            collected.extend(items)
+            page_num += 1
+        return collected[offset:offset + limit], max(total, len(collected))
+
     def get_case_knowledge(
-        self, matter_id: str, *, section: str = "all", limit: int = 50,
+        self, matter_id: str, *, section: str = "all", limit: int = 50, offset: int = 0,
         document_ids: frozenset[str] | None = None,
     ) -> Mapping[str, object]:
         matter = self.bench._matter_by_id(matter_id)
-        output: dict[str, object] = {}
+        output: dict[str, object] = {"offset": offset, "limit": limit}
+        any_has_more = False
         if section in {"all", "notes"}:
             if self.allowed_notebook_items is not None:
-                notes = list(self.allowed_notebook_items)[:limit]
+                raw_notes = list(self.allowed_notebook_items)
+                filtered_notes = []
+                for n in raw_notes:
+                    ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
+                    if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
+                        continue
+                    filtered_notes.append((n, ref_ids))
+                notes_total = len(filtered_notes)
+                page_notes = filtered_notes[offset:offset + limit]
+                notes_omitted = max(0, notes_total - (offset + len(page_notes)))
+                notes_has_more = notes_omitted > 0
             else:
-                notes = list(self.bench.workspace.all_notebook_items(matter_id, self.actor_id, include_dismissed=False, limit=limit))
+                fetch_cap = offset + limit + 1
+                raw_notes = list(self.bench.workspace.all_notebook_items(
+                    matter_id, self.actor_id, include_dismissed=False, limit=fetch_cap,
+                ))
+                filtered_notes = []
+                for n in raw_notes:
+                    ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
+                    if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
+                        continue
+                    filtered_notes.append((n, ref_ids))
+                notes_has_more = len(filtered_notes) > offset + limit
+                page_notes = filtered_notes[offset:offset + limit]
+                notes_total = len(filtered_notes) if not notes_has_more else offset + len(page_notes) + 1
+                notes_omitted = max(0, notes_total - (offset + len(page_notes)))
             note_rows: list[dict[str, object]] = []
-            for n in notes:
-                ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
-                if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
-                    continue
+            for n, ref_ids in page_notes:
                 row: dict[str, object] = {
                     "title": getattr(n, "title", ""),
                     "body": str(getattr(n, "body", ""))[:600],
@@ -230,23 +283,49 @@ class WorkbenchToolBackend:
                     row["source_document_ids"] = ref_ids
                 note_rows.append(row)
             output["notes"] = note_rows
+            output["notes_total"] = notes_total
+            output["notes_omitted"] = notes_omitted
+            output["notes_has_more"] = notes_has_more
+            any_has_more = any_has_more or notes_has_more
         if section in {"all", "entities", "assertions"}:
             if document_ids is not None:
                 if section in {"all", "entities"}:
                     output["entities"] = []
+                    output["entities_total"] = 0
+                    output["entities_omitted"] = 0
+                    output["entities_has_more"] = False
                 if section in {"all", "assertions"}:
                     output["assertions"] = []
+                    output["assertions_total"] = 0
+                    output["assertions_omitted"] = 0
+                    output["assertions_has_more"] = False
+                output["has_more"] = any_has_more
+                output["next_offset"] = (offset + limit) if any_has_more else None
                 return output
             try:
-                page = MatterKnowledgeService(self.bench.assertion_service(matter)).page(matter_id, self.actor_id)
+                service = MatterKnowledgeService(self.bench.assertion_service(matter))
             except Exception:
-                page = {"entities": {"items": []}, "assertions": {"items": []}}
+                service = None
             if section in {"all", "entities"}:
+                ent_items, ent_total = (
+                    self._paginate_knowledge_bucket(service, matter_id, "entities", offset=offset, limit=limit)
+                    if service is not None else ([], 0)
+                )
                 output["entities"] = [
                     {"name": e.get("display_name") or e.get("canonical_name"), "type": e.get("entity_type"), "status": e.get("status")}
-                    for e in page["entities"]["items"][:limit]
+                    for e in ent_items
                 ]
+                ent_omitted = max(0, ent_total - (offset + len(ent_items)))
+                ent_has_more = ent_omitted > 0
+                output["entities_total"] = ent_total
+                output["entities_omitted"] = ent_omitted
+                output["entities_has_more"] = ent_has_more
+                any_has_more = any_has_more or ent_has_more
             if section in {"all", "assertions"}:
+                asn_items, asn_total = (
+                    self._paginate_knowledge_bucket(service, matter_id, "assertions", offset=offset, limit=limit)
+                    if service is not None else ([], 0)
+                )
                 output["assertions"] = [
                     {
                         "title": a.get("title"),
@@ -254,9 +333,45 @@ class WorkbenchToolBackend:
                         "date": a.get("raw_date") or a.get("date_label"),
                         "status": a.get("status"),
                     }
-                    for a in page["assertions"]["items"][:limit]
+                    for a in asn_items
                 ]
+                asn_omitted = max(0, asn_total - (offset + len(asn_items)))
+                asn_has_more = asn_omitted > 0
+                output["assertions_total"] = asn_total
+                output["assertions_omitted"] = asn_omitted
+                output["assertions_has_more"] = asn_has_more
+                any_has_more = any_has_more or asn_has_more
+        output["has_more"] = any_has_more
+        output["next_offset"] = (offset + limit) if any_has_more else None
         return output
+
+
+def format_assistant_qualifications(payload: Mapping[str, object]) -> str:
+    """Render saved Case Assistant gaps, competing accounts, and calculation receipts for reports."""
+    ca = payload.get("case_assistant")
+    if not isinstance(ca, Mapping):
+        return ""
+    sections: list[str] = []
+    gaps = [str(g).strip() for g in (ca.get("gaps") or ()) if isinstance(g, str) and g.strip()]
+    if gaps:
+        sections.append("Investigation gaps:\n" + "\n".join(f"- {g}" for g in gaps))
+    competing = [str(c).strip() for c in (ca.get("competing_accounts") or ()) if isinstance(c, str) and c.strip()]
+    if competing:
+        sections.append("Competing accounts:\n" + "\n".join(f"- {c}" for c in competing))
+    receipts = [r for r in (ca.get("receipts") or ()) if isinstance(r, Mapping)]
+    if receipts:
+        lines = []
+        for r in receipts:
+            rid = str(r.get("receipt_id", "")).strip()
+            expr = str(r.get("expression", "")).strip()
+            res = str(r.get("result", "")).strip()
+            unit = str(r.get("unit", "")).strip()
+            label = f"[{rid}] " if rid else ""
+            suffix = f" {unit}" if unit else ""
+            lines.append(f"- {label}{expr} = {res}{suffix}".strip())
+        if lines:
+            sections.append("Calculation receipts:\n" + "\n".join(lines))
+    return "\n\n".join(sections)
 
 
 def _collect_calc_premise_refs(calc_ids: Sequence[str], receipts: Mapping[str, object]) -> list[object]:
