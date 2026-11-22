@@ -87,7 +87,7 @@ def test_workbench_case_assistant_end_to_end_http_and_trace_rendering(tmp_path, 
         _, page = _answer_and_wait(client, slug, conv_id, "Did controlled accounts exceed 10% after the buyback?")
         assert page.status_code == 200
         assert "11.25%" in page.text
-        assert "post_buyback_outstanding(800000)" in page.text
+        assert "percent(90000, 800000) = 11.25" in page.text
         assert "damaged-scan.pdf" in page.text
         assert "Witness A claimed no instructions" in page.text
         assert "Work trace" in page.text
@@ -298,5 +298,299 @@ def test_pr587_round2_four_page_exact_and_large_unit_compact_citations(tmp_path,
         conv_id = re.search(r'name="conversation" value="([^"]+)"', workspace.text).group(1)
         _, page = _answer_and_wait(client, slug, conv_id, "Check bicycle mention.")
         assert page.status_code == 200 and "red bicycle" in page.text
+
+
+def _five_page_four_match_pdf() -> bytes:
+    """Build a 5-page PDF where 4 pages match 'quadmatch' and page 5 is unrelated."""
+    from io import BytesIO
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    writer = PdfWriter()
+    lines = [
+        "quadmatch entry one",
+        "quadmatch entry two",
+        "quadmatch entry three",
+        "quadmatch entry four",
+        "completely unrelated fifth page",
+    ]
+    for text in lines:
+        page = writer.add_blank_page(width=300, height=144)
+        font = DictionaryObject({
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        })
+        page[NameObject("/Resources")] = DictionaryObject({
+            NameObject("/Font"): DictionaryObject({NameObject("/F1"): writer._add_object(font)}),
+        })
+        stream = DecodedStreamObject()
+        stream.set_data(f"BT /F1 12 Tf 24 72 Td ({text}) Tj ET".encode("ascii"))
+        page[NameObject("/Contents")] = writer._add_object(stream)
+    buf = BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+def test_pr587_round3_exact_filter_exports_reports_and_knowledge_pagination(tmp_path, monkeypatch):
+    from case_intelligence.case_assistant_tools import MatterToolRuntime
+    from case_intelligence.report_materials import snapshot_report_materials
+    from case_intelligence.work_product_exports import _answer_blocks
+    from case_intelligence.workbench_assistant import WorkbenchToolBackend
+
+    monkeypatch.setenv("CASE_INTELLIGENCE_CASE_ASSISTANT", "1")
+    app = create_workbench_app(tmp_path / "runtime", generator=_UnsupportedSummaryAssistantClient(), auth_mode="test")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Round 3 Matter")
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("five.pdf", _five_page_four_match_pdf(), "application/pdf")),
+            ("files", ("note.txt", b"Ledger entry for Entity One through Entity Nine.", "text/plain")),
+        ]).status_code == 200
+
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        backend = WorkbenchToolBackend(bench, actor)
+        runtime = MatterToolRuntime(matter.matter_id, actor, backend)
+
+        # 1. Exact search expansion consumes positional matches and excludes the unrelated 5th page.
+        exact = backend.search_discovery(matter.matter_id, '"quadmatch"', mode="exact", limit=10)
+        assert exact.total_matches == 4 and len(exact.hits) == 4 and exact.has_more is False
+        assert not any("unrelated fifth page" in h.excerpt.casefold() for h in exact.hits)
+
+        # 2. Saved-knowledge pagination traverses service pages beyond 8 entities / 6 assertions.
+        cites = bench.search(matter, "Ledger entry", limit=5)
+        support_token = cites[0].support_token
+        ent_svc = bench.entity_service(matter)
+        asn_svc = bench.assertion_service(matter)
+        entity_ids = []
+        for idx in range(1, 10):
+            ent = ent_svc.create(
+                matter.matter_id, actor, display_name=f"Entity {idx:02d}",
+                entity_type="organization", support=support_token,
+            )
+            entity_ids.append(ent["entity_id"])
+        for idx in range(1, 8):
+            asn_svc.create(
+                matter.matter_id, actor, title=f"Assertion {idx:02d}",
+                statement=f"Statement {idx:02d} in synthetic ledger.",
+                raw_date=f"2024-09-{idx:02d}",
+                attributed_to="Synthetic ledger",
+                roles=[{"entity_id": entity_ids[0], "expected_revision": 1, "role": "subject"}],
+                support=support_token,
+            )
+        full_k = runtime.invoke("get_case_knowledge", {"section": "all", "limit": 50})
+        assert len(full_k["entities"]) == 9 and full_k["entities_total"] == 9 and full_k["entities_omitted"] == 0
+        assert len(full_k["assertions"]) == 7 and full_k["assertions_total"] == 7 and full_k["assertions_omitted"] == 0
+        assert full_k["has_more"] is False and full_k["next_offset"] is None
+
+        p1 = runtime.invoke("get_case_knowledge", {"section": "entities", "limit": 5, "offset": 0})
+        assert len(p1["entities"]) == 5 and p1["entities_omitted"] == 4 and p1["has_more"] is True and p1["next_offset"] == 5
+        p2 = runtime.invoke("get_case_knowledge", {"section": "entities", "limit": 5, "offset": 5})
+        assert len(p2["entities"]) == 4 and p2["entities_omitted"] == 0 and p2["has_more"] is False
+
+        # 3. Export blocks, report_materials, and add_answer_to_report preserve gaps, competing accounts, and receipts.
+        pdf_cites = bench.search(matter, "quadmatch", limit=1)
+        conv = bench.workspace.create_conversation(matter.matter_id, "Qualifications Check", actor_id=actor)
+        bench.workspace.append_message(matter.matter_id, conv.conversation_id, "user", "Summarize holdings.", {})
+        msg = bench.workspace.append_message(
+            matter.matter_id, conv.conversation_id, "assistant", "Holdings reached 12.5%.",
+            {
+                "kind": "generated",
+                "answerable": True,
+                "introduction": "Verified findings from inspected matter sources:",
+                "claims": [{"text": "Holdings reached 12.5%.", "citations": [bench._saved_answer_citation_payload(cites[0])]}],
+                "limitation": None,
+                "case_assistant": {
+                    "gaps": ["October statement is missing from production."],
+                    "competing_accounts": ["Witness A denies control while email directs trades."],
+                    "receipts": [{
+                        "receipt_id": "calc-1", "expression": "percent(125, 1000)", "result": "12.50", "unit": "%",
+                        "citations": [bench._saved_answer_citation_payload(pdf_cites[0])],
+                    }],
+                },
+            },
+        )
+        export_text = "\n".join(b.text for b in _answer_blocks(msg))
+        assert "October statement is missing from production." in export_text
+        assert "Witness A denies control while email directs trades." in export_text
+        assert "calc-1" in export_text and "12.50" in export_text
+        assert pdf_cites[0].source_name in export_text and pdf_cites[0].location in export_text
+
+        materials = snapshot_report_materials(bench, matter, actor, (f"conversation:{conv.conversation_id}",))
+        mat_texts = "\n".join(m.text for m in materials)
+        assert "October statement is missing from production." in mat_texts
+        assert "Witness A denies control while email directs trades." in mat_texts
+        assert "calc-1" in mat_texts and "12.50" in mat_texts
+        receipt_mat = next(m for m in materials if m.title == "Calculation receipt")
+        assert len(receipt_mat.citations) == 1
+
+        report = bench.workspace.create_report(matter.matter_id, actor, "Defense Report")
+        section = bench.add_answer_to_report(
+            matter, actor, report.report_id, conv.conversation_id, msg.message_id, expected_status=report.status,
+        )
+        assert "October statement is missing from production." in section.body
+        assert "Witness A denies control while email directs trades." in section.body
+        assert "calc-1" in section.body and "12.50" in section.body
+
+        # Deleting a receipt-only premise source rejects both report compilation and Save to report.
+        from case_intelligence.store_records import WorkspaceProblem
+        import pytest
+        store = bench.source_store(matter)
+        bench.remove_document(matter, store.action_token(store.get(pdf_cites[0].document_id)))
+        with pytest.raises(WorkspaceProblem):
+            snapshot_report_materials(bench, matter, actor, (f"conversation:{conv.conversation_id}",))
+        with pytest.raises(WorkspaceProblem):
+            bench.add_answer_to_report(
+                matter, actor, report.report_id, conv.conversation_id, msg.message_id, expected_status=report.status,
+            )
+
+
+def test_pr587_round4_identity_bound_citations_and_label_free_receipts(tmp_path):
+    from types import SimpleNamespace
+    from case_intelligence.case_assistant import AssistantFinding, AssistantInvestigationResult
+    from case_intelligence.case_assistant_tools import CalculationInput, CalculationReceipt, SourceRef
+    from case_intelligence.workbench_assistant import (
+        WorkbenchToolBackend, _result_to_answer, format_assistant_qualifications,
+    )
+
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Round 4 Identity Matter")
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("ledger.txt", b"Balance 10 on page one.", "text/plain")),
+        ]).status_code == 200
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        backend = WorkbenchToolBackend(bench, actor)
+        orig_wc = bench.search(matter, "Balance 10", limit=1)[0]
+        edited_wc = SimpleNamespace(
+            matter_id=orig_wc.matter_id,
+            document_id=orig_wc.document_id,
+            source_version_id=orig_wc.source_version_id,
+            source_name=orig_wc.source_name,
+            location=orig_wc.location,
+            unit_number=orig_wc.unit_number,
+            chunk_id=orig_wc.chunk_id,
+            excerpt="Balance 15 on page one.",
+            excerpt_digest="changed-digest-0002",
+            evidence_kind=orig_wc.evidence_kind,
+            support_token="changed-token-0002",
+        )
+        backend._remember_citation(orig_wc)
+        backend._remember_citation(edited_wc)
+
+        # 1a. Ref carrying the original digest resolves strictly to the original citation, never the edited one.
+        orig_ref = SourceRef(orig_wc.document_id, orig_wc.source_name, orig_wc.location,
+                             orig_wc.source_version_id, orig_wc.excerpt_digest)
+        resolved = backend.citation_for_ref(orig_ref)
+        assert resolved is orig_wc and resolved.excerpt_digest == orig_wc.excerpt_digest
+
+        # 1b. Digestless ref fails closed when multiple digests exist for the same (doc, location, version).
+        ambiguous_ref = SourceRef(orig_wc.document_id, orig_wc.source_name, orig_wc.location,
+                                  orig_wc.source_version_id, "")
+        assert backend.citation_for_ref(ambiguous_ref) is None
+        ambiguous_result = AssistantInvestigationResult(
+            answerable=True, summary="Balance 10.",
+            findings=(AssistantFinding("Balance 10.", (ambiguous_ref,), ()),),
+            omitted_findings=0, gaps=(), competing_accounts=(),
+            citations=(ambiguous_ref,), receipts={}, trace=(), turns_used=1, elapsed_ms=1,
+        )
+        ans_amb = _result_to_answer(bench, ambiguous_result, backend, "fp")
+        assert ans_amb.payload["kind"] == "not-supported"
+        assert ans_amb.payload["claims"] == []
+        assert ans_amb.payload["case_assistant"]["omitted_findings"] == 1
+
+        # 2. Unverified model labels and unverified unit text never appear in verified calculation display.
+        receipt = CalculationReceipt(
+            receipt_id="calc-1",
+            operation="sum",
+            expression="fabricated 87.65(10) = 10",
+            result="10",
+            unit="USD; fabricated ownership 87.65%",
+            inputs=(CalculationInput("fabricated 87.65", "10", (orig_ref,)),),
+        )
+        unreferenced_receipt = CalculationReceipt(
+            receipt_id="calc-2",
+            operation="percent",
+            expression="10 / 100 = 10",
+            result="10",
+            unit="%",
+            inputs=(CalculationInput("part", "10", (orig_ref,)),),
+        )
+        missing_premise_receipt = CalculationReceipt(
+            receipt_id="calc-3",
+            operation="sum",
+            expression="5 = 5",
+            result="5",
+            unit="",
+            inputs=(CalculationInput("ghost", "5", (ambiguous_ref,)),),
+        )
+        calc_result = AssistantInvestigationResult(
+            answerable=True, summary="Total is 10.",
+            findings=(AssistantFinding("Balance is 10.", (orig_ref,), ("calc-1",)),),
+            omitted_findings=0, gaps=(), competing_accounts=(),
+            citations=(orig_ref,),
+            receipts={"calc-1": receipt, "calc-2": unreferenced_receipt, "calc-3": missing_premise_receipt},
+            trace=(), turns_used=1, elapsed_ms=1,
+        )
+        ans_calc = _result_to_answer(bench, calc_result, backend, "fp")
+        saved_receipts = {r["receipt_id"]: r for r in ans_calc.payload["case_assistant"]["receipts"]}
+        assert set(saved_receipts) == {"calc-1", "calc-2"}
+        assert saved_receipts["calc-1"]["expression"] == "sum(10) = 10"
+        assert saved_receipts["calc-1"]["unit"] == ""
+        assert saved_receipts["calc-2"]["unit"] == "%"
+        assert orig_wc.support_token in {c.support_token for c in ans_calc.citations}
+        qual = format_assistant_qualifications(ans_calc.payload)
+        assert "sum(10) = 10" in qual and "fabricated" not in qual and "87.65" not in qual
+
+        # 3. Pure NOT exact search preserves matching documents with empty positive passages.
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("blue.txt", b"Blue ledger with no crimson mention.", "text/plain")),
+        ]).status_code == 200
+        not_red = backend.search_discovery(matter.matter_id, "NOT red", mode="exact", limit=10)
+        assert not_red.total_matches == 2 and len(not_red.hits) == 2
+
+        # 4. Unverified factual competing_accounts (unsupported numbers or zero retained citations) are omitted.
+        bad_competing = AssistantInvestigationResult(
+            answerable=True, summary="Balance is 10.",
+            findings=(AssistantFinding("Balance is 10.", (orig_ref,), ()),),
+            omitted_findings=0, gaps=(),
+            competing_accounts=(
+                "A witness reports unsupported 88.88% ownership.",
+                "Another note reflects a balance of 10 on page one.",
+            ),
+            citations=(orig_ref,), receipts={}, trace=(), turns_used=1, elapsed_ms=1,
+        )
+        ans_comp = _result_to_answer(bench, bad_competing, backend, "fp")
+        kept = ans_comp.payload["case_assistant"]["competing_accounts"]
+        assert kept == ["Another note reflects a balance of 10 on page one."]
+        assert "88.88" not in format_assistant_qualifications(ans_comp.payload)
+
+        no_cite_competing = AssistantInvestigationResult(
+            answerable=False, summary="Abstained.", findings=(),
+            omitted_findings=1,
+            gaps=(
+                "The 88.88% ownership transfer is missing its supporting statement.",
+                "The balance of 15 is missing its supporting statement.",
+                "1 unavailable source(s) could not be searched: damaged-scan.pdf",
+                "October statement is missing from production.",
+            ),
+            competing_accounts=("Unsupported witness claim without source support.",),
+            citations=(), receipts={}, trace=(), turns_used=1, elapsed_ms=1,
+        )
+        ans_none = _result_to_answer(bench, no_cite_competing, backend, "fp")
+        assert ans_none.payload["case_assistant"]["competing_accounts"] == []
+        kept_gaps = ans_none.payload["case_assistant"]["gaps"]
+        assert "1 unavailable source(s) could not be searched: damaged-scan.pdf" in kept_gaps
+        assert "October statement is missing from production." in kept_gaps
+        assert not any("88.88" in g for g in kept_gaps)
+        assert not any("balance of 15" in g for g in kept_gaps)
+
+
+
+
+
 
 

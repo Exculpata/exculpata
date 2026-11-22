@@ -167,6 +167,7 @@ def test_selection_receipt_routes_require_valid_identity_and_preserve_retry_key(
 const uploadForm={dataset:{matterSlug:'m-000000000001',intakeUrl:'/matters/m-000000000001/intake-receipts'}};
 const uploadCollectionName={value:'Synthetic selection'};
 const rawSelectionFingerprint=async()=>'a'.repeat(64),selectionNonce=()=>'b'.repeat(32);
+const sha256Fingerprint=async value=>require('node:crypto').createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const preflightVersion=1,maximumUploadBatchItems=1,maximumPreflightRequestBytes=10000,csrfToken='synthetic';
 const uploadPreflightStatus={textContent:''},link={},linkBox={hidden:true};
 const document={querySelector:selector=>selector==='[data-intake-receipt-open]'?link:linkBox};
@@ -175,7 +176,7 @@ const calls=[];let receiptId='intake-'+'c'.repeat(32);
 const fetch=async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {json:async()=>({receipt_id:receiptId,state:'ready',recorded_count:2})};};
 ''' + source + r'''
 (async()=>{
- const files=[{name:'a.txt',size:1,type:'text/plain'},{name:'b.txt',size:2,type:'text/plain'}];
+ const files=[{name:'index.dat',size:1,type:'text/plain'},{name:'b.txt',size:2,type:'text/plain'}];
  const preview={eligible_indexes:[0,1],items:files.map(()=>({path_safety_validated:true,state:'ready'}))};
  const result=await recordConfirmedSelection(files,preview,1);
  assert.equal(result.receipt_id,receiptId);
@@ -190,6 +191,16 @@ const fetch=async(url,options)=>{calls.push([url,JSON.parse(options.body)]);retu
   assert.equal(calls.length,1);
  }
  calls.length=0;await assert.rejects(recordConfirmedSelection(files,preview,2),/selection changed/);assert.equal(calls.length,0);
+ clearIntakeResumeState();receiptId='intake-'+'c'.repeat(32);
+ const profile={producer:'Generated producer',sha256:'d'.repeat(64),fields:{'Vendor heading':'begin_bates'}};
+ const profiles=new Map([[0,profile]]);calls.length=0;
+ await recordConfirmedSelection(files,preview,1,profiles);
+ assert.deepEqual(calls[1][1].files[0].dat_profile,profile);
+ assert(!JSON.stringify(calls[0][1]).includes('Vendor heading'));
+ const mappedCheckpoint=storage.getItem(intakeResumeKey);assert(!mappedCheckpoint.includes('Generated producer'));
+ assert(!mappedCheckpoint.includes('Vendor heading'));
+ calls.length=0;await assert.rejects(recordConfirmedSelection(files,preview,1),/Reapply/);assert.equal(calls.length,0);
+ await recordConfirmedSelection(files,preview,1,profiles);assert.equal(mappedCheckpoint,storage.getItem(intakeResumeKey));
 })().catch(error=>{console.error(error);process.exitCode=1;});
 ''')
 
@@ -436,3 +447,37 @@ const head=await worker.fetch(new Request('https://synthetic.example.test/video.
 assert.equal(head.headers.get('Content-Length'),'3');assert.equal((await head.arrayBuffer()).byteLength,0);
 })().catch(error=>{console.error(error);process.exitCode=1;});
 ''')
+
+
+def test_producer_mapping_messages_are_display_text():
+    editor = 'src/case_intelligence/static/production-dat-mapping.js'
+    intake = 'src/case_intelligence/static/case-intelligence.js'
+
+    def one(path, node, prefix):
+        matches = node_expressions(path, node, lambda text: text.startswith(prefix))
+        assert len(matches) == 1, (path, prefix)
+        return matches[0][1]
+
+    statements = [
+        one(editor, 'assignment_expression', 'input.placeholder = suggestions.has'),
+        one(editor, 'assignment_expression', 'this.querySelector("[data-header-coverage]").textContent = omitted'),
+        one(editor, 'assignment_expression', 'this.status.textContent = `Saved mapping could not be applied.'),
+        one(intake, 'call_expression', 'productionInspection.status.replaceChildren(mapping.message,'),
+    ]
+    diagnostic = one(editor, 'template_string', '`${draft.label}: ${problem}')
+    run_node("""const assert = require('node:assert/strict');
+const role = 'text_path', suggestions = new Map([[role, '<generated heading>']]);
+const omitted = 2, coverage = {}, input = {}, status = {};
+const productionInspection = {status: {replaceChildren(...text) {this.textContent = text.join('');}}};
+const draft = {label: 'Synthetic/index.dat'}, problem = 'Choose exact headings from the inspected DAT.';
+const missing = [['First <heading>', 'begin_bates'], ['Second', 'text_path']];
+const mapping = {message: """ + diagnostic + """};
+(function () {
+""" + ';\n'.join(statements) + """
+}).call({status, querySelector: () => coverage});
+assert.equal(input.placeholder, 'Suggested: <generated heading>');
+assert.match(coverage.textContent, /^2 headings exceed/);
+assert.match(status.textContent, /Unavailable headings: First <heading>, Second/);
+assert.equal(productionInspection.status.textContent,
+  'Synthetic/index.dat: Choose exact headings from the inspected DAT. Inspect this DAT to review its mapping.');
+""")

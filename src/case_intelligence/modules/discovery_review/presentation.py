@@ -168,7 +168,7 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
     fragment = f"/matters/{slug}/production/items/{item.token}"
     parsed_url = urlsplit(list_url)
     base_query = {key: value for key, value in parse_qsl(parsed_url.query)
-                  if key not in {'record', 'record_dir', 'unit'}}
+                  if key not in {'record', 'record_dir', 'unit', 'image_start'}}
 
     def links(**query) -> dict:
         merged = {key: value for key, value in {**base_query, **query}.items() if value}
@@ -226,7 +226,37 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
             panel['records'] = record_panel(definition, record_window, links, view='fields', sources_url=sources_url)
     if panel.get('records') and panel['records']['current_cursor']:
         panel['state'].update(record=panel['records']['current_cursor'], record_dir='at')
+        for record in panel['records']['rows']:
+            record['indexed_images'] = indexed_images(record, record_window['attempt'], slug, links)
     return panel
+
+
+def indexed_images(record, attempt, slug, links):
+    """Keep image file navigation separate from document and page associations."""
+    def image_file(reference):
+        source = reference['source']
+        url = ''
+        if source:
+            token = action_token(source['document_id'], source['version_id'])
+            url = f'/matters/{slug}/sources/{token}'
+        return {**reference, 'url': url}
+
+    if record.get('image_reference'):
+        return {'page_file': image_file(record['image_reference'])}
+    if (attempt['source_format'] != 'dii' or attempt['status'] != 'complete'
+            or record['kind'] != 'accepted'):
+        return {}
+    cursor = f"dat:{attempt['attempt_id']}:{record['ordinal']}"
+    def browse(start):
+        return links(view='fields', record=cursor, image_start=str(start))['url']
+
+    window = record.get('image_files')
+    if window is None:
+        return {'open': browse(1)}
+    return {'rows': [image_file(entry) for entry in window['rows']],
+            'start': window['start'], 'total': window['total'],
+            'previous': browse(window['previous_start']) if window['previous_start'] else '',
+            'next': browse(window['next_start']) if window['next_start'] else ''}
 
 
 def record_panel(definition: Definition, window: dict, links, *, view: str, sources_url: str = "") -> dict:

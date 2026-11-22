@@ -1,7 +1,7 @@
 """App-shell adapter wiring CaseAssistant and MatterToolRuntime into WorkbenchService."""
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import os
 from typing import Callable, Mapping, Sequence
 
@@ -56,6 +56,26 @@ class WorkbenchToolBackend:
         self.actor_id = actor_id
         self.allowed_notebook_items = None if allowed_notebook_items is None else tuple(allowed_notebook_items)
         self.citations_by_key: dict[tuple[str, str], object] = {}
+        self.citations_by_identity: dict[tuple[str, str, str, str], object] = {}
+
+    def _remember_citation(self, wc) -> None:
+        self.citations_by_key[(wc.document_id, wc.location)] = wc
+        identity = (wc.document_id, wc.location, wc.source_version_id, wc.excerpt_digest)
+        self.citations_by_identity.setdefault(identity, wc)
+
+    def citation_for_ref(self, ref) -> object | None:
+        """Resolve a verified SourceRef only against its exact inspected source identity."""
+        doc_id = str(getattr(ref, "document_id", "") or "")
+        location = str(getattr(ref, "location", "") or "")
+        version_id = str(getattr(ref, "source_version_id", "") or "")
+        digest = str(getattr(ref, "excerpt_digest", "") or "")
+        if digest:
+            return self.citations_by_identity.get((doc_id, location, version_id, digest))
+        matches = [
+            wc for (d, loc, ver, _dig), wc in self.citations_by_identity.items()
+            if d == doc_id and loc == location and (not version_id or ver == version_id)
+        ]
+        return matches[0] if len(matches) == 1 else None
 
     def authorize(self, matter_id: str, actor_id: str) -> bool:
         try:
@@ -137,25 +157,35 @@ class WorkbenchToolBackend:
                                 for idx, u in all_units
                             }
                             if item.matching_unit_count > len(item.passages):
-                                positives = getattr(item.explanation.expression, "operands", ())
-                                matched_pairs = [
-                                    (idx, u) for idx, u in all_units
-                                    if positives and match_positionals(tokenize_text(u.text), positives)
-                                ]
+                                proof = item.explanation.explain_units(u.text for _, u in all_units)
+                                if proof is not None:
+                                    matched_pairs = [
+                                        (idx, u) for idx, u in all_units
+                                        if (
+                                            any(match_positionals(tokenize_text(u.text), proof))
+                                            if proof
+                                            else bool(tokenize_text(u.text))
+                                        )
+                                    ]
+                                else:
+                                    matched_pairs = []
                                 if not matched_pairs:
                                     matched_pairs = [
                                         (unit_ordinals.get((u.number, u.line_start, u.line_end, u.excerpt_digest), 1), u)
                                         for u in item.passages
                                     ]
-                            else:
+                            elif item.passages:
                                 matched_pairs = [
                                     (unit_ordinals.get((u.number, u.line_start, u.line_end, u.excerpt_digest), 1), u)
                                     for u in item.passages
                                 ]
+                            else:
+                                first_unit = next(((idx, u) for idx, u in all_units if u.text.strip()), None)
+                                matched_pairs = [first_unit] if first_unit is not None else []
                             omitted_preview += max(0, item.matching_unit_count - len(matched_pairs))
                             for ordinal, unit in matched_pairs:
                                 wc = self._unit_citation(matter, store, doc, ordinal, unit)
-                                self.citations_by_key[(wc.document_id, wc.location)] = wc
+                                self._remember_citation(wc)
                                 all_hits.append(SearchHit(
                                     wc.document_id, wc.source_name, wc.location, wc.excerpt, 1.0,
                                     wc.source_version_id, wc.excerpt_digest, wc.evidence_kind,
@@ -176,7 +206,7 @@ class WorkbenchToolBackend:
         citations = self.bench.search(matter, query, limit=fetch_limit, document_ids=document_ids)
         result: list[SearchHit] = []
         for wc in citations:
-            self.citations_by_key[(wc.document_id, wc.location)] = wc
+            self._remember_citation(wc)
             result.append(SearchHit(wc.document_id, wc.source_name, wc.location, wc.excerpt, 1.0,
                                     wc.source_version_id, wc.excerpt_digest, wc.evidence_kind))
         sliced = tuple(result[offset:offset + limit])
@@ -204,16 +234,41 @@ class WorkbenchToolBackend:
                 if page_key < start_page or page_key > stop:
                     continue
                 wc = self._unit_citation(matter, store, doc, ordinal, unit)
-                self.citations_by_key[(wc.document_id, wc.location)] = wc
+                self._remember_citation(wc)
                 pages.append(SourcePage(page_key, wc.location, unit.text, doc.version_id, unit.excerpt_digest))
             return SourceReadResult(doc.document_id, doc.display_name, total_pages, tuple(pages))
 
+    def _paginate_knowledge_bucket(
+        self, service: MatterKnowledgeService, matter_id: str, bucket: str, *, offset: int, limit: int,
+    ) -> tuple[list[Mapping[str, object]], int]:
+        """Traverse MatterKnowledgeService pages until offset + limit items are collected."""
+        target = offset + limit
+        collected: list[Mapping[str, object]] = []
+        total = 0
+        page_num = 1
+        total_pages = 1
+        while page_num <= total_pages and len(collected) < target:
+            kwargs = {"entity_page": page_num, "assertion_page": 1} if bucket == "entities" else {
+                "entity_page": 1, "assertion_page": page_num,
+            }
+            page = service.page(matter_id, self.actor_id, **kwargs)
+            part = page.get(bucket) or {}
+            items = list(part.get("items") or ())
+            if page_num == 1:
+                total = int(part.get("total", len(items)))
+                total_pages = max(1, int(part.get("pages", 1)))
+            if not items:
+                break
+            collected.extend(items)
+            page_num += 1
+        return collected[offset:offset + limit], max(total, len(collected))
+
     def _notebook_section_rows(
-        self, matter_id: str, *, limit: int, document_ids: frozenset[str] | None,
+        self, matter_id: str, *, limit: int, offset: int = 0, document_ids: frozenset[str] | None,
         item_types: tuple[str, ...] | None = None, include_dated: bool = False,
-    ) -> list[dict[str, object]]:
+    ) -> tuple[list[dict[str, object]], int, int, bool]:
         if self.allowed_notebook_items is not None:
-            items = []
+            raw_items = []
             for n in self.allowed_notebook_items:
                 if item_types:
                     matches = (n.item_type in item_types) or (include_dated and bool((n.date_label or "").strip()))
@@ -221,18 +276,35 @@ class WorkbenchToolBackend:
                         continue
                 elif include_dated and not (n.date_label or "").strip():
                     continue
-                items.append(n)
-            items = items[:limit]
+                raw_items.append(n)
+            filtered = []
+            for n in raw_items:
+                ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
+                if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
+                    continue
+                filtered.append((n, ref_ids))
+            total = len(filtered)
+            page_items = filtered[offset:offset + limit]
+            omitted = max(0, total - (offset + len(page_items)))
+            has_more = omitted > 0
         else:
-            items = list(self.bench.workspace.all_notebook_items(
-                matter_id, self.actor_id, include_dismissed=False, limit=limit,
+            fetch_cap = offset + limit + 1
+            raw_items = list(self.bench.workspace.all_notebook_items(
+                matter_id, self.actor_id, include_dismissed=False, limit=fetch_cap,
                 item_types=item_types, include_dated=include_dated,
             ))
+            filtered = []
+            for n in raw_items:
+                ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
+                if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
+                    continue
+                filtered.append((n, ref_ids))
+            has_more = len(filtered) > offset + limit
+            page_items = filtered[offset:offset + limit]
+            total = len(filtered) if not has_more else offset + len(page_items) + 1
+            omitted = max(0, total - (offset + len(page_items)))
         rows: list[dict[str, object]] = []
-        for n in items:
-            ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
-            if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
-                continue
+        for n, ref_ids in page_items:
             item_id = getattr(n, "item_id", None) or getattr(n, "notebook_item_id", "")
             row: dict[str, object] = {
                 "item_id": item_id,
@@ -245,41 +317,82 @@ class WorkbenchToolBackend:
             if ref_ids:
                 row["source_document_ids"] = ref_ids
             rows.append(row)
-        return rows
+        return rows, total, omitted, has_more
 
     def get_case_knowledge(
-        self, matter_id: str, *, section: str = "all", limit: int = 50,
+        self, matter_id: str, *, section: str = "all", limit: int = 50, offset: int = 0,
         document_ids: frozenset[str] | None = None,
     ) -> Mapping[str, object]:
         matter = self.bench._matter_by_id(matter_id)
-        output: dict[str, object] = {}
+        output: dict[str, object] = {"offset": offset, "limit": limit}
+        any_has_more = False
         if section in {"all", "notes"}:
-            output["notes"] = self._notebook_section_rows(matter_id, limit=limit, document_ids=document_ids)
+            note_rows, notes_total, notes_omitted, notes_has_more = self._notebook_section_rows(
+                matter_id, limit=limit, offset=offset, document_ids=document_ids,
+            )
+            output["notes"] = note_rows
+            output["notes_total"] = notes_total
+            output["notes_omitted"] = notes_omitted
+            output["notes_has_more"] = notes_has_more
+            any_has_more = any_has_more or notes_has_more
         if section in {"all", "case_theory"}:
-            output["case_theory"] = self._notebook_section_rows(
-                matter_id, limit=limit, document_ids=document_ids, item_types=("fact", "issue"),
+            theory_rows, theory_total, theory_omitted, theory_has_more = self._notebook_section_rows(
+                matter_id, limit=limit, offset=offset, document_ids=document_ids, item_types=("fact", "issue"),
             )
+            output["case_theory"] = theory_rows
+            output["case_theory_total"] = theory_total
+            output["case_theory_omitted"] = theory_omitted
+            output["case_theory_has_more"] = theory_has_more
+            any_has_more = any_has_more or theory_has_more
         if section in {"all", "timeline"}:
-            output["timeline"] = self._notebook_section_rows(
-                matter_id, limit=limit, document_ids=document_ids, item_types=("event", "date"), include_dated=True,
+            tl_rows, tl_total, tl_omitted, tl_has_more = self._notebook_section_rows(
+                matter_id, limit=limit, offset=offset, document_ids=document_ids,
+                item_types=("event", "date"), include_dated=True,
             )
+            output["timeline"] = tl_rows
+            output["timeline_total"] = tl_total
+            output["timeline_omitted"] = tl_omitted
+            output["timeline_has_more"] = tl_has_more
+            any_has_more = any_has_more or tl_has_more
         if section in {"all", "entities", "assertions"}:
             if document_ids is not None:
                 if section in {"all", "entities"}:
                     output["entities"] = []
+                    output["entities_total"] = 0
+                    output["entities_omitted"] = 0
+                    output["entities_has_more"] = False
                 if section in {"all", "assertions"}:
                     output["assertions"] = []
+                    output["assertions_total"] = 0
+                    output["assertions_omitted"] = 0
+                    output["assertions_has_more"] = False
+                output["has_more"] = any_has_more
+                output["next_offset"] = (offset + limit) if any_has_more else None
                 return output
             try:
-                page = MatterKnowledgeService(self.bench.assertion_service(matter)).page(matter_id, self.actor_id)
+                service = MatterKnowledgeService(self.bench.assertion_service(matter))
             except Exception:
-                page = {"entities": {"items": []}, "assertions": {"items": []}}
+                service = None
             if section in {"all", "entities"}:
+                ent_items, ent_total = (
+                    self._paginate_knowledge_bucket(service, matter_id, "entities", offset=offset, limit=limit)
+                    if service is not None else ([], 0)
+                )
                 output["entities"] = [
                     {"name": e.get("display_name") or e.get("canonical_name"), "type": e.get("entity_type"), "status": e.get("status")}
-                    for e in page["entities"]["items"][:limit]
+                    for e in ent_items
                 ]
+                ent_omitted = max(0, ent_total - (offset + len(ent_items)))
+                ent_has_more = ent_omitted > 0
+                output["entities_total"] = ent_total
+                output["entities_omitted"] = ent_omitted
+                output["entities_has_more"] = ent_has_more
+                any_has_more = any_has_more or ent_has_more
             if section in {"all", "assertions"}:
+                asn_items, asn_total = (
+                    self._paginate_knowledge_bucket(service, matter_id, "assertions", offset=offset, limit=limit)
+                    if service is not None else ([], 0)
+                )
                 output["assertions"] = [
                     {
                         "title": a.get("title"),
@@ -287,9 +400,52 @@ class WorkbenchToolBackend:
                         "date": a.get("raw_date") or a.get("date_label"),
                         "status": a.get("status"),
                     }
-                    for a in page["assertions"]["items"][:limit]
+                    for a in asn_items
                 ]
+                asn_omitted = max(0, asn_total - (offset + len(asn_items)))
+                asn_has_more = asn_omitted > 0
+                output["assertions_total"] = asn_total
+                output["assertions_omitted"] = asn_omitted
+                output["assertions_has_more"] = asn_has_more
+                any_has_more = any_has_more or asn_has_more
+        output["has_more"] = any_has_more
+        output["next_offset"] = (offset + limit) if any_has_more else None
         return output
+
+
+def _verified_receipt_expression(receipt) -> str:
+    """Format verified calculation arithmetic from operation, verified numeric inputs, and result only."""
+    values = ", ".join(str(inp.value) for inp in receipt.inputs)
+    return f"{receipt.operation}({values}) = {receipt.result}"
+
+
+def format_assistant_qualifications(payload: Mapping[str, object]) -> str:
+    """Render saved Case Assistant gaps, competing accounts, and calculation receipts for reports."""
+    ca = payload.get("case_assistant")
+    if not isinstance(ca, Mapping):
+        return ""
+    sections: list[str] = []
+    gaps = [str(g).strip() for g in (ca.get("gaps") or ()) if isinstance(g, str) and g.strip()]
+    if gaps:
+        sections.append("Investigation gaps:\n" + "\n".join(f"- {g}" for g in gaps))
+    competing = [str(c).strip() for c in (ca.get("competing_accounts") or ()) if isinstance(c, str) and c.strip()]
+    if competing:
+        sections.append("Competing accounts:\n" + "\n".join(f"- {c}" for c in competing))
+    receipts = [r for r in (ca.get("receipts") or ()) if isinstance(r, Mapping)]
+    if receipts:
+        lines = []
+        for r in receipts:
+            rid = str(r.get("receipt_id", "")).strip()
+            expr = str(r.get("expression", "")).strip()
+            res = str(r.get("result", "")).strip()
+            unit = str(r.get("unit", "")).strip()
+            label = f"[{rid}] " if rid else ""
+            suffix = f" {unit}" if unit else ""
+            rendered = expr if (not res or expr.endswith(f"= {res}")) else f"{expr} = {res}"
+            lines.append(f"- {label}{rendered}{suffix}".strip())
+        if lines:
+            sections.append("Calculation receipts:\n" + "\n".join(lines))
+    return "\n\n".join(sections)
 
 
 def _collect_calc_premise_refs(calc_ids: Sequence[str], receipts: Mapping[str, object]) -> list[object]:
@@ -318,35 +474,144 @@ def _collect_calc_premise_refs(calc_ids: Sequence[str], receipts: Mapping[str, o
     return refs
 
 
-def _result_to_answer(bench, result: AssistantInvestigationResult, backend: WorkbenchToolBackend, source_fingerprint: str) -> AnswerResult:
-    from .case_assistant_proposals import build_verified_proposals
+_DETERMINISTIC_OP_UNITS = {"percent": "%", "days_between": "days", "count": "rows"}
 
+
+def _verified_receipt_unit(receipt, premise_wcs: Sequence[object]) -> str:
+    """Retain only operation-derived or source-grounded unit tokens for verified display."""
+    import re
+    raw_unit = str(getattr(receipt, "unit", "") or "").strip()
+    if not raw_unit:
+        return ""
+    if _DETERMINISTIC_OP_UNITS.get(receipt.operation) == raw_unit:
+        return raw_unit
+    if not re.fullmatch(r"[A-Za-z%$]{1,16}", raw_unit):
+        return ""
+    premise_text = "\n".join(str(getattr(wc, "excerpt", "") or "") for wc in premise_wcs)
+    return raw_unit if raw_unit.casefold() in premise_text.casefold() else ""
+
+
+def _result_to_answer(bench, result: AssistantInvestigationResult, backend: WorkbenchToolBackend, source_fingerprint: str) -> AnswerResult:
     claims_payload: list[dict[str, object]] = []
+    retained_findings: list[object] = []
     used_citations: list[object] = []
     seen_tokens: set[str] = set()
+    extra_omitted = 0
 
-    def collect_cites(refs) -> list[dict[str, object]]:
-        rows: list[dict[str, object]] = []
-        seen_local: set[str] = set()
-        for ref in refs:
-            wc = backend.citations_by_key.get((ref.document_id, ref.location))
-            if wc is None:
-                continue
+    for finding in result.findings:
+        combined_refs = (*finding.citations, *_collect_calc_premise_refs(finding.calculation_ids, result.receipts))
+        resolved_wcs = [backend.citation_for_ref(ref) for ref in combined_refs]
+        if not resolved_wcs or any(wc is None for wc in resolved_wcs):
+            extra_omitted += 1
+            continue
+        cite_rows: list[dict[str, object]] = []
+        seen_claim_tokens: set[str] = set()
+        for wc in resolved_wcs:
+            assert wc is not None
             if wc.support_token not in seen_tokens:
                 seen_tokens.add(wc.support_token)
                 used_citations.append(wc)
-            if wc.support_token not in seen_local:
-                seen_local.add(wc.support_token)
-                rows.append(bench._saved_answer_citation_payload(wc))
-        return rows
+            if wc.support_token in seen_claim_tokens:
+                continue
+            seen_claim_tokens.add(wc.support_token)
+            cite_rows.append(bench._saved_answer_citation_payload(wc))
+        if not cite_rows:
+            extra_omitted += 1
+            continue
+        retained_findings.append(finding)
+        claims_payload.append({"text": finding.text, "citations": cite_rows, "calculation_ids": list(finding.calculation_ids)})
+    trace_rows = [{"call_id": rec.call_id, "tool_name": rec.tool_name, "status": rec.status,
+                   "elapsed_ms": rec.elapsed_ms, "cited_count": len(rec.cited_refs), "error": rec.error}
+                  for rec in result.trace]
+    receipt_rows: list[dict[str, object]] = []
+    for receipt in result.receipts.values():
+        premise_refs = _collect_calc_premise_refs((receipt.receipt_id,), result.receipts)
+        premise_wcs = [backend.citation_for_ref(ref) for ref in premise_refs]
+        if not premise_wcs or any(wc is None for wc in premise_wcs):
+            continue
+        receipt_cites: list[dict[str, object]] = []
+        seen_receipt_tokens: set[str] = set()
+        for wc in premise_wcs:
+            assert wc is not None
+            if wc.support_token not in seen_tokens:
+                seen_tokens.add(wc.support_token)
+                used_citations.append(wc)
+            if wc.support_token not in seen_receipt_tokens:
+                seen_receipt_tokens.add(wc.support_token)
+                receipt_cites.append(bench._saved_answer_citation_payload(wc))
+        receipt_rows.append({
+            "receipt_id": receipt.receipt_id,
+            "operation": receipt.operation,
+            "expression": _verified_receipt_expression(receipt),
+            "result": receipt.result,
+            "unit": _verified_receipt_unit(receipt, premise_wcs),
+            "citations": receipt_cites,
+            "inputs": [
+                {"value": inp.value, "source_refs": [asdict(sref) for sref in inp.source_refs]}
+                for inp in receipt.inputs
+            ],
+        })
+    import re
+    from .case_assistant import _extract_nums
 
-    for finding in result.findings:
-        combined = (*finding.citations, *_collect_calc_premise_refs(finding.calculation_ids, result.receipts))
-        claims_payload.append({"text": finding.text, "citations": collect_cites(combined),
-                               "calculation_ids": list(finding.calculation_ids)})
-    proposals_payload = []
-    for prop in build_verified_proposals(result):
-        prop_cites = collect_cites(prop.citations)
+    allowed_nums: set[str] = set()
+    for wc in used_citations:
+        allowed_nums.update(_extract_nums(str(getattr(wc, "excerpt", "") or "")))
+    for r in receipt_rows:
+        allowed_nums.update(_extract_nums(str(r.get("result", ""))))
+    verified_competing: list[str] = []
+    if used_citations:
+        for account in result.competing_accounts:
+            text = str(account or "").strip()
+            if not text:
+                continue
+            nums = _extract_nums(text)
+            if nums and not nums.issubset(allowed_nums):
+                continue
+            verified_competing.append(text)
+    _system_gap_re = re.compile(
+        r"^(?:\d+\s+unavailable\b|Turn budget\b|Model returned\b|Investigation\b)",
+        re.IGNORECASE,
+    )
+    verified_gaps: list[str] = []
+    for gap in result.gaps:
+        text = str(gap or "").strip()
+        if not text:
+            continue
+        if _system_gap_re.match(text):
+            verified_gaps.append(text)
+            continue
+        nums = _extract_nums(text)
+        if nums and not nums.issubset(allowed_nums):
+            continue
+        verified_gaps.append(text)
+    from .case_assistant_proposals import build_verified_proposals
+
+    verified_receipts = {
+        str(r["receipt_id"]): replace(
+            result.receipts[str(r["receipt_id"])],
+            expression=str(r["expression"]),
+            unit=str(r["unit"]),
+        )
+        for r in receipt_rows
+        if str(r["receipt_id"]) in result.receipts
+    }
+    verified_result = replace(result, findings=tuple(retained_findings), receipts=verified_receipts)
+    proposals_payload: list[dict[str, object]] = []
+    for prop in build_verified_proposals(verified_result):
+        resolved_prop_wcs = [backend.citation_for_ref(ref) for ref in prop.citations]
+        if not resolved_prop_wcs or any(wc is None for wc in resolved_prop_wcs):
+            continue
+        prop_cites: list[dict[str, object]] = []
+        seen_prop_tokens: set[str] = set()
+        for wc in resolved_prop_wcs:
+            assert wc is not None
+            if wc.support_token not in seen_tokens:
+                seen_tokens.add(wc.support_token)
+                used_citations.append(wc)
+            if wc.support_token not in seen_prop_tokens:
+                seen_prop_tokens.add(wc.support_token)
+                prop_cites.append(bench._saved_answer_citation_payload(wc))
         if prop_cites:
             proposals_payload.append({
                 "proposal_id": prop.proposal_id, "category": prop.category, "label": prop.label,
@@ -354,10 +619,6 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
                 "calculation_ids": list(prop.calculation_ids), "disclosure_note": prop.disclosure_note,
                 "citations": prop_cites,
             })
-    trace_rows = [{"call_id": rec.call_id, "tool_name": rec.tool_name, "status": rec.status,
-                   "elapsed_ms": rec.elapsed_ms, "cited_count": len(rec.cited_refs), "error": rec.error}
-                  for rec in result.trace]
-    receipt_rows = [asdict(receipt) for receipt in result.receipts.values()]
     supported = bool(result.answerable and claims_payload)
     intro = _VERIFIED_INTRO if supported else _ABSTENTION_INTRO
     payload: dict[str, object] = {
@@ -369,13 +630,14 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
         "limitation": None,
         "missing_information": "" if supported else _ABSTENTION_INTRO,
         "case_assistant": {
-            "receipts": receipt_rows, "gaps": list(result.gaps),
-            "competing_accounts": list(result.competing_accounts),
+            "receipts": receipt_rows, "gaps": verified_gaps,
+            "competing_accounts": verified_competing,
             "proposals": proposals_payload,
-            "trace": trace_rows, "turns_used": result.turns_used, "omitted_findings": result.omitted_findings,
+            "trace": trace_rows, "turns_used": result.turns_used,
+            "omitted_findings": result.omitted_findings + extra_omitted,
         },
     }
-    text_parts = [f.text for f in result.findings] if supported else [_ABSTENTION_INTRO]
+    text_parts = [f.text for f in retained_findings] if supported else [_ABSTENTION_INTRO]
     return AnswerResult("\n".join(p for p in text_parts if p), payload, tuple(used_citations),
                         retrieval_source_fingerprint=source_fingerprint)
 
@@ -390,6 +652,9 @@ def run_workbench_assistant_job(
     backend = WorkbenchToolBackend(bench, job.actor_id, allowed_notebook_items=notebook_items)
     runtime = MatterToolRuntime(matter.matter_id, job.actor_id, backend, allowed_document_ids=scoped_document_ids)
     history = tuple((m.role, m.content) for m in prior[-8:])
+    fingerprint = retrieval_boundary.get("source_fingerprint") or bench.workspace.source_availability_fingerprint(
+        matter.matter_id, retrieval_boundary.get("source_set_id") or None,
+    )
 
     def stage_bridge(stage_key: str, message: str) -> None:
         persisted = "verifying" if stage_key == "verifying" else "generating"
@@ -404,9 +669,6 @@ def run_workbench_assistant_job(
         raise AnswerJobFailure("Access to this matter was removed before the answer completed.") from exc
     if not backend.authorize(job.matter_id, job.actor_id):
         raise AnswerJobFailure("Access to this matter was removed before the answer completed.")
-    fingerprint = retrieval_boundary.get("source_fingerprint") or bench.workspace.source_availability_fingerprint(
-        matter.matter_id, retrieval_boundary.get("source_set_id") or None,
-    )
     return _result_to_answer(bench, result, backend, fingerprint)
 
 

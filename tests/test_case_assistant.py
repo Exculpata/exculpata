@@ -329,4 +329,53 @@ def test_pr586_round3_filename_numbers_sci_notation_and_search_unavailable_count
     assert any("30 unavailable/unreadable source(s)" in g for g in res.gaps)
 
 
+class _DecimalAndRunningBackend:
+    def authorize(self, m, a): return True
+    def list_sources(self, m, **kw): return ([], 0)
+    def search_discovery(self, m, q, **kw): return ()
+    def read_source(self, m, d, **kw):
+        from case_intelligence.case_assistant_tools import SourcePage, SourceReadResult
+        return SourceReadResult("d-rb", "tx.txt", 1, (
+            SourcePage(1, "Page 1", "Transactions: 10, 15, -5; fee 5.", "v1"),
+        ))
+    def get_case_knowledge(self, m, **kw): return {}
+
+
+class _DecimalAndRunningModel:
+    def __init__(self) -> None:
+        self.step = 0
+    def complete_turn(self, messages, *, tools):
+        self.step += 1
+        ref = {"document_id": "d-rb", "source_name": "tx.txt", "location": "Page 1", "source_version_id": "v1"}
+        if self.step == 1:
+            return AssistantTurn(tool_calls=(AssistantModelCall("rb1", "read_source", {"document_id": "d-rb", "start_page": 1}),))
+        if self.step == 2:
+            return AssistantTurn(tool_calls=(AssistantModelCall("rb2", "calculate", {
+                "operation": "running_balance",
+                "inputs": [
+                    {"label": "t0", "value": "10", "source_refs": [ref]},
+                    {"label": "t1", "value": "15", "source_refs": [ref]},
+                    {"label": "t2", "value": "-5", "source_refs": [ref]},
+                ],
+            }),))
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "Peak running balance was 25.",
+            "findings": [
+                {"text": "The running balance after the second transaction was 25.", "citations": [ref], "calculation_ids": ["calc-1"]},
+                {"text": "Fee was .5.", "citations": [ref], "calculation_ids": []},
+            ],
+            "gaps": [], "competing_accounts": [],
+        }))
+
+
+def test_pr586_leading_dot_and_running_balance_intermediates():
+    rt = MatterToolRuntime("m1", "def", _DecimalAndRunningBackend())
+    res = CaseAssistant(_DecimalAndRunningModel()).investigate("Running peak?", rt)
+    # Verified intermediate balance 25 passes; .5 against source 5 is rejected.
+    assert res.answerable is True and len(res.findings) == 1 and "25" in res.findings[0].text
+    assert res.omitted_findings == 1
+
+
+
 
