@@ -214,10 +214,42 @@ def _parse_final_json(content: str) -> dict[str, object]:
             "findings": [], "gaps": ["Model returned unstructured output."], "competing_accounts": []}
 
 
+def _index_inspected_refs(
+    refs: Sequence[SourceRef],
+) -> tuple[dict[tuple[str, str, str], SourceRef], dict[tuple[str, str], list[SourceRef]]]:
+    by_vkey: dict[tuple[str, str, str], SourceRef] = {}
+    by_doc_loc: dict[tuple[str, str], list[SourceRef]] = {}
+    for ref in refs:
+        vkey = (ref.document_id, ref.location, ref.source_version_id)
+        if vkey not in by_vkey:
+            by_vkey[vkey] = ref
+            by_doc_loc.setdefault((ref.document_id, ref.location), []).append(ref)
+    return by_vkey, by_doc_loc
+
+
+def _resolve_inspected_ref(
+    by_vkey: Mapping[tuple[str, str, str], SourceRef],
+    by_doc_loc: Mapping[tuple[str, str], Sequence[SourceRef]],
+    doc_id: str, location: str, version_id: str = "",
+) -> SourceRef | None:
+    if version_id:
+        return by_vkey.get((doc_id, location, version_id))
+    matches = by_doc_loc.get((doc_id, location), ())
+    return matches[0] if len(matches) == 1 else None
+
+
+def _inspected_text_for(inspected_texts: Mapping[tuple[str, ...], str], ref: SourceRef) -> str:
+    vkey = (ref.document_id, ref.location, ref.source_version_id)
+    if vkey in inspected_texts:
+        return inspected_texts[vkey]
+    return inspected_texts.get((ref.document_id, ref.location), "")
+
+
 def _grounded_receipts(
     receipts: Mapping[str, CalculationReceipt],
-    inspected_refs: Mapping[tuple[str, str], SourceRef],
-    inspected_texts: Mapping[tuple[str, str], str],
+    by_vkey: Mapping[tuple[str, str, str], SourceRef],
+    by_doc_loc: Mapping[tuple[str, str], Sequence[SourceRef]],
+    inspected_texts: Mapping[tuple[str, ...], str],
 ) -> dict[str, CalculationReceipt]:
     """Accept only CalculationReceipts whose premises are grounded in inspected evidence or prior grounded receipts."""
     grounded: dict[str, CalculationReceipt] = {}
@@ -232,12 +264,12 @@ def _grounded_receipts(
             if inp.source_refs:
                 ref_nums: set[str] = set()
                 for ref in inp.source_refs:
-                    key = (ref.document_id, ref.location)
-                    if key not in inspected_refs:
+                    resolved = _resolve_inspected_ref(by_vkey, by_doc_loc, ref.document_id, ref.location, ref.source_version_id)
+                    if resolved is None:
                         ok = False
                         break
-                    ref_nums.update(_extract_nums(inspected_texts.get(key, "")))
-                    ref_nums.update(_extract_nums(f"{ref.source_name} {ref.location}"))
+                    ref_nums.update(_extract_nums(_inspected_text_for(inspected_texts, resolved)))
+                    ref_nums.update(_extract_nums(f"{resolved.source_name} {resolved.location}"))
                 if not ok:
                     break
                 if norm_val not in ref_nums and not from_prior:
@@ -253,12 +285,13 @@ def _grounded_receipts(
 
 
 def verify_assistant_answer(
-    raw: Mapping[str, object], runtime: MatterToolRuntime, inspected_texts: Mapping[tuple[str, str], str],
+    raw: Mapping[str, object], runtime: MatterToolRuntime, inspected_texts: Mapping[tuple[str, ...], str],
     unavailable_sources: Sequence[Mapping[str, object]], *, turns_used: int, budget_exhausted: bool, elapsed_ms: int,
+    unavailable_count: int | None = None,
 ) -> AssistantInvestigationResult:
     """Verify citations against inspected originals and numbers against sources or grounded CalculationReceipts."""
-    inspected_refs = {(ref.document_id, ref.location): ref for ref in runtime.inspected_refs}
-    receipts = _grounded_receipts(runtime.receipts, inspected_refs, inspected_texts)
+    by_vkey, by_doc_loc = _index_inspected_refs(runtime.inspected_refs)
+    receipts = _grounded_receipts(runtime.receipts, by_vkey, by_doc_loc, inspected_texts)
     verified, omitted = [], 0
     raw_findings = raw.get("findings")
     if raw_findings is not None and not isinstance(raw_findings, list):
@@ -271,20 +304,26 @@ def verify_assistant_answer(
         raw_calcs = item.get("calculation_ids") if isinstance(item.get("calculation_ids"), list) else []
         cites, calc_ids, allowed_nums, valid = [], [], set(), bool(raw_cites)
         for c in raw_cites:
-            key = (str(c.get("document_id", "")).strip(), str(c.get("location", "")).strip()) if isinstance(c, Mapping) else ("", "")
-            ref = inspected_refs.get(key)
+            if not isinstance(c, Mapping):
+                valid = False; break
+            ref = _resolve_inspected_ref(
+                by_vkey, by_doc_loc,
+                str(c.get("document_id", "")).strip(),
+                str(c.get("location", "")).strip(),
+                str(c.get("source_version_id", "")).strip(),
+            )
             if ref is None: valid = False; break
             cites.append(ref)
         if valid:
             for ref in cites:
-                allowed_nums.update(_extract_nums(inspected_texts.get((ref.document_id, ref.location), "")))
+                allowed_nums.update(_extract_nums(_inspected_text_for(inspected_texts, ref)))
                 allowed_nums.update(_extract_nums(f"{ref.source_name} {ref.location}"))
             for cid in raw_calcs:
                 receipt = receipts.get(str(cid))
                 if receipt is None: valid = False; break
                 calc_ids.append(receipt.receipt_id); allowed_nums.add(_norm_num(receipt.result))
                 for inp in receipt.inputs:
-                    allowed_nums.add(_norm_num(inp.value)); allowed_nums.update(_extract_nums(inp.label))
+                    allowed_nums.add(_norm_num(inp.value))
             if not _extract_nums(item["text"]).issubset(allowed_nums):
                 valid = False
         if valid: verified.append(AssistantFinding(item["text"].strip(), tuple(cites), tuple(calc_ids)))
@@ -298,9 +337,11 @@ def verify_assistant_answer(
         gaps.append("Model returned invalid gaps structure.")
         raw_gaps = ()
     gaps.extend(str(g).strip() for g in raw_gaps if isinstance(g, str) and g.strip())
-    if unavailable_sources:
+    total_unavail = max(len(unavailable_sources), int(unavailable_count or 0))
+    if total_unavail > 0:
         names = ", ".join(str(s.get("source_name") or s.get("document_id")) for s in unavailable_sources[:5])
-        gaps.append(f"{len(unavailable_sources)} unavailable/unreadable source(s) could not be searched: {names}.")
+        suffix = f": {names}." if names else "."
+        gaps.append(f"{total_unavail} unavailable/unreadable source(s) could not be searched{suffix}")
     if budget_exhausted:
         gaps.append("Investigation turn budget reached before completion; review remaining discovery directly.")
 
@@ -350,8 +391,9 @@ class CaseAssistant:
         messages: list[dict[str, object]] = [{"role": "system", "content": _SYSTEM_PROMPT},
                                              *({"role": r, "content": c} for r, c in history[-8:]),
                                              {"role": "user", "content": q}]
-        inspected_texts: dict[tuple[str, str], str] = {}
+        inspected_texts: dict[tuple[str, str, str], str] = {}
         unavailable: list[dict[str, object]] = []
+        unavailable_count = 0
         turns_used, final_content, budget_exhausted = 0, "", False
         for turn_idx in range(1, max(1, int(max_turns)) + 1):
             if cancelled and cancelled(): raise RuntimeError("Assistant investigation cancelled.")
@@ -371,14 +413,16 @@ class CaseAssistant:
                     raise
                 except AssistantToolError as exc:
                     result = {"error": str(exc)}
-                if call.name == "list_sources": unavailable = list(result.get("unavailable_sources") or ())
+                if call.name == "list_sources":
+                    unavailable = list(result.get("unavailable_sources") or ())
+                    unavailable_count = max(unavailable_count, int(result.get("unavailable_count") or len(unavailable)))
                 elif call.name == "search_discovery":
                     for h in result.get("hits") or ():
-                        key = (h["document_id"], h["location"])
+                        key = (h["document_id"], h["location"], str(h.get("source_version_id") or ""))
                         inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(h.get("excerpt", ""))).strip()
                 elif call.name == "read_source" and "document_id" in result:
                     for p in result.get("pages") or ():
-                        key = (result["document_id"], p["location"])
+                        key = (result["document_id"], p["location"], str(p.get("source_version_id") or ""))
                         inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(p.get("text", ""))).strip()
                 messages.append({"role": "tool", "tool_call_id": call.call_id, "name": call.name, "content": json.dumps(result, ensure_ascii=False)})
         else:
@@ -389,4 +433,5 @@ class CaseAssistant:
         return verify_assistant_answer(
             _parse_final_json(final_content), runtime, inspected_texts, unavailable,
             turns_used=turns_used, budget_exhausted=budget_exhausted, elapsed_ms=round((time.monotonic() - started) * 1_000),
+            unavailable_count=unavailable_count,
         )
