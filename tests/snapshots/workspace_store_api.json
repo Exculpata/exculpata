@@ -10,7 +10,7 @@
   ["add_sources_to_set", "(self, matter_id: 'str', source_set_id: 'str', document_ids: 'Sequence[str]', actor_id: 'str') -> 'int'"],
   ["adjudicate_review_decision", "(self, matter_id: 'str', actor_id: 'str', run_id: 'str', document_id: 'str', *, human_decision: 'str', expected_updated_at: 'str', note: 'str' = '') -> 'ReviewDecisionRecord'"],
   ["all_matters", "(self) -> 'tuple[MatterRecord, ...]'"],
-  ["all_notebook_items", "(self, matter_id: 'str', actor_id: 'str', *, include_dismissed: 'bool' = True, limit: 'int' = 10000, administrator_override: 'bool' = False) -> 'tuple[NotebookItemRecord, ...]'"],
+  ["all_notebook_items", "(self, matter_id: 'str', actor_id: 'str', *, include_dismissed: 'bool' = True, limit: 'int' = 10000, administrator_override: 'bool' = False, item_types: 'Sequence[str] | None' = None, include_dated: 'bool' = False) -> 'tuple[NotebookItemRecord, ...]'"],
   ["answer_cancellation_requested", "(self, job_id: 'str') -> 'bool'"],
   ["answer_counts", "(self) -> 'dict[str, int]'"],
   ["answer_events", "(self, matter_id: 'str', actor_id: 'str', job_id: 'str') -> 'tuple[AnswerEventRecord, ...]'"],

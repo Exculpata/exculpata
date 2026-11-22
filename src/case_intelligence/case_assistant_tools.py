@@ -115,7 +115,9 @@ TOOL_DEFINITIONS: tuple[dict[str, object], ...] = (
         "start_page": {"type": "integer", "minimum": 1}, "end_page": {"type": "integer", "minimum": 1},
         "char_offset": {"type": "integer", "minimum": 0}}, required=("document_id",)),
     _tool_spec("get_case_knowledge", "Read saved entities, assertions, timeline events, case theory, or matter notes.", {
-        "section": {"type": "string", "enum": sorted(ALLOWED_KNOWLEDGE_SECTIONS)}, "limit": {"type": "integer", "minimum": 1, "maximum": 100}}),
+        "section": {"type": "string", "enum": sorted(ALLOWED_KNOWLEDGE_SECTIONS)},
+        "offset": {"type": "integer", "minimum": 0},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 100}}),
     _tool_spec("calculate", "Run exact deterministic arithmetic or date math over labeled, source-cited inputs.", {
         "operation": {"type": "string", "enum": sorted(ALLOWED_CALC_OPS)},
         "inputs": {"type": "array", "minItems": 1, "maxItems": MAX_CALC_INPUTS, "items": {
@@ -562,10 +564,23 @@ def _extract_knowledge_doc_ids(entry: object) -> frozenset[str] | None:
     return frozenset(ids) if ids else None
 
 
+_KNOWLEDGE_PAGINATION_KEYS = frozenset({
+    "offset", "limit", "has_more", "next_offset",
+    "notes_total", "notes_omitted", "notes_has_more",
+    "case_theory_total", "case_theory_omitted", "case_theory_has_more",
+    "timeline_total", "timeline_omitted", "timeline_has_more",
+    "entities_total", "entities_omitted", "entities_has_more",
+    "assertions_total", "assertions_omitted", "assertions_has_more",
+})
+
+
 def _validate_scoped_knowledge(payload: Mapping[str, object], allowed_ids: frozenset[str]) -> dict[str, object]:
     """Fail closed if any returned case-knowledge item lacks complete in-scope document support."""
     validated: dict[str, object] = {}
     for key, value in payload.items():
+        if key in _KNOWLEDGE_PAGINATION_KEYS and (value is None or isinstance(value, (bool, int))):
+            validated[key] = value
+            continue
         if value is None or value == "" or value == [] or value == ():
             validated[key] = value
             continue
@@ -768,9 +783,15 @@ class MatterToolRuntime:
             section = str(args.get("section", "all")).strip()
             if section not in ALLOWED_KNOWLEDGE_SECTIONS:
                 raise AssistantToolError(f"Unsupported case knowledge section: {section!r}.")
+            offset = _int_arg(args, "offset", 0, minimum=0)
             limit = _int_arg(args, "limit", 50, minimum=1, maximum=100)
-            raw_knowledge = dict(self.backend.get_case_knowledge(
-                self.matter_id, section=section, limit=limit, document_ids=self.allowed_document_ids))
+            import inspect
+            kwargs: dict[str, object] = {"section": section, "limit": limit, "document_ids": self.allowed_document_ids}
+            if "offset" in inspect.signature(self.backend.get_case_knowledge).parameters:
+                kwargs["offset"] = offset
+            elif offset > 0:
+                raise AssistantToolError("Case knowledge pagination offset is not supported by this backend.")
+            raw_knowledge = dict(self.backend.get_case_knowledge(self.matter_id, **kwargs))
             if self.allowed_document_ids is not None:
                 raw_knowledge = _validate_scoped_knowledge(raw_knowledge, self.allowed_document_ids)
             return raw_knowledge, (), None

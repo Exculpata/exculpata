@@ -2,7 +2,7 @@
 
 {% block title %}Review sources · {{ matter.display_name }} · {{ product_name }}{% endblock %}
 {% block body_class %}setup-page{% endblock %}
-{% block extra_head %}<script src="{{ asset_url('production-inspection.js') }}" defer></script>{% endblock %}
+{% block extra_head %}<script src="{{ asset_url('production-inspection.js') }}" defer></script><script src="{{ asset_url('production-dat-mapping.js') }}" defer></script>{% endblock %}
 
 {% block content %}
 <main id="main-content" tabindex="-1" class="setup-main">
@@ -72,12 +72,25 @@
         <exculpata-production-inspection data-inspection-url="/matters/{{ matter.slug }}/production-inspection/" hidden>
           <fieldset>
             <legend>Inspect a production before upload</legend>
-            <p>Send one selected load file for temporary inspection. Any required scan runs on that file. Uploading the selection and saving its receipt still require confirmation.</p>
+            <p>Inspect one load file and compare its references with the filenames in this selection. Any required scan runs on the index. Confirm the selection to upload files and save its receipt.</p>
             <label for="production-index">Load file</label>
             <select id="production-index"></select>
             <button type="button" class="button button-secondary" data-inspect-production>Inspect production</button>
             <button type="button" class="button button-secondary" data-cancel-inspection hidden>Cancel inspection</button>
             <p role="status" data-production-inspection-status></p>
+            <exculpata-dat-mapping data-lookup-url="/matters/{{ matter.slug }}/production-field-profile" hidden>
+              <details>
+                <summary>Producer field mapping</summary>
+                <p>Choose the exact headings to use for this DAT. Confirmation saves the mapping for this producer in this matter. Empty roles use standard field recognition.</p>
+                <label>Producer <input type="text" maxlength="160" autocomplete="off" data-profile-producer></label>
+                <button type="button" class="button button-secondary" data-load-profile>Load saved mapping</button>
+                <p data-header-coverage></p>
+                <div data-field-roles></div>
+                <datalist id="production-dat-headings"></datalist>
+                <button type="button" class="button button-secondary" data-clear-profile>Clear mapping</button>
+                <p role="status"></p>
+              </details>
+            </exculpata-dat-mapping>
             <div data-production-inspection-details></div>
             <ol data-production-inspection-rows></ol>
           </fieldset>

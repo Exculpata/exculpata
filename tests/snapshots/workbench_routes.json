@@ -153,6 +153,7 @@
   [["GET"], "/matters/{slug}/connections"],
   [["POST"], "/matters/{slug}/production-inspection/{suffix}"],
   [["POST"], "/matters/{slug}/model-grants"],
+  [["POST"], "/matters/{slug}/production-field-profile"],
   [["GET"], "/matters/{slug}/purpose"],
   [["PUT"], "/matters/{slug}/purpose"],
   [["POST"], "/matters/{slug}/purpose"],
