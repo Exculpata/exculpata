@@ -627,7 +627,9 @@ against suppressed occurrences from the real repository inventory.
 Additional local paths introduced after the baseline are numbered separately
 below. The parity tools read development requirements and expected-skip data
 and write synthetic event and replay reports. The OCR diagnostic reads its
-packaged synthetic PDF. The same test verifies the count for each local path.
+packaged synthetic PDF. The Case Assistant evaluation harness labels one
+synthetic unreadable PDF in its in-memory benchmark suite. The same test
+verifies the count for each local path.
 
 | Additional occurrence | Path | Digest | Detail | Extension | Context |
 | --- | --- | --- | --- | --- | --- |
@@ -636,3 +638,4 @@ packaged synthetic PDF. The same test verifies the count for each local path.
 | 3 | `scripts/ci_parity_runner.py` | `6ffa4ae6c03880f53aab1689dbb5bf3aaf3d2cbbfb3a8004366c88e8b668bcee` | `event.json` | json | division |
 | 4 | `scripts/ci_parity_runner.py` | `f78f32472473425c803a088f85a18951151cc20da828b30bd2e5948b1ce327b3` | `replay.json` | json | division |
 | 5 | `src/case_intelligence/ocr_diagnostic.py` | `4b1cf3b856566ce3e34c2135456706399fa4c6706d8d903e8045702000e9bc5b` | `generated-scan.pdf` | pdf | division |
+| 6 | `src/case_intelligence/case_assistant_eval.py` | `ab72bcbebb0621402cd2b47bce466e7221d447326a1748a977ad7e227cc688ba` | `damaged-scan.pdf` | pdf | call |

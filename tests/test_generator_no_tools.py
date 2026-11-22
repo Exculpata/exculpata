@@ -20,7 +20,8 @@ MESSAGE_CASES = [{"role": "tool"}, {"role": "function"},
 CHAT_PATHS = ["/v1/chat/completions", "/api/chat"]
 GENERATOR_MODULES = ["generation", "question_generation", "recorded_generation",
                      "generator_schema", "generator_transport",
-                     "case_assistant", "case_assistant_tools", "case_assistant_proposals"]
+                     "case_assistant", "case_assistant_tools",
+                     "case_assistant_proposals", "case_assistant_eval"]
 
 
 class RecordingOpener:
