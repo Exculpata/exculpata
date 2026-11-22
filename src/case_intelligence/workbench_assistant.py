@@ -291,6 +291,97 @@ class WorkbenchToolBackend:
                 ]
         return output
 
+    def read_structured_table(
+        self, matter_id: str, document_id: str, *, sheet: str = "",
+    ):
+        """Parse CSV/TSV/XLSX directly from the digest-verified original file with exact per-section citations."""
+        import csv
+        import io
+        from pathlib import Path
+        import re
+        from .case_assistant_tools import AssistantToolError, SourceRef
+        from .extended_extract import (
+            MAX_COLUMNS, MAX_ROWS, MAX_TEXT_CONTAINER_BYTES, _cell_text, extract_xlsx_structured,
+        )
+
+        matter = self.bench._matter_by_id(matter_id)
+        store = self.bench.source_store(matter)
+        with store._lock:
+            try:
+                doc = store.get(document_id)
+            except KeyError:
+                return None
+            suffix = Path(doc.display_name).suffix.casefold()
+            media = (doc.media_type or "").casefold()
+            is_csv = suffix == ".csv" or media == "text/csv"
+            is_tsv = suffix == ".tsv" or media == "text/tab-separated-values"
+            is_xlsx = suffix == ".xlsx" or "spreadsheetml" in media
+            if not (is_csv or is_tsv or is_xlsx):
+                return None
+            if doc.origin != "upload":
+                return None
+            try:
+                verified_path = store.source_path(doc.document_id, verify_digest=True)
+            except Exception as exc:
+                raise AssistantToolError(f"Original table integrity check failed for {doc.display_name}.") from exc
+            all_units = list(enumerate(doc.iter_parsed_units(), 1))
+            if not all_units or len(all_units) > 500:
+                raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
+            unit_meta: list[tuple[str | None, int, int, object]] = []
+            refs: list[SourceRef] = []
+            row_range_re = re.compile(r"^(?:(.+?),\s*)?rows\s+(\d+)[–-](\d+)", re.IGNORECASE)
+            for ordinal, unit in all_units:
+                wc = self._unit_citation(matter, store, doc, ordinal, unit)
+                self.citations_by_key[(wc.document_id, wc.location)] = wc
+                refs.append(SourceRef(wc.document_id, wc.source_name, wc.location, wc.source_version_id, wc.excerpt_digest))
+                m = row_range_re.match((unit.location_label or wc.location).strip())
+                if m:
+                    unit_meta.append(((m.group(1) or "").strip() or None, int(m.group(2)), int(m.group(3)), wc))
+                else:
+                    unit_meta.append((None, (ordinal - 1) * 100 + 1, ordinal * 100, wc))
+
+            def loc_for(row_num: int, sheet_name: str | None = None) -> str:
+                for u_sheet, start_r, end_r, wc in unit_meta:
+                    if sheet_name is not None and (u_sheet or "").casefold() != sheet_name.casefold():
+                        continue
+                    if start_r <= row_num <= end_r:
+                        return wc.location
+                return unit_meta[-1][3].location
+
+            if is_csv or is_tsv:
+                if verified_path.stat().st_size > MAX_TEXT_CONTAINER_BYTES:
+                    raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
+                raw = verified_path.read_bytes()
+                try:
+                    text = raw.decode("utf-8-sig", errors="strict")
+                    rows_iter = csv.reader(io.StringIO(text), delimiter="\t" if is_tsv else ",", strict=True)
+                    header_vals: list[str] | None = None
+                    tagged: list[tuple[dict[str, str], str, str]] = []
+                    for row_num, row in enumerate(rows_iter, 1):
+                        if row_num > MAX_ROWS:
+                            raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
+                        vals = [_cell_text(v) for v in row]
+                        if len(vals) > MAX_COLUMNS:
+                            raise AssistantToolError("Table source exceeds supported column limit.")
+                        if not any(vals):
+                            continue
+                        if header_vals is None:
+                            header_vals = vals
+                            continue
+                        row_dict = {col: (vals[idx] if idx < len(vals) else "") for idx, col in enumerate(header_vals) if col}
+                        tagged.append((row_dict, loc_for(row_num), doc.version_id))
+                except (UnicodeDecodeError, csv.Error) as exc:
+                    raise AssistantToolError(f"Malformed delimited table {doc.display_name}: {exc}") from exc
+                columns = [h for h in (header_vals or []) if h]
+                return doc.display_name, columns, tagged, refs
+
+            try:
+                chosen_name, columns, sheet_rows = extract_xlsx_structured(verified_path, sheet=sheet)
+            except ValueError as exc:
+                raise AssistantToolError(str(exc)) from exc
+            tagged = [(row_dict, loc_for(sheet_row, chosen_name), doc.version_id) for row_dict, sheet_row in sheet_rows]
+            return doc.display_name, columns, tagged, refs
+
     def read_email_thread(
         self, matter_id: str, document_id: str, *, limit: int = 25, offset: int | None = None,
         allowed_document_ids: frozenset[str] | None = None,

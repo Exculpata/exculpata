@@ -413,7 +413,8 @@ def _xml(archive: zipfile.ZipFile, members: dict[str, zipfile.ZipInfo], name: st
         raise ValueError("That spreadsheet is damaged or malformed.") from exc
 
 
-def extract_xlsx(path: Path) -> tuple[ExtractedSection, ...]:
+def _open_xlsx_sheets(path: Path):
+    """Yield (sheet_name, [(row_cells_dict, sheet_row), ...]) directly from XLSX XML."""
     try:
         archive = zipfile.ZipFile(path)
     except (OSError, zipfile.BadZipFile) as exc:
@@ -441,30 +442,26 @@ def extract_xlsx(path: Path) -> tuple[ExtractedSection, ...]:
         sheets = workbook.findall(f".//{namespace}sheet")
         if not sheets or len(sheets) > MAX_SHEETS:
             raise ValueError("The spreadsheet contains no sheets or too many sheets.")
-        all_sections: list[ExtractedSection] = []
         total_rows = 0
         total_cells = 0
-        total_chars = 0
+        parsed_sheets: list[tuple[str, list[tuple[list[tuple[str, str]], int]]]] = []
         for sheet in sheets:
             label = _cell_text(sheet.attrib.get("name", "Sheet")) or "Sheet"
             relation_id = sheet.attrib.get(f"{relationships_ns}id", "")
             target = targets.get(relation_id, "")
             target_path = PurePosixPath("xl") / target
-            normalized = str(target_path)
-            if target.startswith("/"):
-                normalized = target.lstrip("/")
+            normalized = target.lstrip("/") if target.startswith("/") else str(target_path)
             if ".." in PurePosixPath(normalized).parts or normalized not in members:
                 raise ValueError("The spreadsheet references an unsafe worksheet.")
             root = _xml(archive, members, normalized)
-            block: list[str] = []
-            block_start = 1
+            sheet_rows: list[tuple[list[tuple[str, str]], int]] = []
             sheet_row = 0
             for row in root.findall(f".//{namespace}row"):
                 sheet_row += 1
                 total_rows += 1
                 if total_rows > MAX_ROWS:
                     raise ValueError("The spreadsheet contains too many rows.")
-                cells: list[str] = []
+                cells: list[tuple[str, str]] = []
                 for cell in row.findall(f"{namespace}c"):
                     total_cells += 1
                     if total_cells > MAX_CELLS:
@@ -495,32 +492,80 @@ def extract_xlsx(path: Path) -> tuple[ExtractedSection, ...]:
                     elif value_node is not None:
                         value = _cell_text(value_node.text)
                     if value:
-                        cells.append(f"{coordinate}: {value}")
-                if cells:
-                    line = f"Row {sheet_row}: " + " | ".join(cells)
-                    total_chars += len(line)
-                    if total_chars > MAX_EXTRACTED_CHARS:
-                        raise ValueError("The spreadsheet text exceeds the supported review limit.")
-                    block.append(line)
-                if sheet_row % ROWS_PER_SECTION == 0:
-                    if block:
-                        all_sections.append(
-                            ExtractedSection(
-                                len(all_sections) + 1,
-                                f"{label}, rows {block_start}–{sheet_row}",
-                                "\n".join(block),
-                            )
+                        cells.append((coordinate, value))
+                sheet_rows.append((cells, sheet_row))
+            parsed_sheets.append((label, sheet_rows))
+        return parsed_sheets
+
+
+def extract_xlsx(path: Path) -> tuple[ExtractedSection, ...]:
+    parsed_sheets = _open_xlsx_sheets(path)
+    all_sections: list[ExtractedSection] = []
+    total_chars = 0
+    for label, sheet_rows in parsed_sheets:
+        block: list[str] = []
+        block_start = 1
+        last_row = 0
+        for cells, sheet_row in sheet_rows:
+            last_row = sheet_row
+            if cells:
+                line = f"Row {sheet_row}: " + " | ".join(f"{coord}: {val}" for coord, val in cells)
+                total_chars += len(line)
+                if total_chars > MAX_EXTRACTED_CHARS:
+                    raise ValueError("The spreadsheet text exceeds the supported review limit.")
+                block.append(line)
+            if sheet_row % ROWS_PER_SECTION == 0:
+                if block:
+                    all_sections.append(
+                        ExtractedSection(
+                            len(all_sections) + 1,
+                            f"{label}, rows {block_start}–{sheet_row}",
+                            "\n".join(block),
                         )
-                    block = []
-                    block_start = sheet_row + 1
-            if block:
-                all_sections.append(
-                    ExtractedSection(
-                        len(all_sections) + 1,
-                        f"{label}, rows {block_start}–{sheet_row}",
-                        "\n".join(block),
                     )
+                block = []
+                block_start = sheet_row + 1
+        if block:
+            all_sections.append(
+                ExtractedSection(
+                    len(all_sections) + 1,
+                    f"{label}, rows {block_start}–{last_row}",
+                    "\n".join(block),
                 )
-        if not all_sections:
-            raise ValueError("The spreadsheet contains no reviewable cell values.")
-        return tuple(all_sections)
+            )
+    if not all_sections:
+        raise ValueError("The spreadsheet contains no reviewable cell values.")
+    return tuple(all_sections)
+
+
+def extract_xlsx_structured(path: Path, *, sheet: str = "") -> tuple[str, list[str], list[tuple[dict[str, str], int]]]:
+    """Return (sheet_name, headers, [(row_dict, sheet_row), ...]) directly from XLSX XML without delimiter re-parsing."""
+    parsed_sheets = _open_xlsx_sheets(path)
+    names = [label for label, _ in parsed_sheets]
+    requested = sheet.strip()
+    if requested:
+        chosen = [(label, srows) for label, srows in parsed_sheets if label.casefold() == requested.casefold()]
+        if not chosen:
+            raise ValueError(f"Worksheet {requested!r} not found (available: {', '.join(names)}).")
+        chosen_name, sheet_rows = chosen[0]
+    elif len(parsed_sheets) > 1:
+        raise ValueError(f"Workbook contains multiple worksheets ({', '.join(names)}); specify 'sheet' to query one worksheet.")
+    else:
+        chosen_name, sheet_rows = parsed_sheets[0]
+    col_re = re.compile(r"^([A-Za-z]+)\d+$")
+    coord_headers: list[tuple[str, str]] | None = None
+    rows: list[tuple[dict[str, str], int]] = []
+    for cells, sheet_row in sheet_rows:
+        if not cells:
+            continue
+        row_cells: dict[str, str] = {}
+        for raw_coord, val in cells:
+            cm = col_re.match(raw_coord)
+            coord = cm.group(1).upper() if cm else raw_coord
+            row_cells[coord] = val
+        if coord_headers is None:
+            coord_headers = [(c, h) for c, h in row_cells.items() if h]
+            continue
+        rows.append(({col: row_cells.get(c, "") for c, col in coord_headers}, sheet_row))
+    return chosen_name, [h for _, h in (coord_headers or [])], rows
+

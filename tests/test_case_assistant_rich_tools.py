@@ -268,11 +268,13 @@ def test_pr589_round2_section_locators_ambiguous_pipe_all_inputs_count_grounding
         wc_sec2 = backend.citations_by_key[(sources["sec2.csv"], row_loc)]
         assert "9876" in wc_sec2.excerpt
 
-        # 3. Ambiguous literal ' | ' inside extracted CSV cell fails explicitly instead of silently dropping row.
-        with pytest.raises(AssistantToolError):
-            runtime.invoke("query_table", {
-                "document_id": sources["pipe.csv"], "aggregate_column": "amount", "aggregate_op": "sum",
-            })
+        # 3. Literal ' | ' inside uploaded CSV cell is parsed directly from verified original CSV without dropping rows.
+        pipe_res = runtime.invoke("query_table", {
+            "document_id": sources["pipe.csv"], "aggregate_column": "amount", "aggregate_op": "sum",
+        })
+        assert pipe_res["matched_rows"] == 2
+        assert pipe_res["rows"][0]["note"] == "x | y"
+        assert pipe_res["calculation"]["result"] == "300"
 
         # 4. Row count derivation (3 rows of 100/200/300) passes CaseAssistant verification.
         cnt_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
@@ -464,28 +466,42 @@ class _SpanCitationModel:
 def test_pr589_round5_duplicate_coord_rejection_and_per_span_transcript_grounding(tmp_path):
     from case_intelligence.case_assistant import CaseAssistant
 
-    # 1. Duplicate normalized coordinate injected inside note text fails explicitly instead of overwriting column 2.
+    # 1. Duplicate or out-of-order normalized coordinates in extracted text fail explicitly.
     injected = "Row 1: 1: id | 2: amount | 3: note\nRow 2: 1: w1 | 2: 100 | 3: x | 2: 999\n"
     with pytest.raises(AssistantToolError, match="ambiguous cell delimiters"):
         query_table_rows("doc-inj", "inj.csv", injected, aggregate_column="amount", aggregate_op="sum")
+    sparse_injected = "Row 1: 1: id | 2: amount | 3: note\nRow 2: 1: w1 | 3: x | 2: 999\n"
+    with pytest.raises(AssistantToolError, match="ambiguous cell delimiters"):
+        query_table_rows("doc-sinj", "sinj.csv", sparse_injected, aggregate_column="amount", aggregate_op="sum")
 
-    # 2. Cross-unit transcript continuation grounds 'Paid 9876.' ONLY at the continuation span, not the earlier span.
+    # 2. Real HTTP uploaded CSVs with blank cells + coordinate-like pipe text never manufacture column values.
     lines = [f"[00:00:{i:02d}] Speaker 1: Intro line {i}." for i in range(1, 20)]
     lines.append("[00:00:20] Speaker 1: Starting cross-unit cue.")
     lines.append("Paid 9876.")
     cross_tr = "\n".join(lines) + "\n"
-    app = create_workbench_app(tmp_path / "runtime", auth_mode="test")
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test", malware_scanner=CleanScanner(), malware_scan_mode="extended")
     with TestClient(app) as client:
         slug = _create_matter(client, "Synthetic Cross Unit Span Matter")
         assert client.post(f"/matters/{slug}/uploads", files=[
             ("files", ("cross.txt", cross_tr.encode("utf-8"), "text/plain")),
+            ("files", ("sparse_inj.csv", b"id,amount,note\nw1,,x | 2: 999\n", "text/csv")),
+            ("files", ("fwd_inj.csv", b"id,note,amount\nw1,x | 3: 999,\n", "text/csv")),
         ]).status_code == 200
         bench = app.state.workbench
         actor = "development-taylor-morgan"
         matter = bench.workspace.get_matter(slug, actor)
-        doc_id = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor)).invoke(
-            "list_sources", {"limit": 10},
-        )["sources"][0]["document_id"]
+        rt_init = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        src_map = {s["source_name"]: s["document_id"] for s in rt_init.invoke("list_sources", {"limit": 10})["sources"]}
+        doc_id = src_map["cross.txt"]
+
+        for csv_name in ("sparse_inj.csv", "fwd_inj.csv"):
+            tbl = rt_init.invoke("query_table", {"document_id": src_map[csv_name]})
+            assert tbl["matched_rows"] == 1
+            assert tbl["rows"][0]["amount"] == ""
+            with pytest.raises(AssistantToolError):
+                rt_init.invoke("query_table", {
+                    "document_id": src_map[csv_name], "aggregate_column": "amount", "aggregate_op": "sum",
+                })
 
         wrong_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
         wrong_res = CaseAssistant(_SpanCitationModel(doc_id, cite_continuation=False)).investigate("How much was paid?", wrong_rt)

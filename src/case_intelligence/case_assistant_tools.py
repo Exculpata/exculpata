@@ -312,21 +312,33 @@ def _normalize_cell_coord(coord: str) -> str:
     return match.group(1).upper() if match else coord
 
 
+def _coord_order(coord: str) -> int:
+    if coord.isdigit():
+        return int(coord)
+    if coord.isalpha():
+        order = 0
+        for ch in coord.upper():
+            order = order * 26 + (ord(ch) - ord("A") + 1)
+        return order
+    return -1
+
+
 def _parse_extracted_cells(line: str) -> list[tuple[str, str]] | None:
     match = _EXTRACTED_ROW_RE.match(line)
     if not match:
         return None
     body = match.group(1)
     cells: list[tuple[str, str]] = []
-    seen_coords: set[str] = set()
+    prev_order = 0
     for raw_cell in body.split(" | "):
         cm = _CELL_COORD_RE.match(raw_cell.strip())
         if not cm:
             return None
         coord = _normalize_cell_coord(cm.group(1).strip())
-        if coord in seen_coords:
+        order = _coord_order(coord)
+        if order <= prev_order:
             return None
-        seen_coords.add(coord)
+        prev_order = order
         cells.append((coord, cm.group(2).strip()))
     return cells if cells else None
 
@@ -382,29 +394,35 @@ def query_table_rows(
     aggregate_column: str = "", aggregate_op: str = "", limit: int = 50,
     source_version_id: str = "", location: str = "Line 1", receipt_id: str = "calc-1",
     sections: Sequence[tuple[str, str, str]] | None = None, sheet: str = "",
+    preparsed: tuple[Sequence[str], Sequence[tuple[dict[str, str], str, str]]] | None = None,
 ) -> tuple[dict[str, object], CalculationReceipt | None]:
     """Filter CSV/TSV/extracted spreadsheet rows and compute exact Decimal aggregates with per-section provenance."""
     if aggregate_op and aggregate_op not in ALLOWED_TABLE_AGG_OPS:
         raise AssistantToolError(f"Unsupported table aggregate operation: {aggregate_op!r}.")
-    section_list = list(sections) if sections is not None else [(location, source_version_id, text)]
-    detected_sheets = list(dict.fromkeys(
-        name for loc, _, _ in section_list if (name := _extract_sheet_name(loc)) is not None
-    ))
-    requested_sheet = sheet.strip()
-    if requested_sheet:
-        filtered_sections = [
-            sec for sec in section_list
-            if (name := _extract_sheet_name(sec[0])) is not None and name.casefold() == requested_sheet.casefold()
-        ]
-        if not filtered_sections:
-            avail = ", ".join(detected_sheets) if detected_sheets else "none"
-            raise AssistantToolError(f"Worksheet {requested_sheet!r} not found (available: {avail}).")
-        section_list = filtered_sections
-    elif len(detected_sheets) > 1:
-        raise AssistantToolError(
-            f"Workbook contains multiple worksheets ({', '.join(detected_sheets)}); specify 'sheet' to query one worksheet."
-        )
-    columns, all_rows = _parse_table_sections(section_list)
+    if preparsed is not None:
+        columns = [str(c) for c in preparsed[0] if str(c).strip()]
+        all_rows = [(dict(r), str(loc), str(ver)) for r, loc, ver in preparsed[1]]
+        section_list = [(location, source_version_id, "")]
+    else:
+        section_list = list(sections) if sections is not None else [(location, source_version_id, text)]
+        detected_sheets = list(dict.fromkeys(
+            name for loc, _, _ in section_list if (name := _extract_sheet_name(loc)) is not None
+        ))
+        requested_sheet = sheet.strip()
+        if requested_sheet:
+            filtered_sections = [
+                sec for sec in section_list
+                if (name := _extract_sheet_name(sec[0])) is not None and name.casefold() == requested_sheet.casefold()
+            ]
+            if not filtered_sections:
+                avail = ", ".join(detected_sheets) if detected_sheets else "none"
+                raise AssistantToolError(f"Worksheet {requested_sheet!r} not found (available: {avail}).")
+            section_list = filtered_sections
+        elif len(detected_sheets) > 1:
+            raise AssistantToolError(
+                f"Workbook contains multiple worksheets ({', '.join(detected_sheets)}); specify 'sheet' to query one worksheet."
+            )
+        columns, all_rows = _parse_table_sections(section_list)
     if not columns:
         raise AssistantToolError("Source does not contain a tabular header row.")
     matched: list[tuple[dict[str, str], str, str]] = []
@@ -729,24 +747,42 @@ class MatterToolRuntime:
         if tool_name == "query_table":
             document_id = self._check_doc_scope(str(args.get("document_id", "")))
             limit = _int_arg(args, "limit", 50, minimum=1, maximum=MAX_LIST_LIMIT)
-            result = self.backend.read_source(self.matter_id, document_id, start_page=1, end_page=None)
-            if result is None or not result.pages:
-                raise AssistantAccessError("Table source not found in this matter.")
-            if result.total_pages > 500 or result.truncated or len(result.pages) < result.total_pages:
-                raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
-            sections = [(p.location, p.source_version_id, p.text) for p in result.pages]
+            sheet = str(args.get("sheet", "")).strip()
             receipt_id = f"calc-{len(self._receipts) + 1}"
-            payload, receipt = query_table_rows(
-                result.document_id, result.source_name,
-                filters=args.get("filters") if isinstance(args.get("filters"), Mapping) else None,
-                aggregate_column=str(args.get("aggregate_column", "")).strip(),
-                aggregate_op=str(args.get("aggregate_op", "")).strip(), limit=limit,
-                receipt_id=receipt_id, sections=sections,
-                sheet=str(args.get("sheet", "")).strip(),
+            structured_handler = getattr(self.backend, "read_structured_table", None)
+            structured = (
+                structured_handler(self.matter_id, document_id, sheet=sheet)
+                if callable(structured_handler) else None
             )
+            if structured is not None:
+                source_name, columns, tagged_rows, refs = structured
+                first_loc = refs[0].location if refs else "Page 1"
+                first_ver = refs[0].source_version_id if refs else ""
+                payload, receipt = query_table_rows(
+                    document_id, source_name,
+                    filters=args.get("filters") if isinstance(args.get("filters"), Mapping) else None,
+                    aggregate_column=str(args.get("aggregate_column", "")).strip(),
+                    aggregate_op=str(args.get("aggregate_op", "")).strip(), limit=limit,
+                    source_version_id=first_ver, location=first_loc,
+                    receipt_id=receipt_id, preparsed=(columns, tagged_rows),
+                )
+            else:
+                result = self.backend.read_source(self.matter_id, document_id, start_page=1, end_page=None)
+                if result is None or not result.pages:
+                    raise AssistantAccessError("Table source not found in this matter.")
+                if result.total_pages > 500 or result.truncated or len(result.pages) < result.total_pages:
+                    raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
+                sections = [(p.location, p.source_version_id, p.text) for p in result.pages]
+                payload, receipt = query_table_rows(
+                    result.document_id, result.source_name,
+                    filters=args.get("filters") if isinstance(args.get("filters"), Mapping) else None,
+                    aggregate_column=str(args.get("aggregate_column", "")).strip(),
+                    aggregate_op=str(args.get("aggregate_op", "")).strip(), limit=limit,
+                    receipt_id=receipt_id, sections=sections, sheet=sheet,
+                )
+                refs = [SourceRef(result.document_id, result.source_name, p.location, p.source_version_id, p.excerpt_digest) for p in result.pages]
             if receipt is not None:
                 self._receipts[receipt_id] = receipt
-            refs = [SourceRef(result.document_id, result.source_name, p.location, p.source_version_id, p.excerpt_digest) for p in result.pages]
             return payload, refs, receipt
         if tool_name == "read_email_thread":
             document_id = self._check_doc_scope(str(args.get("document_id", "")))
