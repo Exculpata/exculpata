@@ -415,6 +415,7 @@ def test_pr587_round3_exact_filter_exports_reports_and_knowledge_pagination(tmp_
         assert "October statement is missing from production." in export_text
         assert "Witness A denies control while email directs trades." in export_text
         assert "calc-1" in export_text and "12.50" in export_text
+        assert pdf_cites[0].source_name in export_text and pdf_cites[0].location in export_text
 
         materials = snapshot_report_materials(bench, matter, actor, (f"conversation:{conv.conversation_id}",))
         mat_texts = "\n".join(m.text for m in materials)

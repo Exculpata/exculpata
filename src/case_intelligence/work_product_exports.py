@@ -759,6 +759,8 @@ def _answer_blocks(message: MessageRecord) -> list[ExportBlock]:
                 suffix = f" {unit}" if unit else ""
                 rendered = expr if (not res or expr.endswith(f"= {res}")) else f"{expr} = {res}"
                 blocks.append(ExportBlock(f"{prefix}{rendered}{suffix}".strip(), "note"))
+                for citation in _citations(receipt.get("citations")):
+                    blocks.append(ExportBlock(f"Source: {citation}", "citation"))
     if not blocks:
         blocks.append(ExportBlock(message.content))
     return blocks
