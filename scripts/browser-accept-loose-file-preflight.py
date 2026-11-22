@@ -28,7 +28,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import Select, WebDriverWait
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -310,6 +310,118 @@ def _image_index_selection(driver, input_element, fixtures, *, folder):
     )
 
 
+def _selection_reference_qc_regression(driver, wait, bench, base_url, output):
+    """Compare a late DAT reference and confirm the untouched selection through the UI."""
+    from case_intelligence.intake_receipts import IntakeReceipts
+
+    matter = bench.create_matter("Synthetic reference inspection", "Generated folder selection", ACTOR)
+    navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
+                page_load_timeout=20, readiness_timeout=20)
+    def inspect_for(basis):
+        driver.find_element(By.CSS_SELECTOR, "[data-inspect-production]").send_keys(Keys.ENTER)
+        wait.until(lambda current: current.find_elements(By.CSS_SELECTOR, f'[data-reference-mapping="{basis}"]'))
+
+    def choose_dat(name):
+        chooser = Select(driver.find_element(By.CSS_SELECTOR, "exculpata-production-inspection select"))
+        option = next(item for item in chooser.options if item.text.endswith("/" + name))
+        chooser.select_by_value(option.get_attribute("value"))
+
+    def mapping_editor():
+        editor = driver.find_element(By.CSS_SELECTOR, "exculpata-dat-mapping")
+        details = editor.find_element(By.TAG_NAME, "details")
+        if details.get_dom_attribute("open") is None:
+            details.find_element(By.TAG_NAME, "summary").send_keys(Keys.ENTER)
+        return editor
+
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp) / "Delivery"
+        folder.mkdir()
+        # The suite's 128-byte file limit also applies to this real upload.
+        data = b"PATH\x14SIDE\ncase note.txt\x14case note.txt\n" + b"\x14\n" * 20 + b"missing note.txt\x14missing copy.txt\n"
+        (folder / "main index.dat").write_bytes(data)
+        (folder / "case note.txt").write_bytes(b"Generated companion text.")
+        _select(driver.find_element(By.ID, "source-folder"), [folder])
+        inspect = wait.until(lambda current: (
+            button if (button := current.find_element(By.CSS_SELECTOR, "[data-inspect-production]")).is_displayed()
+            and button.is_enabled() else False))
+        inspect.send_keys(Keys.ENTER)
+        wait.until(lambda current: "Showing 20 of 22 documents" in current.find_element(
+            By.CSS_SELECTOR, "[data-production-inspection-status]").text)
+        for status, expected in (("matched", "1"), ("missing", "1"), ("ambiguous", "0")):
+            element = driver.find_element(By.CSS_SELECTOR, f'[data-reference-count="{status}"]')
+            _require(element.text == expected, f"incorrect complete reference count for {status}")
+        findings = driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text
+        _require("Record 22" in findings and "line 23" in findings and "missing note.txt" in findings,
+                 "the path after the record sample has no cited finding")
+        sample = driver.find_element(By.CSS_SELECTOR, "[data-production-inspection-rows]").text
+        _require("case note.txt" in sample and "Exact path match" in sample and "missing note.txt" not in sample,
+                 "the sample did not show its exact match separately from the late finding")
+        editor = mapping_editor()
+        editor.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated inspection producer")
+        editor.find_element(By.CSS_SELECTOR, '[data-role="native_path"]').send_keys("SIDE")
+        inspect_for("custom")
+        custom = driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text
+        _require("missing copy.txt" in custom and "missing note.txt" not in custom, "custom DAT paths did not replace the default role")
+        receipts = IntakeReceipts(bench.workspace)
+        _require(not receipts.recent(matter.matter_id, ACTOR)
+                 and not bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR)
+                 and not bench.source_store(matter).documents, "temporary inspection admitted the selection")
+        driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]").send_keys(Keys.ENTER)
+        _wait_until(lambda: len(bench.source_store(matter).documents) == 2, "confirmed originals did not arrive")
+        _require(len(receipts.recent(matter.matter_id, ACTOR)) == 1, "confirmation did not save one receipt")
+
+        navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
+                    page_load_timeout=20, readiness_timeout=20)
+        second = folder.rename(Path(tmp) / "Second livraison α")
+        (second / "alternate index.dat").write_bytes(b"PATH\x14SIDE\ncase note.txt\x14missing copy.txt\n")
+        _select(driver.find_element(By.ID, "source-folder"), [second])
+        wait.until(lambda current: current.find_element(By.CSS_SELECTOR, "[data-inspect-production]").is_displayed())
+        choose_dat("main index.dat")
+        inspect_for("standard")
+        editor = mapping_editor()
+        editor.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated inspection producer")
+        editor.find_element(By.CSS_SELECTOR, "[data-load-profile]").send_keys(Keys.ENTER)
+        wait.until(lambda _driver: editor.find_element(By.CSS_SELECTOR, '[data-role="native_path"]').get_attribute("value") == "SIDE")
+        inspect_for("custom")
+        _require("missing copy.txt" in driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text,
+                 "reused producer mapping was not used in the selection check")
+        choose_dat("alternate index.dat")
+        inspect_for("standard")
+        mapping_editor().find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Incomplete producer")
+        choose_dat("main index.dat")
+        inspect_for("custom")
+        _require("missing copy.txt" in driver.find_element(By.CSS_SELECTOR, "[data-reference-findings]").text,
+                 "switching DATs lost the selected mapping or applied the other DAT's draft")
+        choose_dat("alternate index.dat")
+        inspect_for("standard")
+        editor = mapping_editor()
+        _require(editor.find_element(By.CSS_SELECTOR, "[data-profile-producer]").get_attribute("value")
+                 == "Incomplete producer", "the unfinished mapping could not be reopened")
+        editor.find_element(By.CSS_SELECTOR, "[data-clear-profile]").send_keys(Keys.ENTER)
+        choose_dat("main index.dat")
+        # Check the UTF-8 wire boundary with real Unicode folder paths and a saved mapping.
+        chooser = driver.find_element(By.CSS_SELECTOR, "exculpata-production-inspection select")
+        manifest = {
+            "index": int(chooser.get_attribute("value")),
+            "dat_profile": {"sha256": hashlib.sha256(data).hexdigest(), "fields": {"SIDE": "native_path"}},
+            "files": [[f"{second.name}/{path.name}", True] for path in second.iterdir()],
+        }
+        size = len(json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        set_limit = "document.querySelector('[data-upload-form]').dataset.maxPreflightRequestBytes = arguments[0]"
+        driver.execute_script(set_limit, size)
+        inspect_for("custom")
+        driver.execute_script(set_limit, size - 1)
+        driver.find_element(By.CSS_SELECTOR, "[data-inspect-production]").send_keys(Keys.ENTER)
+        wait.until(lambda current: "Only the index was inspected." in current.find_element(
+            By.CSS_SELECTOR, "[data-production-inspection-details]").text)
+        _require(not driver.find_elements(By.CSS_SELECTOR, "[data-reference-count]"),
+                 "index-only inspection claimed selection-wide coverage")
+        _require(driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]").is_enabled(),
+                 "index-only preview blocked normal confirmation")
+        _require(len(receipts.recent(matter.matter_id, ACTOR)) == 1,
+                 "inspecting a second selection created a receipt")
+
+
 def _image_index_intake_regression(driver, wait, bench, base_url, output):
     """Both pickers reach real confirmation; every safety control remains active."""
     from tests.fixtures.load_files.generate_image_indexes import minimal_image_index
@@ -344,6 +456,16 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
             and current.find_element(By.CSS_SELECTOR, "[data-upload-preflight]").get_attribute("aria-busy") is None
             else False))
 
+    def mapping_form():
+        button = driver.find_element(By.CSS_SELECTOR, "[data-inspect-production]")
+        button.send_keys(Keys.SPACE)
+        mapping = wait.until(lambda current: (
+            element if (element := current.find_element(By.TAG_NAME, "exculpata-dat-mapping")).is_displayed() else None))
+        details = mapping.find_element(By.TAG_NAME, "details")
+        if not details.get_property("open"):
+            details.find_element(By.TAG_NAME, "summary").click()
+        return mapping
+
     def confirmed(matter, expected):
         confirm = driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]")
         _require(confirm.is_enabled(), "eligible image-index selection cannot be confirmed")
@@ -362,6 +484,8 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
     os.environ["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] = "0"
     try:
         driver.set_window_size(1536, 1024)
+        _selection_reference_qc_regression(driver, wait, bench, base_url, output)
+        completed.append("Whole-index reference counts and late findings precede receipt confirmation")
         for selector in ("source-files", "source-folder"):
             folder = selector == "source-folder"
             matter, element = opened(selector, f"{selector} clean")
@@ -393,6 +517,11 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
                 _require(scanner.scan_calls == before_scans + len(fixtures), "inspection skipped required scans")
                 _require(not bench.workspace.recent_upload_sessions(matter.matter_id, ACTOR)
                          and not bench.source_store(matter).documents, "inspection started an upload")
+                options[2].click()
+                mapping = mapping_form()
+                mapping.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated producer")
+                mapping.find_element(By.CSS_SELECTOR, '[data-role="begin_bates"]').send_keys("A")
+                mapping.find_element(By.CSS_SELECTOR, '[data-role="text_path"]').send_keys("B")
             driver.save_screenshot(str(output / f"lfp-dii-{selector}-preflight.png"))
             items = confirmed(matter, len(fixtures))
             _require(all(item.state != "failed" for item in items), "supported image-index admission failed")
@@ -412,6 +541,37 @@ def _image_index_intake_regression(driver, wait, bench, base_url, output):
                          "image-index admission invented searchable text or pages")
             _require(scanner.scan_calls > before_scans, "confirmation bypassed the required content scan")
             completed.append(f"{selector}:LFP,DII,DAT,OPT saved through real confirmation")
+            if folder:
+                from case_intelligence.intake_receipts import IntakeReceipts
+
+                receipts = IntakeReceipts(bench.workspace)
+                saved = receipts.producer_profile(matter.matter_id, ACTOR, "Generated producer")
+                _require(saved and saved["fields"] == {"A": "begin_bates", "B": "text_path"}, "producer mapping did not reach receipt")
+                navigate_to(driver, f"{base_url}/matters/{matter.slug}/setup", diagnostics=output,
+                            page_load_timeout=20, readiness_timeout=20)
+                element = wait.until(lambda current: current.find_element(By.ID, selector))
+                _image_index_selection(driver, element, [("Second production.DAT", fixtures[2][1])], folder=True)
+                reviewed(1)
+                mapping = mapping_form()
+                mapping.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated producer")
+                mapping.find_element(By.CSS_SELECTOR, "[data-load-profile]").click()
+                wait.until(lambda _: mapping.find_element(By.CSS_SELECTOR, '[data-role="begin_bates"]').get_property("value") == "A")
+                _require(mapping.find_element(By.CSS_SELECTOR, '[data-role="text_path"]').get_property("value") == "B",
+                         "produced text path was lost when reusing a mapping")
+                _require(len(receipts.recent(matter.matter_id, ACTOR)) == 1, "looking up a mapping created a receipt")
+                _require("Generated producer" not in driver.execute_script("return JSON.stringify(localStorage);"),
+                         "producer name persisted in browser storage")
+                _image_index_selection(driver, element, [("Changed headings.DAT", "X\x14B\none\x14two\n".encode())], folder=True)
+                reviewed(1)
+                mapping = mapping_form()
+                mapping.find_element(By.CSS_SELECTOR, "[data-profile-producer]").send_keys("Generated producer")
+                mapping.find_element(By.CSS_SELECTOR, "[data-load-profile]").click()
+                wait.until(lambda _: "Unavailable headings: A" in mapping.text)
+                confirm = driver.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]")
+                confirm.send_keys(Keys.SPACE)
+                wait.until(lambda _: "Choose exact headings" in mapping.text)
+                _require(len(receipts.recent(matter.matter_id, ACTOR)) == 1, "a missing mapped heading reached a receipt")
+                completed.append("producer DAT mapping reaches the receipt, can be reused and detects missing headings")
 
             matter, element = opened(selector, f"{selector} blocked types")
             rejected = [("blocked_type.unsupported", b"generated"), ("oversize_index.LFP", b"x" * 129),
@@ -552,6 +712,7 @@ def main() -> int:
         options.page_load_strategy = "none"
         options.binary_location = str(args.chrome_binary)
         options.add_argument("--headless=new")
+        options.add_argument("--force-prefers-reduced-motion")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")

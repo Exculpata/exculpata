@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 import json
 import re
 import time
@@ -17,7 +17,9 @@ from .generation_errors import GenerationUnavailable
 from .generator_schema import ToolRequestRefused
 
 _LEGACY_TOOL_KEYS = frozenset({"functions", "function_call", "parallel_tool_calls"})
-_NUMBER_RE = re.compile(r"(?<![A-Za-z0-9_])(?:-\s*\$?\d[\d,.]*(?:[eE][+-]?\d+)?|\d[\d,./:-]*(?:[eE][+-]?\d+)?)\b")
+_NUMBER_RE = re.compile(
+    r"(?<![A-Za-z0-9_.])(?:-\s*\$?(?:\d[\d,.]*|\.\d+)(?:[eE][+-]?\d+)?|(?:\d[\d,./:-]*|\.\d+)(?:[eE][+-]?\d+)?)\b"
+)
 _ABSTENTION_SUMMARY = "The inspected sources did not support a verified finding for that question."
 _SYSTEM_PROMPT = (
     "You are the Case Assistant inside a local-first criminal-defense discovery workspace. "
@@ -324,6 +326,16 @@ def verify_assistant_answer(
                 calc_ids.append(receipt.receipt_id); allowed_nums.add(_norm_num(receipt.result))
                 for inp in receipt.inputs:
                     allowed_nums.add(_norm_num(inp.value))
+                if receipt.operation == "running_balance":
+                    try:
+                        with localcontext() as ctx:
+                            ctx.prec = 64
+                            running = Decimal(0)
+                            for inp in receipt.inputs:
+                                running += Decimal(_norm_num(inp.value))
+                                allowed_nums.add(_norm_num(format(running, "f")))
+                    except InvalidOperation:
+                        pass
             if not _extract_nums(item["text"]).issubset(allowed_nums):
                 valid = False
         if valid: verified.append(AssistantFinding(item["text"].strip(), tuple(cites), tuple(calc_ids)))
