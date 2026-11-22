@@ -514,6 +514,16 @@ def test_pr589_round5_duplicate_coord_rejection_and_per_span_transcript_groundin
                 "document_id": src_map["sparse_inj.csv"], "filters": {"ammount": {"min": "150"}}, "aggregate_op": "count",
             })
 
+        # Cyclic 3-email reply graph (A->B->C->A) terminates cleanly without hanging store._lock.
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("cyc_a.eml", _eml("cyc-a", "Cycle", "Msg A", in_reply_to="cyc-b"), "message/rfc822")),
+            ("files", ("cyc_b.eml", _eml("cyc-b", "Cycle", "Msg B", in_reply_to="cyc-c"), "message/rfc822")),
+            ("files", ("cyc_c.eml", _eml("cyc-c", "Cycle", "Msg C", in_reply_to="cyc-a"), "message/rfc822")),
+        ]).status_code == 200
+        src_map = {s["source_name"]: s["document_id"] for s in rt_init.invoke("list_sources", {"limit": 20})["sources"]}
+        cyc_thread = rt_init.invoke("read_email_thread", {"document_id": src_map["cyc_a.eml"], "limit": 10})
+        assert cyc_thread["total_messages"] == 3 and cyc_thread["count"] == 3
+
         wrong_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
         wrong_res = CaseAssistant(_SpanCitationModel(doc_id, cite_continuation=False)).investigate("How much was paid?", wrong_rt)
         assert wrong_res.answerable is False and wrong_res.omitted_findings == 1
