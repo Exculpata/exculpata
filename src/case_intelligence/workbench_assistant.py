@@ -509,9 +509,6 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
         allowed_nums.update(_extract_nums(str(getattr(wc, "excerpt", "") or "")))
     for r in receipt_rows:
         allowed_nums.update(_extract_nums(str(r.get("result", ""))))
-    gap_allowed_nums = set(allowed_nums)
-    for wc in backend.citations_by_identity.values():
-        gap_allowed_nums.update(_extract_nums(str(getattr(wc, "excerpt", "") or "")))
     verified_competing: list[str] = []
     if used_citations:
         for account in result.competing_accounts:
@@ -535,7 +532,7 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
             verified_gaps.append(text)
             continue
         nums = _extract_nums(text)
-        if nums and not nums.issubset(gap_allowed_nums):
+        if nums and not nums.issubset(allowed_nums):
             continue
         verified_gaps.append(text)
     supported = bool(result.answerable and claims_payload)

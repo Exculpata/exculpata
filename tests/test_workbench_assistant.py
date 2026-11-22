@@ -554,6 +554,7 @@ def test_pr587_round4_identity_bound_citations_and_label_free_receipts(tmp_path)
             omitted_findings=1,
             gaps=(
                 "The 88.88% ownership transfer is missing its supporting statement.",
+                "The balance of 15 is missing its supporting statement.",
                 "1 unavailable source(s) could not be searched: damaged-scan.pdf",
                 "October statement is missing from production.",
             ),
@@ -566,6 +567,7 @@ def test_pr587_round4_identity_bound_citations_and_label_free_receipts(tmp_path)
         assert "1 unavailable source(s) could not be searched: damaged-scan.pdf" in kept_gaps
         assert "October statement is missing from production." in kept_gaps
         assert not any("88.88" in g for g in kept_gaps)
+        assert not any("balance of 15" in g for g in kept_gaps)
 
 
 
