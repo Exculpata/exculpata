@@ -8335,3 +8335,34 @@ code, kbd, samp, pre,
 .button:disabled, .button.disabled { background: var(--x-panel); color: var(--x-text-muted); opacity: 1; }
 .button-danger:disabled, .button-danger.disabled { border-color: var(--x-error); }
 .button-secondary:disabled, .button-secondary.disabled { border-color: var(--x-border-strong); }
+
+.assistant-work-trace {
+  margin: 12px 0 8px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); background: var(--surface); font-size: 13px;
+}
+.assistant-work-trace summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.assistant-trace-section { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.assistant-trace-section strong { display: block; margin-bottom: 4px; font-size: 12px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.03em; }
+.assistant-trace-section ul, .assistant-trace-section ol { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.assistant-trace-section code { font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
+.assistant-proposals {
+  margin: 12px 0; padding: 12px; border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm); background: var(--surface-strong);
+}
+.assistant-proposal-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.assistant-proposal-card {
+  padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface); display: grid; gap: 6px;
+}
+.assistant-proposal-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; overflow-wrap: anywhere; }
+.assistant-proposal-badge {
+  display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  border: 1px solid var(--line-strong); background: var(--canvas); color: var(--ink);
+}
+.assistant-proposal-badge[data-category="contradiction"] { background: var(--x-warning-bg); color: var(--x-warning); border-color: var(--x-warning); }
+.assistant-proposal-badge[data-category="disclosure_review"] { background: var(--x-error-bg); color: var(--x-error); border-color: var(--x-error); }
+.assistant-proposal-date, .assistant-proposal-note { color: var(--ink-soft); font-size: 12px; }
+.assistant-proposal-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 0; }
+.assistant-proposal-status { font-size: 12px; color: var(--ink-soft); }
+.assistant-proposal-status[data-state="saved"] { color: var(--success); font-weight: 600; }
+.assistant-proposal-status[data-state="error"] { color: var(--danger); font-weight: 600; }

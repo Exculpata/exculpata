@@ -45,14 +45,18 @@
 {% if message.payload.case_assistant.proposals %}
 <div class="assistant-proposals" data-assistant-proposals>
   <strong>Proposed updates to case memory (requires reviewer confirmation)</strong>
-  <ul>
+  <ul class="assistant-proposal-list">
     {% for prop in message.payload.case_assistant.proposals %}
-    <li>
-      <span>[{{ prop.label }}]</span> <strong>{{ prop.title }}</strong>{% if prop.date_label %} · {{ prop.date_label }}{% endif %}
-      {% if prop.disclosure_note %}<small>{{ prop.disclosure_note }}</small>{% endif %}
-      <form method="post" action="/matters/{{ matter.slug }}/conversations/{{ assistant.conversation.conversation_id if assistant is defined else conversation.conversation_id }}/messages/{{ message.message_id }}/assistant-proposals/{{ prop.proposal_id }}">
+    <li class="assistant-proposal-card">
+      <div class="assistant-proposal-header">
+        <span class="assistant-proposal-badge" data-category="{{ prop.category }}">{{ prop.label }}</span>
+        <strong>{{ prop.title }}</strong>{% if prop.date_label %} <span class="assistant-proposal-date">· {{ prop.date_label }}</span>{% endif %}
+      </div>
+      {% if prop.disclosure_note %}<small class="assistant-proposal-note">{{ prop.disclosure_note }}</small>{% endif %}
+      <form class="assistant-proposal-form" method="post" action="/matters/{{ matter.slug }}/conversations/{{ assistant.conversation.conversation_id if assistant is defined else conversation.conversation_id }}/messages/{{ message.message_id }}/assistant-proposals/{{ prop.proposal_id }}" data-assistant-proposal-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit">Save to case memory</button>
+        <button type="submit" class="button button-secondary">Save to case memory</button>
+        <span class="assistant-proposal-status" data-assistant-proposal-status role="status" aria-live="polite" aria-atomic="true"></span>
       </form>
     </li>
     {% endfor %}
