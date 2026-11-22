@@ -542,10 +542,19 @@ def test_pr589_round5_duplicate_coord_rejection_and_per_span_transcript_groundin
         fab_res = CaseAssistant(_LocatorDigitModel(src_map["padded.csv"])).investigate("What was the amount?", fab_rt)
         assert fab_res.answerable is False and fab_res.omitted_findings == 1
 
-        # Synthetic count premises ('1') cannot authorize 'The amount is 1.' without a calculation receipt.
+        # Synthetic count premises ('1') cannot authorize 'The amount is 1.' even when citing the count receipt calc-1.
         cnt_fab_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
         cnt_fab_res = CaseAssistant(_CountPremiseLeakModel(src_map["padded.csv"])).investigate("What was the amount?", cnt_fab_rt)
         assert cnt_fab_res.answerable is False and cnt_fab_res.omitted_findings == 1
+
+        # Numeric column headers (e.g. '2024') ground findings citing the header's originating span.
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("years.csv", b"category,2024,2025\ncash,100,200\n", "text/csv")),
+        ]).status_code == 200
+        src_map = {s["source_name"]: s["document_id"] for s in rt_init.invoke("list_sources", {"limit": 30})["sources"]}
+        yr_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        yr_res = CaseAssistant(_YearHeaderModel(src_map["years.csv"])).investigate("What is the 2024 total?", yr_rt)
+        assert yr_res.answerable is True and yr_res.omitted_findings == 0 and len(yr_res.findings) == 1
 
         # Malformed base64 inline attachment causing read_eml error surfaces incomplete_threading/error instead of truncated=False.
         bad_eml = (
@@ -595,7 +604,40 @@ class _CountPremiseLeakModel:
                     "location": row["_location"],
                     "source_version_id": row["_source_version_id"],
                 }],
-                "calculation_ids": [],
+                "calculation_ids": ["calc-1"],
+            }],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
+
+
+class _YearHeaderModel:
+    def __init__(self, doc_id: str) -> None:
+        self._doc_id = doc_id
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if not tool_msgs:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("q1", "query_table", {
+                    "document_id": self._doc_id, "aggregate_column": "2024", "aggregate_op": "sum",
+                }),
+            ))
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "The total for 2024 is 100.",
+            "findings": [{
+                "text": "The total for 2024 is 100.",
+                "citations": [{
+                    "document_id": tool_msgs[0]["document_id"],
+                    "source_name": tool_msgs[0]["source_name"],
+                    "location": tool_msgs[0]["location"],
+                    "source_version_id": tool_msgs[0]["source_version_id"],
+                }],
+                "calculation_ids": ["calc-1"],
             }],
             "gaps": [],
             "competing_accounts": [],

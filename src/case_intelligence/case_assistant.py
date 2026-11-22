@@ -335,8 +335,9 @@ def verify_assistant_answer(
                 receipt = receipts.get(str(cid))
                 if receipt is None: valid = False; break
                 calc_ids.append(receipt.receipt_id); allowed_nums.add(_norm_num(receipt.result))
-                for inp in receipt.inputs:
-                    allowed_nums.add(_norm_num(inp.value))
+                if receipt.operation != "count":
+                    for inp in receipt.inputs:
+                        allowed_nums.add(_norm_num(inp.value))
                 if receipt.operation == "running_balance":
                     try:
                         with localcontext() as ctx:
@@ -452,6 +453,10 @@ class CaseAssistant:
                     doc_id = result["document_id"]
                     default_loc = str(result.get("location", "Line 1"))
                     default_ver = str(result.get("source_version_id") or "")
+                    cols_text = " ".join(str(c) for c in (result.get("columns") or ()) if str(c).strip())
+                    if cols_text:
+                        hdr_key = (doc_id, default_loc, default_ver)
+                        inspected_texts[hdr_key] = (inspected_texts.get(hdr_key, "") + "\n" + cols_text).strip()
                     for row in result.get("rows") or ():
                         if isinstance(row, Mapping):
                             rloc = str(row.get("_location") or default_loc)
