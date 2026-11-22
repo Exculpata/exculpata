@@ -485,17 +485,23 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
         premise_wcs = [backend.citation_for_ref(ref) for ref in premise_refs]
         if not premise_wcs or any(wc is None for wc in premise_wcs):
             continue
+        receipt_cites: list[dict[str, object]] = []
+        seen_receipt_tokens: set[str] = set()
         for wc in premise_wcs:
             assert wc is not None
             if wc.support_token not in seen_tokens:
                 seen_tokens.add(wc.support_token)
                 used_citations.append(wc)
+            if wc.support_token not in seen_receipt_tokens:
+                seen_receipt_tokens.add(wc.support_token)
+                receipt_cites.append(bench._saved_answer_citation_payload(wc))
         receipt_rows.append({
             "receipt_id": receipt.receipt_id,
             "operation": receipt.operation,
             "expression": _verified_receipt_expression(receipt),
             "result": receipt.result,
             "unit": _verified_receipt_unit(receipt, premise_wcs),
+            "citations": receipt_cites,
             "inputs": [
                 {"value": inp.value, "source_refs": [asdict(sref) for sref in inp.source_refs]}
                 for inp in receipt.inputs

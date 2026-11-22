@@ -390,6 +390,7 @@ def test_pr587_round3_exact_filter_exports_reports_and_knowledge_pagination(tmp_
         assert len(p2["entities"]) == 4 and p2["entities_omitted"] == 0 and p2["has_more"] is False
 
         # 3. Export blocks, report_materials, and add_answer_to_report preserve gaps, competing accounts, and receipts.
+        pdf_cites = bench.search(matter, "quadmatch", limit=1)
         conv = bench.workspace.create_conversation(matter.matter_id, "Qualifications Check", actor_id=actor)
         bench.workspace.append_message(matter.matter_id, conv.conversation_id, "user", "Summarize holdings.", {})
         msg = bench.workspace.append_message(
@@ -403,7 +404,10 @@ def test_pr587_round3_exact_filter_exports_reports_and_knowledge_pagination(tmp_
                 "case_assistant": {
                     "gaps": ["October statement is missing from production."],
                     "competing_accounts": ["Witness A denies control while email directs trades."],
-                    "receipts": [{"receipt_id": "calc-1", "expression": "percent(125, 1000)", "result": "12.50", "unit": "%"}],
+                    "receipts": [{
+                        "receipt_id": "calc-1", "expression": "percent(125, 1000)", "result": "12.50", "unit": "%",
+                        "citations": [bench._saved_answer_citation_payload(pdf_cites[0])],
+                    }],
                 },
             },
         )
@@ -417,6 +421,8 @@ def test_pr587_round3_exact_filter_exports_reports_and_knowledge_pagination(tmp_
         assert "October statement is missing from production." in mat_texts
         assert "Witness A denies control while email directs trades." in mat_texts
         assert "calc-1" in mat_texts and "12.50" in mat_texts
+        receipt_mat = next(m for m in materials if m.title == "Calculation receipt")
+        assert len(receipt_mat.citations) == 1
 
         report = bench.workspace.create_report(matter.matter_id, actor, "Defense Report")
         section = bench.add_answer_to_report(
@@ -425,6 +431,18 @@ def test_pr587_round3_exact_filter_exports_reports_and_knowledge_pagination(tmp_
         assert "October statement is missing from production." in section.body
         assert "Witness A denies control while email directs trades." in section.body
         assert "calc-1" in section.body and "12.50" in section.body
+
+        # Deleting a receipt-only premise source rejects both report compilation and Save to report.
+        from case_intelligence.store_records import WorkspaceProblem
+        import pytest
+        store = bench.source_store(matter)
+        bench.remove_document(matter, store.action_token(store.get(pdf_cites[0].document_id)))
+        with pytest.raises(WorkspaceProblem):
+            snapshot_report_materials(bench, matter, actor, (f"conversation:{conv.conversation_id}",))
+        with pytest.raises(WorkspaceProblem):
+            bench.add_answer_to_report(
+                matter, actor, report.report_id, conv.conversation_id, msg.message_id, expected_status=report.status,
+            )
 
 
 def test_pr587_round4_identity_bound_citations_and_label_free_receipts(tmp_path):

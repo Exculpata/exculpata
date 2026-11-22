@@ -474,11 +474,15 @@ def snapshot_report_materials(bench, matter, actor: str, selections: tuple[str, 
                     res = str(receipt.get("result", "")).strip()
                     unit = str(receipt.get("unit", "")).strip()
                     if expr or res:
+                        raw_cites = receipt.get("citations")
+                        if not isinstance(raw_cites, list) or not raw_cites:
+                            raise WorkspaceProblem("A saved calculation receipt lacks verifiable source citations.")
                         label = f"[{rid}] " if rid else ""
                         suffix = f" {unit}" if unit else ""
                         rendered = expr if (not res or expr.endswith(f"= {res}")) else f"{expr} = {res}"
                         add(material_id=f"{prefix}:assistant_receipt:{idx}", origin=origin,
                             title="Calculation receipt", text=f"{label}{rendered}{suffix}".strip(),
+                            citations=references(raw_cites, ledger),
                             revision=revision, category="fact", author="AI assistance")
         coverage(payload, prefix, revision, origin, generated=generated)
 

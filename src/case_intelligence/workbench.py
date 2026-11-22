@@ -4351,6 +4351,14 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             limitation_citations = source_limitation.get("citations")
             if isinstance(limitation_citations, list):
                 saved_citations.extend(limitation_citations)
+        case_assistant = payload.get("case_assistant")
+        if isinstance(case_assistant, Mapping):
+            for receipt in case_assistant.get("receipts") or ():
+                if isinstance(receipt, Mapping):
+                    rcites = receipt.get("citations")
+                    if not isinstance(rcites, list) or not rcites:
+                        raise WorkspaceProblem("A saved calculation receipt lacks verifiable source citations.")
+                    saved_citations.extend(rcites)
         references = self._saved_answer_references(matter, saved_citations)
         # Validate every supplied copy before deduplicating rendered passages.
         citations = tuple({value["support_token"]: value for value in references}.values())[:100]
