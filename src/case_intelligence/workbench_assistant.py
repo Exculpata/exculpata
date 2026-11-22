@@ -1,9 +1,12 @@
 """App-shell adapter wiring CaseAssistant and MatterToolRuntime into WorkbenchService."""
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import os
 from typing import Callable, Mapping, Sequence
+
+from fastapi import Depends, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from .answer_jobs import AnswerJobFailure, AnswerResult
 from .case_assistant import (
@@ -19,6 +22,7 @@ from .generation_errors import GenerationUnavailable
 from .generation_matter import generation_matter_scope
 from .matter_knowledge import MatterKnowledgeService
 from .review_bench_v2 import Candidate
+from .store_records import WorkspaceProblem
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 _VERIFIED_INTRO = "Verified findings from inspected discovery:"
@@ -259,6 +263,62 @@ class WorkbenchToolBackend:
             page_num += 1
         return collected[offset:offset + limit], max(total, len(collected))
 
+    def _notebook_section_rows(
+        self, matter_id: str, *, limit: int, offset: int = 0, document_ids: frozenset[str] | None,
+        item_types: tuple[str, ...] | None = None, include_dated: bool = False,
+    ) -> tuple[list[dict[str, object]], int, int, bool]:
+        if self.allowed_notebook_items is not None:
+            raw_items = []
+            for n in self.allowed_notebook_items:
+                if item_types:
+                    matches = (n.item_type in item_types) or (include_dated and bool((n.date_label or "").strip()))
+                    if not matches:
+                        continue
+                elif include_dated and not (n.date_label or "").strip():
+                    continue
+                raw_items.append(n)
+            filtered = []
+            for n in raw_items:
+                ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
+                if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
+                    continue
+                filtered.append((n, ref_ids))
+            total = len(filtered)
+            page_items = filtered[offset:offset + limit]
+            omitted = max(0, total - (offset + len(page_items)))
+            has_more = omitted > 0
+        else:
+            fetch_cap = offset + limit + 1
+            raw_items = list(self.bench.workspace.all_notebook_items(
+                matter_id, self.actor_id, include_dismissed=False, limit=fetch_cap,
+                item_types=item_types, include_dated=include_dated,
+            ))
+            filtered = []
+            for n in raw_items:
+                ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
+                if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
+                    continue
+                filtered.append((n, ref_ids))
+            has_more = len(filtered) > offset + limit
+            page_items = filtered[offset:offset + limit]
+            total = len(filtered) if not has_more else offset + len(page_items) + 1
+            omitted = max(0, total - (offset + len(page_items)))
+        rows: list[dict[str, object]] = []
+        for n, ref_ids in page_items:
+            item_id = getattr(n, "item_id", None) or getattr(n, "notebook_item_id", "")
+            row: dict[str, object] = {
+                "item_id": item_id,
+                "type": getattr(n, "item_type", "note"),
+                "title": getattr(n, "title", ""),
+                "body": str(getattr(n, "body", ""))[:600],
+                "status": getattr(n, "status", "confirmed"),
+                "date_label": getattr(n, "date_label", ""),
+            }
+            if ref_ids:
+                row["source_document_ids"] = ref_ids
+            rows.append(row)
+        return rows, total, omitted, has_more
+
     def get_case_knowledge(
         self, matter_id: str, *, section: str = "all", limit: int = 50, offset: int = 0,
         document_ids: frozenset[str] | None = None,
@@ -267,49 +327,33 @@ class WorkbenchToolBackend:
         output: dict[str, object] = {"offset": offset, "limit": limit}
         any_has_more = False
         if section in {"all", "notes"}:
-            if self.allowed_notebook_items is not None:
-                raw_notes = list(self.allowed_notebook_items)
-                filtered_notes = []
-                for n in raw_notes:
-                    ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
-                    if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
-                        continue
-                    filtered_notes.append((n, ref_ids))
-                notes_total = len(filtered_notes)
-                page_notes = filtered_notes[offset:offset + limit]
-                notes_omitted = max(0, notes_total - (offset + len(page_notes)))
-                notes_has_more = notes_omitted > 0
-            else:
-                fetch_cap = offset + limit + 1
-                raw_notes = list(self.bench.workspace.all_notebook_items(
-                    matter_id, self.actor_id, include_dismissed=False, limit=fetch_cap,
-                ))
-                filtered_notes = []
-                for n in raw_notes:
-                    ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
-                    if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
-                        continue
-                    filtered_notes.append((n, ref_ids))
-                notes_has_more = len(filtered_notes) > offset + limit
-                page_notes = filtered_notes[offset:offset + limit]
-                notes_total = len(filtered_notes) if not notes_has_more else offset + len(page_notes) + 1
-                notes_omitted = max(0, notes_total - (offset + len(page_notes)))
-            note_rows: list[dict[str, object]] = []
-            for n, ref_ids in page_notes:
-                row: dict[str, object] = {
-                    "title": getattr(n, "title", ""),
-                    "body": str(getattr(n, "body", ""))[:600],
-                    "status": getattr(n, "status", "confirmed"),
-                    "date_label": getattr(n, "date_label", ""),
-                }
-                if ref_ids:
-                    row["source_document_ids"] = ref_ids
-                note_rows.append(row)
+            note_rows, notes_total, notes_omitted, notes_has_more = self._notebook_section_rows(
+                matter_id, limit=limit, offset=offset, document_ids=document_ids,
+            )
             output["notes"] = note_rows
             output["notes_total"] = notes_total
             output["notes_omitted"] = notes_omitted
             output["notes_has_more"] = notes_has_more
             any_has_more = any_has_more or notes_has_more
+        if section in {"all", "case_theory"}:
+            theory_rows, theory_total, theory_omitted, theory_has_more = self._notebook_section_rows(
+                matter_id, limit=limit, offset=offset, document_ids=document_ids, item_types=("fact", "issue"),
+            )
+            output["case_theory"] = theory_rows
+            output["case_theory_total"] = theory_total
+            output["case_theory_omitted"] = theory_omitted
+            output["case_theory_has_more"] = theory_has_more
+            any_has_more = any_has_more or theory_has_more
+        if section in {"all", "timeline"}:
+            tl_rows, tl_total, tl_omitted, tl_has_more = self._notebook_section_rows(
+                matter_id, limit=limit, offset=offset, document_ids=document_ids,
+                item_types=("event", "date"), include_dated=True,
+            )
+            output["timeline"] = tl_rows
+            output["timeline_total"] = tl_total
+            output["timeline_omitted"] = tl_omitted
+            output["timeline_has_more"] = tl_has_more
+            any_has_more = any_has_more or tl_has_more
         if section in {"all", "entities", "assertions"}:
             if document_ids is not None:
                 if section in {"all", "entities"}:
@@ -541,6 +585,40 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
         if nums and not nums.issubset(allowed_nums):
             continue
         verified_gaps.append(text)
+    from .case_assistant_proposals import build_verified_proposals
+
+    verified_receipts = {
+        str(r["receipt_id"]): replace(
+            result.receipts[str(r["receipt_id"])],
+            expression=str(r["expression"]),
+            unit=str(r["unit"]),
+        )
+        for r in receipt_rows
+        if str(r["receipt_id"]) in result.receipts
+    }
+    verified_result = replace(result, findings=tuple(retained_findings), receipts=verified_receipts)
+    proposals_payload: list[dict[str, object]] = []
+    for prop in build_verified_proposals(verified_result):
+        resolved_prop_wcs = [backend.citation_for_ref(ref) for ref in prop.citations]
+        if not resolved_prop_wcs or any(wc is None for wc in resolved_prop_wcs):
+            continue
+        prop_cites: list[dict[str, object]] = []
+        seen_prop_tokens: set[str] = set()
+        for wc in resolved_prop_wcs:
+            assert wc is not None
+            if wc.support_token not in seen_tokens:
+                seen_tokens.add(wc.support_token)
+                used_citations.append(wc)
+            if wc.support_token not in seen_prop_tokens:
+                seen_prop_tokens.add(wc.support_token)
+                prop_cites.append(bench._saved_answer_citation_payload(wc))
+        if prop_cites:
+            proposals_payload.append({
+                "proposal_id": prop.proposal_id, "category": prop.category, "label": prop.label,
+                "title": prop.title, "detail": prop.detail, "date_label": prop.date_label,
+                "calculation_ids": list(prop.calculation_ids), "disclosure_note": prop.disclosure_note,
+                "citations": prop_cites,
+            })
     supported = bool(result.answerable and claims_payload)
     intro = _VERIFIED_INTRO if supported else _ABSTENTION_INTRO
     payload: dict[str, object] = {
@@ -554,6 +632,7 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
         "case_assistant": {
             "receipts": receipt_rows, "gaps": verified_gaps,
             "competing_accounts": verified_competing,
+            "proposals": proposals_payload,
             "trace": trace_rows, "turns_used": result.turns_used,
             "omitted_findings": result.omitted_findings + extra_omitted,
         },
@@ -591,3 +670,79 @@ def run_workbench_assistant_job(
     if not backend.authorize(job.matter_id, job.actor_id):
         raise AnswerJobFailure("Access to this matter was removed before the answer completed.")
     return _result_to_answer(bench, result, backend, fingerprint)
+
+
+def _verify_original_integrity(bench, store, doc_id: str) -> None:
+    """Verify admitted original bytes for both uploaded and registered discovery sources."""
+    doc = store.get(doc_id)
+    if doc.origin == "registered":
+        from pathlib import Path
+        import tempfile
+        from .source_locations import SourceScanItem
+
+        item = SourceScanItem(
+            doc.relative_path, Path(doc.relative_path).name, doc.media_type,
+            doc.size, doc.stable_device, doc.stable_inode, doc.stable_mtime_ns,
+        )
+        with tempfile.TemporaryDirectory(prefix="ci-verify-") as tmp_dir:
+            staged = bench.source_registry.stage(doc.source_location_id, item, Path(tmp_dir))
+            if doc.digest and staged.sha256 != doc.digest:
+                raise ValueError("Registered original changed on disk.")
+    else:
+        store.source_path(doc_id, verify_digest=True)
+
+
+def install_assistant_proposal_routes(app, *, bench, authorized_matter, require_csrf, auth_context) -> None:
+    """Register the reviewer-gated endpoint that saves one cited proposal to matter memory."""
+    from .case_assistant_proposals import CATEGORY_STORAGE
+
+    @app.post(
+        "/matters/{slug}/conversations/{conversation_id}/messages/{message_id}/assistant-proposals/{proposal_id}",
+        dependencies=[Depends(require_csrf)],
+    )
+    def save_assistant_proposal(request: Request, slug: str, conversation_id: str, message_id: str, proposal_id: str):
+        matter = authorized_matter(request, slug)
+        actor = auth_context(request).principal_id
+        messages = bench.workspace.messages(matter.matter_id, conversation_id)
+        message = next((m for m in messages if m.message_id == message_id and m.role == "assistant"), None)
+        if message is None:
+            raise HTTPException(404, "Saved assistant answer not found.")
+        proposals = (message.payload.get("case_assistant") or {}).get("proposals") or ()
+        proposal = next((p for p in proposals if isinstance(p, Mapping) and p.get("proposal_id") == proposal_id), None)
+        if proposal is None:
+            raise HTTPException(404, "Assistant proposal not found.")
+        category = str(proposal.get("category", ""))
+        if category not in CATEGORY_STORAGE:
+            raise HTTPException(400, "Unsupported proposal category.")
+        citations = proposal.get("citations") or ()
+        if not citations:
+            raise HTTPException(409, "Proposal lacks original source support.")
+        store = bench.source_store(matter)
+        with store.mutation_guard():
+            try:
+                references = bench._saved_answer_references(matter, citations, notebook_preview=True)
+            except (KeyError, TypeError, ValueError, WorkspaceProblem) as exc:
+                raise HTTPException(409, "A cited original changed or was removed; rerun the assistant before saving.") from exc
+            for doc_id in {str(ref.get("document_id", "")).strip() for ref in references if ref.get("document_id")}:
+                try:
+                    _verify_original_integrity(bench, store, doc_id)
+                except Exception as exc:
+                    raise HTTPException(409, "A cited original changed on disk or is unavailable; rerun the assistant before saving.") from exc
+            item_type, status = CATEGORY_STORAGE[category]
+            detail = str(proposal.get("detail", ""))
+            if proposal.get("disclosure_note"):
+                detail = f"{proposal['disclosure_note']}\n\n{detail}".strip()
+            try:
+                item, created = bench.workspace.create_notebook_item(
+                    matter.matter_id, actor, item_type=item_type, status=status,
+                    title=str(proposal.get("title", "Assistant proposal")), body=detail,
+                    date_label=str(proposal.get("date_label", "")), origin="answer",
+                    source_conversation_id=conversation_id, source_message_id=message_id,
+                    dedupe_key=f"assistant-proposal:{message_id}:{proposal_id}",
+                    references=references,
+                )
+            except WorkspaceProblem as exc:
+                raise HTTPException(409, str(exc)) from exc
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({"item_id": item.item_id, "created": created, "status": item.status, "item_type": item.item_type})
+        return RedirectResponse(f"/matters/{slug}?conversation={conversation_id}#latest", status_code=303)
