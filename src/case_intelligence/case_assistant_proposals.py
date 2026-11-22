@@ -114,7 +114,6 @@ def build_verified_proposals(
             date_label = found.group() if found else ""
         add(category, title, detail, refs, date_label=date_label, calc_ids=[str(c) for c in raw_calcs])
 
-    all_finding_refs = tuple(dict.fromkeys(ref for f in result.findings for ref in f.citations))[:12]
     for finding in result.findings:
         if not finding.citations:
             continue
@@ -125,8 +124,4 @@ def build_verified_proposals(
         if date_match:
             add("timeline_event", _short_title(finding.text, date_match.group()), detail,
                 finding.citations, date_label=date_match.group(), calc_ids=finding.calculation_ids)
-
-    for account in result.competing_accounts:
-        if all_finding_refs:
-            add("contradiction", _short_title(account, "Competing account"), account, all_finding_refs)
     return tuple(proposals)
