@@ -501,6 +501,23 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
                 for inp in receipt.inputs
             ],
         })
+    from .case_assistant import _extract_nums
+
+    allowed_nums: set[str] = set()
+    for wc in used_citations:
+        allowed_nums.update(_extract_nums(str(getattr(wc, "excerpt", "") or "")))
+    for r in receipt_rows:
+        allowed_nums.update(_extract_nums(str(r.get("result", ""))))
+    verified_competing: list[str] = []
+    if used_citations:
+        for account in result.competing_accounts:
+            text = str(account or "").strip()
+            if not text:
+                continue
+            nums = _extract_nums(text)
+            if nums and not nums.issubset(allowed_nums):
+                continue
+            verified_competing.append(text)
     supported = bool(result.answerable and claims_payload)
     intro = _VERIFIED_INTRO if supported else _ABSTENTION_INTRO
     payload: dict[str, object] = {
@@ -513,7 +530,7 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
         "missing_information": "" if supported else _ABSTENTION_INTRO,
         "case_assistant": {
             "receipts": receipt_rows, "gaps": list(result.gaps),
-            "competing_accounts": list(result.competing_accounts),
+            "competing_accounts": verified_competing,
             "trace": trace_rows, "turns_used": result.turns_used,
             "omitted_findings": result.omitted_findings + extra_omitted,
         },

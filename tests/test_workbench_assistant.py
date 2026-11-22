@@ -533,6 +533,32 @@ def test_pr587_round4_identity_bound_citations_and_label_free_receipts(tmp_path)
         not_red = backend.search_discovery(matter.matter_id, "NOT red", mode="exact", limit=10)
         assert not_red.total_matches == 2 and len(not_red.hits) == 2
 
+        # 4. Unverified factual competing_accounts (unsupported numbers or zero retained citations) are omitted.
+        bad_competing = AssistantInvestigationResult(
+            answerable=True, summary="Balance is 10.",
+            findings=(AssistantFinding("Balance is 10.", (orig_ref,), ()),),
+            omitted_findings=0, gaps=(),
+            competing_accounts=(
+                "A witness reports unsupported 88.88% ownership.",
+                "Another note reflects a balance of 10 on page one.",
+            ),
+            citations=(orig_ref,), receipts={}, trace=(), turns_used=1, elapsed_ms=1,
+        )
+        ans_comp = _result_to_answer(bench, bad_competing, backend, "fp")
+        kept = ans_comp.payload["case_assistant"]["competing_accounts"]
+        assert kept == ["Another note reflects a balance of 10 on page one."]
+        assert "88.88" not in format_assistant_qualifications(ans_comp.payload)
+
+        no_cite_competing = AssistantInvestigationResult(
+            answerable=False, summary="Abstained.", findings=(),
+            omitted_findings=1, gaps=(),
+            competing_accounts=("Unsupported witness claim without source support.",),
+            citations=(), receipts={}, trace=(), turns_used=1, elapsed_ms=1,
+        )
+        ans_none = _result_to_answer(bench, no_cite_competing, backend, "fp")
+        assert ans_none.payload["case_assistant"]["competing_accounts"] == []
+
+
 
 
 
