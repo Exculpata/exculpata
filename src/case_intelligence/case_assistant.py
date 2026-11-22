@@ -17,7 +17,7 @@ from .generation_errors import GenerationUnavailable
 from .generator_schema import ToolRequestRefused
 
 _LEGACY_TOOL_KEYS = frozenset({"functions", "function_call", "parallel_tool_calls"})
-_NUMBER_RE = re.compile(r"(?<![A-Za-z0-9_])(?:-\s*\$?\d[\d,.]*|\d[\d,./:-]*)\b")
+_NUMBER_RE = re.compile(r"(?<![A-Za-z0-9_])(?:-\s*\$?\d[\d,.]*(?:[eE][+-]?\d+)?|\d[\d,./:-]*(?:[eE][+-]?\d+)?)\b")
 _ABSTENTION_SUMMARY = "The inspected sources did not support a verified finding for that question."
 _SYSTEM_PROMPT = (
     "You are the Case Assistant inside a local-first criminal-defense discovery workspace. "
@@ -194,11 +194,13 @@ def _norm_num(token: str) -> str:
         if value.is_finite():
             if value == 0:
                 return "0"
+            if abs(value.adjusted()) > 24:
+                return clean.casefold()
             text = format(value.normalize(), "f")
             return text.rstrip("0").rstrip(".") if "." in text else text
     except InvalidOperation:
         pass
-    return clean
+    return clean.casefold()
 
 def _extract_nums(text: str) -> set[str]:
     return {_norm_num(m.group()) for m in _NUMBER_RE.finditer(text)}
@@ -269,7 +271,6 @@ def _grounded_receipts(
                         ok = False
                         break
                     ref_nums.update(_extract_nums(_inspected_text_for(inspected_texts, resolved)))
-                    ref_nums.update(_extract_nums(f"{resolved.source_name} {resolved.location}"))
                 if not ok:
                     break
                 if norm_val not in ref_nums and not from_prior:
@@ -317,7 +318,6 @@ def verify_assistant_answer(
         if valid:
             for ref in cites:
                 allowed_nums.update(_extract_nums(_inspected_text_for(inspected_texts, ref)))
-                allowed_nums.update(_extract_nums(f"{ref.source_name} {ref.location}"))
             for cid in raw_calcs:
                 receipt = receipts.get(str(cid))
                 if receipt is None: valid = False; break
@@ -417,6 +417,7 @@ class CaseAssistant:
                     unavailable = list(result.get("unavailable_sources") or ())
                     unavailable_count = max(unavailable_count, int(result.get("unavailable_count") or len(unavailable)))
                 elif call.name == "search_discovery":
+                    unavailable_count = max(unavailable_count, int(result.get("excluded_unavailable_count") or 0))
                     for h in result.get("hits") or ():
                         key = (h["document_id"], h["location"], str(h.get("source_version_id") or ""))
                         inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(h.get("excerpt", ""))).strip()
