@@ -11,6 +11,7 @@ import threading
 import uuid
 
 from .. import load_files
+from .image_references import IMAGE_WINDOW, dii_paths, image_reference
 from .matching import (
     DatProfileError, candidate_agrees, compatible_metadata, finish_match, initial_match, label_key,
     literal_identifiers, observe_candidate, path_key, profile_positions, project_record,
@@ -58,19 +59,23 @@ def record_cursor(category, attempt_id, ordinal) -> str:
     return f"{'dat' if category == 'document' else 'opt'}:{attempt_id}:{ordinal}"
 
 
-def source_fingerprint(path, digest):
+def source_fingerprint(path, digest, *, maximum_bytes=None):
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
         before = os.fstat(descriptor)
         if not stat.S_ISREG(before.st_mode):
             raise ProductionUnavailable("The admitted load file is not a regular file.")
+        if maximum_bytes is not None and before.st_size > maximum_bytes:
+            raise ProductionStale("The stored load file exceeds the configured document size limit.")
         hasher = hashlib.sha256()
-        while chunk := os.read(descriptor, 65536):
+        remaining = before.st_size
+        while remaining and (chunk := os.read(descriptor, min(remaining, 65536))):
             hasher.update(chunk)
+            remaining -= len(chunk)
         after = os.fstat(descriptor)
         identity = lambda value: (value.st_dev, value.st_ino, value.st_size,
                                    value.st_mtime_ns, value.st_ctime_ns)
-        if hasher.hexdigest() != digest or identity(before) != identity(after):
+        if remaining or hasher.hexdigest() != digest or identity(before) != identity(after):
             raise ProductionStale("The admitted load-file bytes changed.")
         return identity(after)
     finally:
@@ -1143,26 +1148,43 @@ class ProductionService:
             window.validated = {}
             return tuple(window.document_projection(matter_id, document, version) for document, version in pairs)
 
-    def page_image(self, matter_id, attempt, record):
-        """Resolve only one admitted image; embedded names remain inert metadata."""
-        page = load_files.record_semantics(record)
-        if not page["valid"] or not path_key(page["path"]) or not attempt["root_key"]:
-            return None
-        candidates = self.repository.candidate_lookup(matter_id, attempt["root_key"],
-            paths=(page["path"],), excluded_document_id=attempt["document_id"], limit=2)
-        if len(candidates) != 1 or candidates[0]["media_type"] not in {"image/jpeg", "image/png"}:
-            return None
-        candidate = candidates[0]
+    def require_current_image_record(self, matter_id, attempt, record):
+        current = self.repository.current_attempt(matter_id, attempt["document_id"])
+        saved = self.repository.record(matter_id, attempt["attempt_id"], record["ordinal"],
+                                       category=record["category"])
+        if (not current or any(current[key] != attempt[key] for key in
+                ("attempt_id", "generation", "input_revision", "target", "digest", "root_key"))
+                or not saved or any(saved[key] != record[key] for key in
+                    ("kind", "line", "generation", "raw_fingerprint", "association_status", "document_id"))
+                or current["status"] != "complete" or record["kind"] != "accepted" or record["generation"] != current["generation"]
+                or record["source_document_id"] != current["document_id"]
+                or record["source_version_id"] != current["version_id"] or not self.attempt_current(matter_id, current)):
+            raise ProductionStale("The production changed. Reload to inspect its image files.")
+
+    def indexed_image_files(self, matter_id, attempt, record, start):
+        """Read an explicit DII filename window without holding the DB lock during decoding."""
         store = self.binding(matter_id)["store"]
         try:
-            document = store.get(candidate["document_id"])
-            store.source_path(document.document_id)
-        except (KeyError, UploadProblem):
-            return None
-        if document.version_id != candidate["version_id"]:
-            return None
-        return {"document_id": document.document_id, "version_id": document.version_id,
-                "media_type": candidate["media_type"]}
+            with store.mutation_guard(), self.repository.db.lock:
+                self.require_current_image_record(matter_id, attempt, record)
+                document = store.get(attempt["document_id"])
+                if document.size > store.document_file_limit:
+                    raise ProductionStale("The DII source exceeds this installation's document size limit.")
+                original = store.source_path(document.document_id)
+            fingerprint = source_fingerprint(original, attempt["digest"], maximum_bytes=store.document_file_limit)
+            names, total = dii_paths(original, record, start, fingerprint)
+            with store.mutation_guard(), self.repository.db.lock:
+                self.require_current_image_record(matter_id, attempt, record)
+                after = store.source_path(document.document_id).stat(follow_symlinks=False)
+                if fingerprint != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+                    raise ProductionStale("The DII source changed while reading its image files.")
+                rows = tuple(image_reference(self.repository, store, matter_id, attempt, name, record["line"], position)
+                             for position, name in enumerate(names, start))
+        except (OSError, UploadProblem) as error:
+            raise ProductionStale("The DII original is no longer available.") from error
+        return {"rows": rows, "start": start, "total": total,
+                "previous_start": max(1, start - IMAGE_WINDOW) if start > 1 else None,
+                "next_start": start + len(rows) if start + len(rows) <= total else None}
 
     def dat_record_files(self, matter_id, attempt, record):
         """Expose only versioned originals admitted with this completed DAT record."""
@@ -1206,7 +1228,7 @@ class ProductionService:
             return {"matched": matched, "text": companion, "text_path": path, "text_status": status}
 
     def record_window(self, matter_id, attempt_id, *, category, ordinal=0,
-                      direction="at", document_id="", limit=100):
+                      direction="at", document_id="", limit=100, image_start=None):
         if category not in {"document", "page"} or direction not in {"at", "next", "previous"}:
             raise ValueError("The production record selector is invalid.")
         if (type(ordinal) is not int or not 0 <= ordinal <= MAX_ORDINAL
@@ -1215,6 +1237,9 @@ class ProductionService:
         attempt = self.repository.attempt(matter_id, attempt_id)
         if attempt is None:
             raise KeyError(attempt_id)
+        if image_start is not None and (type(image_start) is not int or not 1 <= image_start <= MAX_ORDINAL
+                or not ordinal or direction != "at" or category != "document" or attempt["source_format"] != "dii"):
+            raise ValueError("Select one DII document and a positive image position.")
         expected_category = load_files.record_category(attempt["source_format"])
         if category != expected_category:
             raise ValueError("The record kind does not match its production source.")
@@ -1250,7 +1275,22 @@ class ProductionService:
                                            reverse=True, document_id=scope, group_ordinal=group, limit=1)
         following = self.repository.records(matter_id, attempt_id, category=category, after=selected["ordinal"],
                                             document_id=scope, group_ordinal=group, limit=1)
-        selected = {**selected, "image": self.page_image(matter_id, attempt, selected) if category == "page" else None}
+        reference = image = files = None
+        if image_start is not None:
+            if selected["kind"] != "accepted":
+                raise KeyError("The DII document was not accepted.")
+            files = self.indexed_image_files(matter_id, attempt, selected, image_start)
+        elif category == "page" and selected["kind"] == "accepted" and attempt["status"] == "complete":
+            page = load_files.record_semantics(selected)
+            if page["valid"]:
+                store = self.binding(matter_id)["store"]
+                with store.mutation_guard(), self.repository.db.lock:
+                    self.require_current_image_record(matter_id, attempt, selected)
+                    reference = image_reference(self.repository, store, matter_id, attempt, page["path"],
+                                                selected["line"], selected["ordinal"])
+                if reference["source"] and reference["source"]["media_type"] in {"image/jpeg", "image/png"}:
+                    image = reference["source"]
+        selected = {**selected, "image": image, "image_reference": reference, "image_files": files}
         if category == "document":
             selected["files"] = self.dat_record_files(matter_id, attempt, selected)
         return {"records": (selected,), "current": selected,

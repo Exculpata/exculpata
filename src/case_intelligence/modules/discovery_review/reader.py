@@ -251,8 +251,8 @@ def produced_image_binding(repository, *, matter_id: str, selected_document_id: 
     page = load_files.record_semantics(record)
     if not page["valid"]:
         return None
-    candidates = repository.candidate_lookup(matter_id, root, paths=(page["path"],),
-        excluded_document_id=attempt["document_id"], limit=2)
+    candidates = repository.exact_path_candidates(matter_id, root, page["path"],
+        excluded_document_id=attempt["document_id"])
     if len(candidates) != 1:
         return None
     image = candidates[0]
