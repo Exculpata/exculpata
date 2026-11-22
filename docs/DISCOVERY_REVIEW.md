@@ -69,6 +69,20 @@ whether to confirm. Admission and byte checks for the companion files run
 during upload. Canceling inspection or changing the selection discards the
 preview. Confirming the selection creates the receipt.
 
+If a producer uses different DAT headings, open **Producer field mapping**
+in the inspection result. Enter the producer name. Choose the exact headings
+for the fields you want to map, or select **Load saved mapping** to reuse that
+producer's mapping from this matter. Suggested headings appear beside the
+corresponding fields. Leave a field empty to use standard recognition.
+**Clear mapping** restores standard recognition for this file.
+
+Confirming the upload saves the mapping and the SHA-256 of the inspected DAT
+on its receipt entry. A saved mapping applies to that upload. Changing a
+producer's choices on a later upload preserves earlier receipts and records.
+The production importer checks the digest and selected headings before using
+the mapping. Review the original load file and its receipt if it reports a
+different digest or missing heading.
+
 Use **Choose files** or **Choose a folder** on the workbench's Add sources
 surface to add supported `.dat`, `.opt`, `.lfp`, and `.dii` files, including
 uppercase suffixes. Load-file originals are saved without searchable text.

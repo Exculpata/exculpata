@@ -11485,15 +11485,15 @@ def create_workbench_app(
             headers={"Cache-Control": "no-store"},
         )
 
-    async def read_intake_json(request: Request) -> dict:
+    async def read_intake_json(request: Request, *, maximum=MAX_UPLOAD_PREFLIGHT_REQUEST_BYTES) -> dict:
         raw = bytearray()
         async for chunk in request.stream():
-            if len(raw) + len(chunk) > MAX_UPLOAD_PREFLIGHT_REQUEST_BYTES:
+            if len(raw) + len(chunk) > maximum:
                 raise HTTPException(413, "The selected-file receipt batch is too large.")
             raw.extend(chunk)
         try:
             payload = json.loads(raw)
-        except (UnicodeDecodeError, ValueError) as exc:
+        except (UnicodeDecodeError, ValueError, RecursionError) as exc:
             raise HTTPException(400, "The selected-file receipt could not be read.") from exc
         if not isinstance(payload, dict):
             raise HTTPException(400, "The selected-file receipt request is invalid.")
@@ -14256,6 +14256,11 @@ def create_workbench_app(
     install_model_grants(app, workspace=bench.workspace, templates=templates,
         authorized_matter=authorized_matter, auth_context=auth_context,
         refresh_authority=refresh_context_authority, require_csrf=require_csrf)
+    from .production_field_profile_routes import install_producer_profile
+    install_producer_profile(app, workspace=bench.workspace, auth_context=auth_context, read_intake_json=read_intake_json,
+        refresh_authority=refresh_context_authority, require_csrf_header=require_csrf_header,
+        require_response_lease=require_matter_response_lease, response_matter=response_lease_matter,
+        transfer_lease=transfer_matter_response_lease)
     from .matter_purpose_routes import install_matter_purpose
     install_matter_purpose(app, workspace=bench.workspace, authorized_matter=authorized_matter,
         auth_context=auth_context, refresh_authority=refresh_context_authority, require_csrf=require_csrf,

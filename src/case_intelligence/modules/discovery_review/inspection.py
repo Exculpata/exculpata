@@ -1,11 +1,12 @@
 """Bounded record previews of a single scanned, structurally validated load file."""
 from collections import Counter
 from itertools import islice
+import unicodedata
 
 from case_intelligence.source_image_load_files import detect_image_load_file, parse_dii, parse_lfp
-from case_intelligence.source_load_files import LoadFileError, parse_dat, parse_opt, propose_field_map
+from case_intelligence.source_load_files import DAT_INTAKE_ROLES, DAT_TEXT_HEADER_KEYS, LoadFileError, parse_dat, parse_opt
 
-from .fields import load_definition, normalize_header
+from .fields import MAX_HEADER_CHARS, load_definition, normalize_header
 
 
 SAMPLE_LIMIT = 20
@@ -13,6 +14,25 @@ DISPLAY_WIDTH = 24
 DISPLAY_LENGTH = 200
 REFERENCE_LIMIT = 8
 PATH_LENGTH = 1024
+
+
+def _mapping_choices(headers, definition):
+    offered = [header for header in headers if header.strip() and len(header) <= MAX_HEADER_CHARS
+               and not any(unicodedata.category(char) in {"Cc", "Cf", "Cs"} for char in header)]
+    aliases = {"native_path": definition.path_headers, "text_path": DAT_TEXT_HEADER_KEYS}
+    for role in DAT_INTAKE_ROLES - aliases.keys():
+        field = definition.by_key.get("document_date" if role == "date" else role)
+        if field:
+            aliases[role] = {normalize_header(alias) for alias in field.headers}
+    choices = {}
+    for header in offered:
+        key = normalize_header(header)
+        destinations = [role for role, names in aliases.items() if key in names]
+        if len(destinations) == 1:
+            choices[header] = destinations[0]
+    counts = Counter(choices.values())
+    return {"headers": offered, "header_count": len(headers),
+            "suggestions": {h: role for h, role in choices.items() if counts[role] == 1}}
 
 
 def inspect_load_file(path, suffix):
@@ -32,6 +52,8 @@ def inspect_load_file(path, suffix):
     roles = []
     rows, references, diagnostics = [], [], Counter()
     record_count, references_truncated, encoding = 0, False, ""
+
+    mapping = {}
 
     def reference(role, value, directory=""):
         nonlocal references_truncated
@@ -54,11 +76,12 @@ def inspect_load_file(path, suffix):
         if not encoding and event.next_cursor:
             encoding = event.next_cursor["encoding"]
         if event.kind == "header":
+            mapping.update(_mapping_choices(event.headers or (), definition))
             for position, header in enumerate(event.headers or ()):
                 key = normalize_header(header)
                 if key in definition.path_headers:
                     roles.append((position, "native"))
-                elif "text_path" in propose_field_map((key.upper(),)).values():
+                elif key in DAT_TEXT_HEADER_KEYS:
                     roles.append((position, "text"))
             return
         record_count += 1
@@ -89,7 +112,8 @@ def inspect_load_file(path, suffix):
         pass
     if not record_count:
         raise LoadFileError("missing_records", path, 1)
-    return {"format": source_format, "encoding": encoding,
+    return {**({"mapping": mapping} if source_format == "dat" else {}),
+            "format": source_format, "encoding": encoding,
             "record_kind": "document" if source_format in {"dat", "dii"} else "page",
             "record_count": record_count, "diagnostic_counts": dict(diagnostics),
             "rows": rows, "sample_limit": SAMPLE_LIMIT}
