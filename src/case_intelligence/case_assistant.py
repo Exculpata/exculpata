@@ -425,21 +425,21 @@ class CaseAssistant:
                         key = (result["document_id"], p["location"], str(p.get("source_version_id") or ""))
                         inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(p.get("text", ""))).strip()
                 elif call.name == "query_table" and "document_id" in result:
-                    key = (result["document_id"], str(result.get("location", "Line 1")))
+                    key = (result["document_id"], str(result.get("location", "Line 1")), str(result.get("source_version_id") or ""))
                     inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + json.dumps(result.get("rows") or ())).strip()
                 elif call.name == "read_email_thread":
                     for m in result.get("messages") or ():
                         spans = m.get("body_spans")
                         if isinstance(spans, list) and spans:
                             for span in spans:
-                                key = (m["document_id"], str(span["location"]))
+                                key = (m["document_id"], str(span["location"]), str(span.get("source_version_id") or m.get("source_version_id") or ""))
                                 inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(span.get("text", ""))).strip()
                         else:
-                            key = (m["document_id"], m["location"])
+                            key = (m["document_id"], m["location"], str(m.get("source_version_id") or ""))
                             inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(m.get("body", ""))).strip()
                 elif call.name == "read_transcript_window" and "document_id" in result:
                     for c in result.get("cues") or ():
-                        key = (result["document_id"], c["location"])
+                        key = (result["document_id"], c["location"], str(c.get("source_version_id") or ""))
                         inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(c.get("text", ""))).strip()
                 messages.append({"role": "tool", "tool_call_id": call.call_id, "name": call.name, "content": json.dumps(result, ensure_ascii=False)})
         else:
