@@ -17,7 +17,7 @@ def label_key(value: str) -> str:
 
 def path_key(value: str) -> str:
     """Compare inert relative names without inspecting a filesystem."""
-    value = value.replace("\\", "/")
+    value = unicodedata.normalize("NFC", value).replace("\\", "/")
     if (value.startswith("/") or re.match(r"^[A-Za-z]:", value)
             or any(unicodedata.category(char) in {"Cc", "Cf"} for char in value)):
         return ""

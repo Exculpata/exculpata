@@ -72,6 +72,23 @@ def test_route_reports_reference_outside_the_display_sample_and_excludes_other_r
         assert scanner.calls == [body]
 
 
+def test_inspected_opt_matches_canonically_equivalent_paths_and_preserves_the_supplied_path(tmp_path):
+    reference = "Volume\u0301/Images/cafe\u0301.png"
+    body = f"SYN0001,VOL,{reference},Y,,,1\n".encode()
+    files = [["Volumé/Data/pages.opt", True], ["Volumé/Images/café.png", True],
+             ["Other/Images/café.png", True]]
+    with TestClient(app_at(tmp_path / "runtime", CountingScanner())) as client:
+        _, matter = new_matter(client)
+        for selected, expected in ((files, "matched"), (files + [["Volumé/Volumé/Images/café.png", True]], "ambiguous")):
+            prefix = envelope(selected)
+            response = inspect(client, matter, "opt", prefix + body,
+                               **{"X-Selection-Manifest-Bytes": str(len(prefix))})
+            assert response.status_code == 200, response.text
+            report = response.json()
+            assert report["reference_qc"]["counts"][expected] == report["reference_qc"]["total"] == 1
+            assert report["rows"][0]["references"] == [{"role": "image", "path": reference, "status": expected}]
+
+
 def test_invalid_manifest_never_reaches_the_scanner(tmp_path):
     scanner = CountingScanner()
     invalid_inputs = (

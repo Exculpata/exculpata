@@ -90,6 +90,22 @@ def test_dii_pages_through_named_files_and_isolates_originals(tmp_path, monkeypa
             assert "Supplied page Bates" not in initial.text and 'data-page-image-unavailable' not in initial.text
 
 
+def test_opt_reference_with_decomposed_accents_opens_the_admitted_original(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
+    with opened_review(tmp_path / "runtime") as review:
+        reference = "Volume\u0301/Images/cafe\u0301.png"
+        image_path = "Volumé/Images/café.png"
+        index = "Volumé/Data/pages.opt"
+        content = f"SYN0001,VOL,{reference},Y,,,1\n".encode()
+        original = image_bytes("PNG", "green")
+        upload_image_production(review, {index: content, image_path: original})
+        listing = complete_listing(review, doc=review.token(index), view="document")
+        source, = ImageLinks(listing).links
+        assert source == f"/matters/{review.matter.slug}/sources/{review.token(image_path)}"
+        assert review.client.get(source + "/content").content == original
+        assert reference in listing.text
+
+
 @pytest.mark.parametrize("kind,image_format,suffix", [("opt", "TIFF", "tif"), ("lfp", "PNG", "png")])
 def test_standalone_page_index_opens_original_via_current_source_page(tmp_path, monkeypatch, kind, image_format, suffix):
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")

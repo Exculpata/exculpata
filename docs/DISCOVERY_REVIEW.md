@@ -71,6 +71,9 @@ block containing that filename. A filename-only result means the name exists
 in the selection but its directory path was not established. Choose the
 enclosing production folder to retain its directory structure.
 
+The check and the source links treat composed and decomposed Unicode accents
+as equivalent in filenames. The index record preserves the producer's spelling.
+
 The check compares selected names. Original bytes, file types and admissibility
 are checked at upload. If the inventory is too large or a selected path cannot
 be validated, the workbench shows an index-only preview and explains why the
