@@ -1042,6 +1042,38 @@ def test_reopening_prior_matcher_rebuilds_dat_associations(tmp_path, monkeypatch
         assert new["attempt_id"] != old["attempt_id"] and new["digest"] == old["digest"]
 
 
+def test_reopen_rebuilds_v3_unmatched_decomposed_native_from_original(tmp_path, monkeypatch):
+    from case_intelligence.modules.discovery_review.production import matching, service
+    from tests.test_discovery_review_dat_opt_storage import finish_import, reopen_storage_case, storage_case
+
+    supplied = "Natives/cafe\u0301.txt"
+    selected = "Natives/café.txt"
+    original = dat_bytes(("BEGBATES", "NATIVEPATH"), [("SYN0001", supplied)])
+    with storage_case(tmp_path, count=1, primary_bytes=original, extra_files=[(selected, source_text(1))]) as current:
+        matter_id = current.matter.matter_id
+        with monkeypatch.context() as v3:
+            v3.setattr(service, "PARSER_REVISION", "production-record-events-3")
+            v3.setattr(matching, "unicodedata", SimpleNamespace(
+                category=matching.unicodedata.category, normalize=lambda form, value: value))
+            old = finish_import(current)
+        old_row, = current.repository.records(matter_id, old["attempt_id"], category="document")
+        assert old_row["association_status"] == "unmatched" and not old_row["document_id"]
+        assert old_row["path_key"] == supplied.casefold()
+
+        reopen_storage_case(current, tmp_path)
+        for _ in range(30):
+            if current.service.advance(matter_id, max_steps=128)["state"] == "complete":
+                break
+        rebuilt = current.repository.current_attempt(matter_id, old["document_id"])
+        assert rebuilt["status"] == "complete" and rebuilt["attempt_id"] != old["attempt_id"]
+        assert rebuilt["version_id"] == old["version_id"]
+        assert rebuilt["digest"] == old["digest"] == hashlib.sha256(original).hexdigest()
+        row, = current.repository.records(matter_id, rebuilt["attempt_id"], category="document")
+        assert row["cells"] == old_row["cells"] == ["SYN0001", supplied]
+        assert row["path_key"] == selected.casefold() and row["association_status"] == "matched"
+        assert current.store.get(row["document_id"]).relative_path == "Generated/" + selected
+
+
 def test_reopened_store_requires_new_production_validation(tmp_path):
     runtime = tmp_path / "runtime"
     with opened_review(runtime) as current:

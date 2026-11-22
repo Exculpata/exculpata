@@ -63,18 +63,31 @@ record count. Open a sample record to see its source line and fields. The
 sample covers the first 20 records and marks any shortened fields or omitted
 references.
 
-The path findings compare the displayed native, text or image references with
-the names in this selection. Check missing or ambiguous paths before deciding
-whether to confirm. Admission and byte checks for the companion files run
-during upload. Canceling inspection or changing the selection discards the
+The reference counts cover the entire index, including DII filenames beyond
+the sample. Each supplied path occurrence is counted. Look for missing,
+ambiguous, ineligible or unsafe references under **Reference findings**. Each
+example cites its record and starting line. A DII line identifies the document
+block containing that filename. A filename-only result means the name exists
+in the selection but its directory path was not established. Choose the
+enclosing production folder to retain its directory structure.
+
+The check and the source links treat composed and decomposed Unicode accents
+as equivalent in filenames. The index record preserves the producer's spelling.
+
+The check compares selected names. Original bytes, file types and admissibility
+are checked at upload. If the inventory is too large or a selected path cannot
+be validated, the workbench shows an index-only preview and explains why the
+selection-wide check was unavailable. Changing the selection discards the
 preview. Confirming the selection creates the receipt.
 
 If a producer uses different DAT headings, open **Producer field mapping**
-in the inspection result. Enter the producer name. Choose the exact headings
+in the inspection result. The initial check uses standard DAT path headings. Enter the producer name. Choose the exact headings
 for the fields you want to map, or select **Load saved mapping** to reuse that
 producer's mapping from this matter. Suggested headings appear beside the
 corresponding fields. Leave a field empty to use standard recognition.
-**Clear mapping** restores standard recognition for this file.
+**Clear mapping** restores standard recognition for this file. Select **Inspect production** again to
+check every path using the headings you chose or loaded. The results identify
+the mapping used for that check.
 
 Confirming the upload saves the mapping and the SHA-256 of the inspected DAT
 on its receipt entry. A saved mapping applies to that upload. Changing a

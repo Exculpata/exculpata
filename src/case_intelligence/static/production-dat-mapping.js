@@ -97,10 +97,13 @@
       });
     }
 
-    collect() {
+    collect(selectedIndex = null) {
       const profiles = new Map();
-      if (this.lookup && !this.lookup.signal.aborted) return { index: this.current.index, message: "Wait for the producer lookup before confirming." };
+      if (this.lookup && !this.lookup.signal.aborted && (selectedIndex === null || selectedIndex === this.current?.index)) {
+        return { index: this.current.index, message: "Wait for the producer lookup to finish." };
+      }
       for (const [index, draft] of this.drafts) {
+        if (selectedIndex !== null && selectedIndex !== index) continue;
         const fields = new Map();
         let problem = draft.unknownHeading ? "Choose exact headings from the inspected DAT." : "";
         for (const [role, header] of Object.entries(draft.values)) {

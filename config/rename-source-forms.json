@@ -4857,36 +4857,28 @@
     "src/case_intelligence/static/production-inspection.js": {
       "diagnostics": [
         {
-          "line": 25,
-          "identifier": "unsupported JavaScript construction (+) at 42-25:57 sha256=ddfd19d17264e899e2d1210eeb02770cc64e516c833804cf06536ffcc819c959; use the rename-compat contract helper",
-          "function": "source columns 42-25:57",
-          "reason": "Skip the chosen browser folder name and its single separator when building a selection-relative lookup key.",
-          "validation": "scripts/browser-accept-loose-file-preflight.py",
-          "source_line_sha256": "9605b873c5a22e1ea4046dd1e2c33c76fe648c09c0e7bfbecd159c1de2356e33"
+          "line": 30,
+          "identifier": "unsupported JavaScript construction (+) at 35-30:87 sha256=eac97b6322f7f9b1f12a05297d874bdc36eef8f07e1e56a3c9b104a6a4442bfc; use the rename-compat contract helper",
+          "function": "source columns 35-30:87",
+          "reason": "Open the files array in the JSON inventory by replacing the top-level object's closing brace with a fixed member label. JSON.stringify encodes the selected index, digest and chosen field names. The consumer is the bounded request body for the selected matter's inspection.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py::_selection_reference_qc_regression; tests/test_production_inspection_manifest_http.py",
+          "source_line_sha256": "eed0ccf76443f0cd44b258ac8bc44161e6269fb3c34391c00d5fc9270ef13629"
         },
         {
-          "line": 38,
-          "identifier": "unsupported JavaScript construction (.join()) at 19-38:34 sha256=03ebb87428813d7e1819b61c9e1fa149b1768bc6088d349c916fa51ace0312d2; use the rename-compat contract helper",
-          "function": "source columns 19-38:34",
-          "reason": "Join validated reference components into an in-memory comparison key for paths under the same selected root.",
-          "validation": "scripts/browser-accept-loose-file-preflight.py",
-          "source_line_sha256": "9c91b8985bdd7bee3f839dc7537759a0906c2eb3247a63eb359e6ae9274d1189"
+          "line": 32,
+          "identifier": "unsupported JavaScript construction (+) at 16-32:37 sha256=ab263fdec146c753dade318be7acdec7bdc611c7f5f9d50ca203b97523782d54; use the rename-compat contract helper",
+          "function": "source columns 16-32:37",
+          "reason": "Count the encoded prefix and the two closing ASCII delimiters before checking the byte limit. This numeric total describes only the inventory preceding the selected index bytes.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py::_selection_reference_qc_regression; tests/test_production_inspection_manifest_http.py",
+          "source_line_sha256": "97908792032d5d26706074a6f22850ec761ac52cc10eb614873db3f9904b2382"
         },
         {
-          "line": 41,
-          "identifier": "unsupported JavaScript construction (.join()) at 43-41:67 sha256=9041dd535277f0e5fffd07b198d4e4f027b8460742c5074ab93cc4cc59124073; use the rename-compat contract helper",
-          "function": "source columns 43-41:67",
-          "reason": "Remove the explicit selected-root component before comparing the remaining reference components with the same in-memory inventory.",
-          "validation": "scripts/browser-accept-loose-file-preflight.py",
-          "source_line_sha256": "698ca11de5aade75fdd8208942c8b6e37272346648f57060965bcb5911ab8884"
-        },
-        {
-          "line": 46,
-          "identifier": "unsupported JavaScript construction (interpolated template) at 14-46:128 sha256=ad522358770ca6c51baaaad889a466e7558523246027bcdfbbfa729ee98fd18a; use the rename-compat contract helper",
-          "function": "source columns 14-46:128",
-          "reason": "Show the comparison result, selected display path and upload eligibility as DOM text.",
-          "validation": "scripts/browser-accept-loose-file-preflight.py",
-          "source_line_sha256": "dc7d352b9e6a1eb3a3f09ea183e0e019d0bdce4e47d15635254c465f3229e15a"
+          "line": 43,
+          "identifier": "unsupported JavaScript construction (+=) at 7-43:29 sha256=b97a6d67dd38fa95a91d8a65adf527a200ec35a872a298682d3457ac198f3a1e; use the rename-compat contract helper",
+          "function": "source columns 7-43:29",
+          "reason": "Accumulate the TextEncoder byte length of one validated JSON filename and eligibility tuple. Compare the running total with the form's request limit and send it as the inventory length.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py::_selection_reference_qc_regression; tests/test_production_inspection_manifest_http.py",
+          "source_line_sha256": "b048de8d8da3f789453e07dcc8e5c515fa00cfb27a50eee63b0b90486a643adb"
         },
         {
           "line": 53,
@@ -4897,6 +4889,14 @@
           "source_line_sha256": "ceb1501dadb4ad21baec7bce36b1b2585d08883bd5f4246adbda4b6de3461607"
         },
         {
+          "line": 56,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 32-56:144 sha256=09ab0a2912718d78927f4de97691a98707952d7de0ca075e6b1d87fb6be93d0d; use the rename-compat contract helper",
+          "function": "source columns 32-56:144",
+          "reason": "Show a textContent-only index-only notice using the fixed reason from inspectionBody or the fixed fallback when the response has no selection-wide counts.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py::_selection_reference_qc_regression",
+          "source_line_sha256": "ae26f9dac22fa7629f4c55b1ae76c9bbc2fca1c3c714c1541aa5e51f96814e3c"
+        },
+        {
           "line": 59,
           "identifier": "unsupported JavaScript construction (interpolated template) at 37-59:80 sha256=f7a0f19da65de3ad97f1954d3534fa6de370dab0392c2731ccf4ad25a12fefa0; use the rename-compat contract helper",
           "function": "source columns 37-59:80",
@@ -4905,12 +4905,44 @@
           "source_line_sha256": "e268c69a3a063ef9fc601efbf65989140424ad04bcf101642e2c67dde41b8dce"
         },
         {
-          "line": 65,
-          "identifier": "unsupported JavaScript construction (interpolated template) at 33-65:84 sha256=48912588a8f0b2e360d8c782ec53d70e8346a4f4a4f6fc552e5f10f6500aeba0; use the rename-compat contract helper",
-          "function": "source columns 33-65:84",
-          "reason": "Show the parser reference role, literal path and comparison result in a text node.",
-          "validation": "scripts/browser-accept-loose-file-preflight.py",
-          "source_line_sha256": "54f392b4a0f10fa21d2ec7f18e29c4281a7e010e31ac3e28002f202a3453cf0b"
+          "line": 60,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 29-60:155 sha256=e7a81a7f8f268d5f625066384414261eadaea0f7331ab0abd7bdcdb337985aad; use the rename-compat contract helper",
+          "function": "source columns 29-60:155",
+          "reason": "Show the server's total count of selected-name comparisons as localized text and explain its content-validation boundary in the inspection result.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py::_selection_reference_qc_regression",
+          "source_line_sha256": "20fb299ef696c638f6a18f08d229c70164412a553add4ed8910a68fc3bfcdab0"
+        },
+        {
+          "line": 80,
+          "identifier": "unsupported JavaScript construction (+) at 22-80:74 sha256=7aadc28ffe7c3b28e8ee92045803cfa07bf47ad4b0a6104225ee23c89b56767e; use the rename-compat contract helper",
+          "function": "source columns 22-80:74",
+          "reason": "Append a display ellipsis only when the server marks the supplied finding path as shortened. The result is passed to a textContent node as a cited path.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py::_selection_reference_qc_regression; tests/test_production_inspection.py",
+          "source_line_sha256": "ba1f2ec59810fee48a6d07cff6e77ca9c3d1c8c0ff85c47aa6d93f0cb7dd8138"
+        },
+        {
+          "line": 81,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 36-81:148 sha256=75d9bab65680511fa762ad4ccae2131b4aca27e6d55e8cf65c0b6f39ab9501a8; use the rename-compat contract helper",
+          "function": "source columns 36-81:148",
+          "reason": "Render one server finding as textContent with its record ordinal, source line, declared role, shown path and fixed status label. The displayed path is never used to retrieve a file.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py::_selection_reference_qc_regression",
+          "source_line_sha256": "ff91e5f800eb842f26d8a06b6b5ad80488a85efd6f428ed8ad8fe6a976fabacd"
+        },
+        {
+          "line": 103,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 38-103:67 sha256=7466b43cab2a153a924112973c5525d6a4996a37ab93b3e76028dda01ab65697; use the rename-compat contract helper",
+          "function": "source columns 38-103:67",
+          "reason": "For a sampled reference with a server decision, append a display separator and the status label from the fixed inspection vocabulary.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py::_selection_reference_qc_regression; tests/test_production_inspection.py",
+          "source_line_sha256": "a9081da888fb6dd80549384d5eba7dcd79b6d7295e2b153b0180a2e44351bc6c"
+        },
+        {
+          "line": 104,
+          "identifier": "unsupported JavaScript construction (interpolated template) at 33-104:71 sha256=db8ebf81e80287db1b3a3a0c72694a18557416f84e00a4074c03485d420cd0bd; use the rename-compat contract helper",
+          "function": "source columns 33-104:71",
+          "reason": "Show a sampled reference's role and path with its optional server comparison label through textContent. All three values remain display text in the inspection result.",
+          "validation": "scripts/browser-accept-loose-file-preflight.py::_selection_reference_qc_regression; tests/test_production_inspection.py",
+          "source_line_sha256": "526c83e4a11ca7e15cb1b49033f0d104f3d3517c85f0bc22ac244af2d525ae75"
         },
         {
           "line": 132,
