@@ -10,8 +10,9 @@ from .case_assistant import (
     AssistantInvestigationResult, CaseAssistant, OllamaAssistantClient, OpenAIAssistantClient,
 )
 from .case_assistant_tools import (
-    AssistantAccessError, MatterToolRuntime, SearchHit, SearchResponse, SourcePage, SourceReadResult, SourceSummary,
+    AssistantAccessError, AssistantToolError, MatterToolRuntime, SearchHit, SearchResponse, SourcePage, SourceReadResult, SourceSummary,
 )
+from .exact_search import match_positionals, tokenize_text
 from .exact_search_results import ExactSearchUnavailable
 from .generation import OllamaGenerator, OpenAICompatibleGenerator
 from .generation_errors import GenerationUnavailable
@@ -106,6 +107,7 @@ class WorkbenchToolBackend:
             store = self.bench.source_store(matter)
             all_hits: list[SearchHit] = []
             excluded_unavail = 0
+            omitted_preview = 0
             try:
                 with store._lock:
                     store._ensure_active()
@@ -125,12 +127,29 @@ class WorkbenchToolBackend:
                                 doc = store.get(item.document_id)
                             except KeyError:
                                 continue
+                            all_units = list(enumerate(doc.iter_parsed_units(), 1))
                             unit_ordinals = {
                                 (u.number, u.line_start, u.line_end, u.excerpt_digest): idx
-                                for idx, u in enumerate(doc.iter_parsed_units(), 1)
+                                for idx, u in all_units
                             }
-                            for unit in item.passages:
-                                ordinal = unit_ordinals.get((unit.number, unit.line_start, unit.line_end, unit.excerpt_digest), 1)
+                            if item.matching_unit_count > len(item.passages):
+                                positives = getattr(item.explanation.expression, "operands", ())
+                                matched_pairs = [
+                                    (idx, u) for idx, u in all_units
+                                    if positives and match_positionals(tokenize_text(u.text), positives)
+                                ]
+                                if not matched_pairs:
+                                    matched_pairs = [
+                                        (unit_ordinals.get((u.number, u.line_start, u.line_end, u.excerpt_digest), 1), u)
+                                        for u in item.passages
+                                    ]
+                            else:
+                                matched_pairs = [
+                                    (unit_ordinals.get((u.number, u.line_start, u.line_end, u.excerpt_digest), 1), u)
+                                    for u in item.passages
+                                ]
+                            omitted_preview += max(0, item.matching_unit_count - len(matched_pairs))
+                            for ordinal, unit in matched_pairs:
                                 wc = self._unit_citation(matter, store, doc, ordinal, unit)
                                 self.citations_by_key[(wc.document_id, wc.location)] = wc
                                 all_hits.append(SearchHit(
@@ -138,22 +157,28 @@ class WorkbenchToolBackend:
                                     wc.source_version_id, wc.excerpt_digest, wc.evidence_kind,
                                 ))
                         page_num += 1
-            except (ValueError, ExactSearchUnavailable):
-                return SearchResponse(hits=(), total_matches=0, offset=offset, has_more=False, excluded_unavailable_count=0)
+            except (ValueError, ExactSearchUnavailable) as exc:
+                raise AssistantToolError(f"Exact search unavailable: {exc}") from exc
             sliced = tuple(all_hits[offset:offset + limit])
+            total_matches = len(all_hits) + omitted_preview
+            has_more = (offset + len(sliced) < len(all_hits)) or (omitted_preview > 0)
             return SearchResponse(
-                hits=sliced, total_matches=len(all_hits), offset=offset,
-                has_more=(offset + len(sliced) < len(all_hits)),
-                excluded_unavailable_count=excluded_unavail,
+                hits=sliced, total_matches=total_matches, offset=offset,
+                has_more=has_more, excluded_unavailable_count=excluded_unavail,
             )
-        citations = self.bench.search(matter, query, limit=min(limit + offset, 20), document_ids=document_ids)
+        if offset >= 20:
+            raise AssistantToolError("Hybrid search returns at most the top 20 ranked passages; use mode='exact' for paginated exhaustive search.")
+        fetch_limit = min(offset + limit + 1, 20)
+        citations = self.bench.search(matter, query, limit=fetch_limit, document_ids=document_ids)
         result: list[SearchHit] = []
         for wc in citations:
             self.citations_by_key[(wc.document_id, wc.location)] = wc
             result.append(SearchHit(wc.document_id, wc.source_name, wc.location, wc.excerpt, 1.0,
                                     wc.source_version_id, wc.excerpt_digest, wc.evidence_kind))
         sliced = tuple(result[offset:offset + limit])
-        return SearchResponse(hits=sliced, total_matches=len(result), offset=offset, has_more=(offset + len(sliced) < len(result)))
+        hit_hybrid_cap = len(result) == 20 and (offset + len(sliced)) >= 20
+        has_more = (offset + len(sliced) < len(result)) or hit_hybrid_cap
+        return SearchResponse(hits=sliced, total_matches=len(result), offset=offset, has_more=has_more)
 
     def read_source(
         self, matter_id: str, document_id: str, *, start_page: int = 1, end_page: int | None = None,
@@ -195,7 +220,12 @@ class WorkbenchToolBackend:
                 ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
                 if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
                     continue
-                row: dict[str, object] = {"title": n.title, "body": n.body[:600], "status": n.status, "date_label": n.date_label}
+                row: dict[str, object] = {
+                    "title": getattr(n, "title", ""),
+                    "body": str(getattr(n, "body", ""))[:600],
+                    "status": getattr(n, "status", "confirmed"),
+                    "date_label": getattr(n, "date_label", ""),
+                }
                 if ref_ids:
                     row["source_document_ids"] = ref_ids
                 note_rows.append(row)
@@ -229,20 +259,55 @@ class WorkbenchToolBackend:
         return output
 
 
+def _collect_calc_premise_refs(calc_ids: Sequence[str], receipts: Mapping[str, object]) -> list[object]:
+    """Collect all SourceRefs from referenced receipts and any chained upstream receipts."""
+    from .case_assistant import _norm_num
+
+    refs: list[object] = []
+    seen_receipts: set[str] = set()
+    by_result: dict[str, list[str]] = {}
+    for rid, rec in receipts.items():
+        by_result.setdefault(_norm_num(rec.result), []).append(rid)
+    queue = list(calc_ids)
+    while queue:
+        cid = queue.pop(0)
+        if cid in seen_receipts:
+            continue
+        rec = receipts.get(cid)
+        if rec is None:
+            continue
+        seen_receipts.add(cid)
+        for inp in rec.inputs:
+            refs.extend(inp.source_refs)
+            for upstream_id in by_result.get(_norm_num(inp.value), ()):
+                if upstream_id not in seen_receipts:
+                    queue.append(upstream_id)
+    return refs
+
+
 def _result_to_answer(bench, result: AssistantInvestigationResult, backend: WorkbenchToolBackend, source_fingerprint: str) -> AnswerResult:
     claims_payload: list[dict[str, object]] = []
     used_citations: list[object] = []
     seen_tokens: set[str] = set()
+
+    def register_wc(ref) -> object | None:
+        wc = backend.citations_by_key.get((ref.document_id, ref.location))
+        if wc is None:
+            return None
+        if wc.support_token not in seen_tokens:
+            seen_tokens.add(wc.support_token)
+            used_citations.append(wc)
+        return wc
+
     for finding in result.findings:
         cite_rows: list[dict[str, object]] = []
-        for ref in finding.citations:
-            wc = backend.citations_by_key.get((ref.document_id, ref.location))
-            if wc is None:
+        seen_claim_tokens: set[str] = set()
+        for ref in (*finding.citations, *_collect_calc_premise_refs(finding.calculation_ids, result.receipts)):
+            wc = register_wc(ref)
+            if wc is None or wc.support_token in seen_claim_tokens:
                 continue
-            cite_rows.append(bench._workflow_citation_payload(wc))
-            if wc.support_token not in seen_tokens:
-                seen_tokens.add(wc.support_token)
-                used_citations.append(wc)
+            seen_claim_tokens.add(wc.support_token)
+            cite_rows.append(bench._saved_answer_citation_payload(wc))
         claims_payload.append({"text": finding.text, "citations": cite_rows, "calculation_ids": list(finding.calculation_ids)})
     trace_rows = [{"call_id": rec.call_id, "tool_name": rec.tool_name, "status": rec.status,
                    "elapsed_ms": rec.elapsed_ms, "cited_count": len(rec.cited_refs), "error": rec.error}
