@@ -115,7 +115,9 @@ TOOL_DEFINITIONS: tuple[dict[str, object], ...] = (
         "start_page": {"type": "integer", "minimum": 1}, "end_page": {"type": "integer", "minimum": 1},
         "char_offset": {"type": "integer", "minimum": 0}}, required=("document_id",)),
     _tool_spec("get_case_knowledge", "Read saved entities, assertions, timeline events, case theory, or matter notes.", {
-        "section": {"type": "string", "enum": sorted(ALLOWED_KNOWLEDGE_SECTIONS)}, "limit": {"type": "integer", "minimum": 1, "maximum": 100}}),
+        "section": {"type": "string", "enum": sorted(ALLOWED_KNOWLEDGE_SECTIONS)},
+        "offset": {"type": "integer", "minimum": 0},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 100}}),
     _tool_spec("calculate", "Run exact deterministic arithmetic or date math over labeled, source-cited inputs.", {
         "operation": {"type": "string", "enum": sorted(ALLOWED_CALC_OPS)},
         "inputs": {"type": "array", "minItems": 1, "maxItems": MAX_CALC_INPUTS, "items": {
@@ -124,8 +126,9 @@ TOOL_DEFINITIONS: tuple[dict[str, object], ...] = (
                            "value": {"type": "string", "minLength": 1, "maxLength": 64},
                            "source_refs": {"type": "array", "items": {"type": "object"}}}}},
         "unit": {"type": "string", "maxLength": 32}, "precision": {"type": "integer", "minimum": 0, "maximum": 12}}, required=("operation", "inputs")),
-    _tool_spec("query_table", "Filter CSV/TSV source rows and optionally compute exact Decimal column aggregates.", {
+    _tool_spec("query_table", "Filter CSV/TSV/XLSX source rows and optionally compute exact Decimal column aggregates.", {
         "document_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "sheet": {"type": "string", "maxLength": 120},
         "filters": {"type": "object"}, "aggregate_column": {"type": "string", "maxLength": 120},
         "aggregate_op": {"type": "string", "enum": sorted(ALLOWED_TABLE_AGG_OPS)},
         "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIST_LIMIT}}, required=("document_id",)),
@@ -136,6 +139,7 @@ TOOL_DEFINITIONS: tuple[dict[str, object], ...] = (
     _tool_spec("read_transcript_window", "Read timestamped transcript cues within a start/end second range.", {
         "document_id": {"type": "string", "minLength": 1, "maxLength": 128},
         "start_seconds": {"type": "number", "minimum": 0}, "end_seconds": {"type": "number", "minimum": 0},
+        "offset": {"type": "integer", "minimum": 0},
         "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIST_LIMIT}}, required=("document_id",)),
 )
 
@@ -295,18 +299,66 @@ def _format_exact_decimal(value: Decimal) -> str:
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
+_XLSX_CELL_COORD_RE = re.compile(r"^([A-Za-z]+)\d+$")
+_XLSX_SHEET_LOC_RE = re.compile(r"^(.+?),\s*rows\s+\d+[–-]\d+", re.IGNORECASE)
+_ALLOWED_FILTER_OPS = frozenset({"min", "max"})
+
+
+def _extract_sheet_name(location: str) -> str | None:
+    match = _XLSX_SHEET_LOC_RE.match(location.strip())
+    return match.group(1).strip() if match else None
+
+
+def _normalize_cell_coord(coord: str) -> str:
+    match = _XLSX_CELL_COORD_RE.match(coord)
+    return match.group(1).upper() if match else coord
+
+
+def _coord_order(coord: str) -> int:
+    if coord.isdigit():
+        return int(coord)
+    if coord.isalpha():
+        order = 0
+        for ch in coord.upper():
+            order = order * 26 + (ord(ch) - ord("A") + 1)
+        return order
+    return -1
+
+
 def _parse_extracted_cells(line: str) -> list[tuple[str, str]] | None:
     match = _EXTRACTED_ROW_RE.match(line)
     if not match:
         return None
     body = match.group(1)
     cells: list[tuple[str, str]] = []
+    prev_order = 0
     for raw_cell in body.split(" | "):
         cm = _CELL_COORD_RE.match(raw_cell.strip())
         if not cm:
             return None
-        cells.append((cm.group(1).strip(), cm.group(2).strip()))
+        coord = _normalize_cell_coord(cm.group(1).strip())
+        order = _coord_order(coord)
+        if order <= prev_order:
+            return None
+        prev_order = order
+        cells.append((coord, cm.group(2).strip()))
     return cells if cells else None
+
+
+def _ensure_unique_headers(headers: Sequence[str]) -> list[str]:
+    cleaned = [str(h).strip() for h in headers if str(h).strip()]
+    seen: set[str] = set()
+    dupes: list[str] = []
+    for col in cleaned:
+        key = col.casefold()
+        if key in seen and col not in dupes:
+            dupes.append(col)
+        seen.add(key)
+    if dupes:
+        raise AssistantToolError(
+            f"Table contains duplicate column header(s): {', '.join(dupes)}; disambiguate headers before querying."
+        )
+    return cleaned
 
 
 def _parse_table_sections(
@@ -324,9 +376,13 @@ def _parse_table_sections(
     header_cells = _parse_extracted_cells(first_line)
     if header_cells is not None:
         coord_headers = [(coord, col) for coord, col in header_cells if col]
-        headers = [col for _, col in coord_headers]
+        headers = _ensure_unique_headers([col for _, col in coord_headers])
         rows: list[tuple[dict[str, str], str, str]] = []
         for line, loc, ver in tagged_lines[1:]:
+            if line.startswith("Row 1:"):
+                raise AssistantToolError(
+                    "Table source spans multiple worksheets or separate header blocks; specify 'sheet' to query one worksheet."
+                )
             parsed = _parse_extracted_cells(line)
             if parsed is None:
                 raise AssistantToolError(
@@ -337,7 +393,7 @@ def _parse_table_sections(
         return headers, rows
     delim = "\t" if first_line.count("\t") > first_line.count(",") else ","
     header_reader = csv.reader(io.StringIO(first_line), delimiter=delim)
-    headers = [h.strip() for h in next(header_reader, []) if h.strip()]
+    headers = _ensure_unique_headers(next(header_reader, []))
     rows = []
     for line, loc, ver in tagged_lines[1:]:
         vals = next(csv.reader(io.StringIO(line), delimiter=delim), [])
@@ -355,17 +411,60 @@ def query_table_rows(
     document_id: str, source_name: str, text: str = "", *, filters: Mapping[str, object] | None = None,
     aggregate_column: str = "", aggregate_op: str = "", limit: int = 50,
     source_version_id: str = "", location: str = "Line 1", receipt_id: str = "calc-1",
-    sections: Sequence[tuple[str, str, str]] | None = None,
+    sections: Sequence[tuple[str, str, str]] | None = None, sheet: str = "",
+    preparsed: tuple[Sequence[str], Sequence[tuple[dict[str, str], str, str]]] | None = None,
+    header_location: str = "", header_source_version_id: str = "",
 ) -> tuple[dict[str, object], CalculationReceipt | None]:
     """Filter CSV/TSV/extracted spreadsheet rows and compute exact Decimal aggregates with per-section provenance."""
     if aggregate_op and aggregate_op not in ALLOWED_TABLE_AGG_OPS:
         raise AssistantToolError(f"Unsupported table aggregate operation: {aggregate_op!r}.")
-    section_list = list(sections) if sections is not None else [(location, source_version_id, text)]
-    columns, all_rows = _parse_table_sections(section_list)
+    if preparsed is not None:
+        columns = _ensure_unique_headers(preparsed[0])
+        all_rows = [(dict(r), str(loc), str(ver)) for r, loc, ver in preparsed[1]]
+        section_list = [(location, source_version_id, "")]
+        hdr_loc = header_location or location
+        hdr_ver = header_source_version_id or source_version_id
+    else:
+        section_list = list(sections) if sections is not None else [(location, source_version_id, text)]
+        detected_sheets = list(dict.fromkeys(
+            name for loc, _, _ in section_list if (name := _extract_sheet_name(loc)) is not None
+        ))
+        requested_sheet = sheet.strip()
+        if requested_sheet:
+            filtered_sections = [
+                sec for sec in section_list
+                if (name := _extract_sheet_name(sec[0])) is not None and name.casefold() == requested_sheet.casefold()
+            ]
+            if not filtered_sections:
+                avail = ", ".join(detected_sheets) if detected_sheets else "none"
+                raise AssistantToolError(f"Worksheet {requested_sheet!r} not found (available: {avail}).")
+            section_list = filtered_sections
+        elif len(detected_sheets) > 1:
+            raise AssistantToolError(
+                f"Workbook contains multiple worksheets ({', '.join(detected_sheets)}); specify 'sheet' to query one worksheet."
+            )
+        columns, all_rows = _parse_table_sections(section_list)
+        first_nonempty = next(
+            ((loc, ver) for loc, ver, txt in section_list if txt.strip()),
+            (section_list[0][0], section_list[0][1]),
+        )
+        hdr_loc = header_location or first_nonempty[0]
+        hdr_ver = header_source_version_id or first_nonempty[1]
     if not columns:
         raise AssistantToolError("Source does not contain a tabular header row.")
     matched: list[tuple[dict[str, str], str, str]] = []
     filter_map = dict(filters or {})
+    for col, cond in filter_map.items():
+        if col not in columns:
+            raise AssistantToolError(
+                f"Filter column {col!r} not found in table (available: {', '.join(columns)})."
+            )
+        if isinstance(cond, Mapping):
+            unknown = sorted(set(str(k) for k in cond.keys()) - _ALLOWED_FILTER_OPS)
+            if unknown or not cond:
+                raise AssistantToolError(
+                    f"Unsupported numeric filter operator(s) for column {col!r}: {unknown or ['empty']}. Use 'min' and/or 'max'."
+                )
     for row, row_loc, row_ver in all_rows:
         keep = True
         for col, cond in filter_map.items():
@@ -436,7 +535,8 @@ def query_table_rows(
     out_rows = [{**row, "_location": rloc, "_source_version_id": rver} for row, rloc, rver in matched[:limit]]
     payload: dict[str, object] = {
         "document_id": document_id, "source_name": source_name, "location": primary_loc,
-        "source_version_id": primary_ver, "locations": matched_locations,
+        "source_version_id": primary_ver, "header_location": hdr_loc,
+        "header_source_version_id": hdr_ver, "locations": matched_locations,
         "columns": columns, "total_rows": len(all_rows), "matched_rows": len(matched),
         "rows": out_rows, "truncated": len(matched) > limit,
     }
@@ -464,10 +564,23 @@ def _extract_knowledge_doc_ids(entry: object) -> frozenset[str] | None:
     return frozenset(ids) if ids else None
 
 
+_KNOWLEDGE_PAGINATION_KEYS = frozenset({
+    "offset", "limit", "has_more", "next_offset",
+    "notes_total", "notes_omitted", "notes_has_more",
+    "case_theory_total", "case_theory_omitted", "case_theory_has_more",
+    "timeline_total", "timeline_omitted", "timeline_has_more",
+    "entities_total", "entities_omitted", "entities_has_more",
+    "assertions_total", "assertions_omitted", "assertions_has_more",
+})
+
+
 def _validate_scoped_knowledge(payload: Mapping[str, object], allowed_ids: frozenset[str]) -> dict[str, object]:
     """Fail closed if any returned case-knowledge item lacks complete in-scope document support."""
     validated: dict[str, object] = {}
     for key, value in payload.items():
+        if key in _KNOWLEDGE_PAGINATION_KEYS and (value is None or isinstance(value, (bool, int))):
+            validated[key] = value
+            continue
         if value is None or value == "" or value == [] or value == ():
             validated[key] = value
             continue
@@ -670,32 +783,62 @@ class MatterToolRuntime:
             section = str(args.get("section", "all")).strip()
             if section not in ALLOWED_KNOWLEDGE_SECTIONS:
                 raise AssistantToolError(f"Unsupported case knowledge section: {section!r}.")
+            offset = _int_arg(args, "offset", 0, minimum=0)
             limit = _int_arg(args, "limit", 50, minimum=1, maximum=100)
-            raw_knowledge = dict(self.backend.get_case_knowledge(
-                self.matter_id, section=section, limit=limit, document_ids=self.allowed_document_ids))
+            import inspect
+            kwargs: dict[str, object] = {"section": section, "limit": limit, "document_ids": self.allowed_document_ids}
+            if "offset" in inspect.signature(self.backend.get_case_knowledge).parameters:
+                kwargs["offset"] = offset
+            elif offset > 0:
+                raise AssistantToolError("Case knowledge pagination offset is not supported by this backend.")
+            raw_knowledge = dict(self.backend.get_case_knowledge(self.matter_id, **kwargs))
             if self.allowed_document_ids is not None:
                 raw_knowledge = _validate_scoped_knowledge(raw_knowledge, self.allowed_document_ids)
             return raw_knowledge, (), None
         if tool_name == "query_table":
             document_id = self._check_doc_scope(str(args.get("document_id", "")))
             limit = _int_arg(args, "limit", 50, minimum=1, maximum=MAX_LIST_LIMIT)
-            result = self.backend.read_source(self.matter_id, document_id, start_page=1, end_page=None)
-            if result is None or not result.pages:
-                raise AssistantAccessError("Table source not found in this matter.")
-            if result.total_pages > 500 or result.truncated or len(result.pages) < result.total_pages:
-                raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
-            sections = [(p.location, p.source_version_id, p.text) for p in result.pages]
+            sheet = str(args.get("sheet", "")).strip()
             receipt_id = f"calc-{len(self._receipts) + 1}"
-            payload, receipt = query_table_rows(
-                result.document_id, result.source_name,
-                filters=args.get("filters") if isinstance(args.get("filters"), Mapping) else None,
-                aggregate_column=str(args.get("aggregate_column", "")).strip(),
-                aggregate_op=str(args.get("aggregate_op", "")).strip(), limit=limit,
-                receipt_id=receipt_id, sections=sections,
+            structured_handler = getattr(self.backend, "read_structured_table", None)
+            structured = (
+                structured_handler(self.matter_id, document_id, sheet=sheet)
+                if callable(structured_handler) else None
             )
+            if structured is not None:
+                if len(structured) == 5:
+                    source_name, columns, tagged_rows, refs, header_loc = structured
+                else:
+                    source_name, columns, tagged_rows, refs = structured
+                    header_loc = refs[0].location if refs else "Page 1"
+                first_loc = refs[0].location if refs else "Page 1"
+                first_ver = refs[0].source_version_id if refs else ""
+                payload, receipt = query_table_rows(
+                    document_id, source_name,
+                    filters=args.get("filters") if isinstance(args.get("filters"), Mapping) else None,
+                    aggregate_column=str(args.get("aggregate_column", "")).strip(),
+                    aggregate_op=str(args.get("aggregate_op", "")).strip(), limit=limit,
+                    source_version_id=first_ver, location=first_loc,
+                    header_location=header_loc, header_source_version_id=first_ver,
+                    receipt_id=receipt_id, preparsed=(columns, tagged_rows),
+                )
+            else:
+                result = self.backend.read_source(self.matter_id, document_id, start_page=1, end_page=None)
+                if result is None or not result.pages:
+                    raise AssistantAccessError("Table source not found in this matter.")
+                if result.total_pages > 500 or result.truncated or len(result.pages) < result.total_pages:
+                    raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
+                sections = [(p.location, p.source_version_id, p.text) for p in result.pages]
+                payload, receipt = query_table_rows(
+                    result.document_id, result.source_name,
+                    filters=args.get("filters") if isinstance(args.get("filters"), Mapping) else None,
+                    aggregate_column=str(args.get("aggregate_column", "")).strip(),
+                    aggregate_op=str(args.get("aggregate_op", "")).strip(), limit=limit,
+                    receipt_id=receipt_id, sections=sections, sheet=sheet,
+                )
+                refs = [SourceRef(result.document_id, result.source_name, p.location, p.source_version_id, p.excerpt_digest) for p in result.pages]
             if receipt is not None:
                 self._receipts[receipt_id] = receipt
-            refs = [SourceRef(result.document_id, result.source_name, p.location, p.source_version_id, p.excerpt_digest) for p in result.pages]
             return payload, refs, receipt
         if tool_name == "read_email_thread":
             document_id = self._check_doc_scope(str(args.get("document_id", "")))
@@ -733,15 +876,29 @@ class MatterToolRuntime:
             assert start_s is not None
             if end_s is not None and end_s < start_s:
                 raise AssistantToolError("start_seconds must be >= 0 and end_seconds >= start_seconds.")
+            offset = _int_arg(args, "offset", 0, minimum=0)
             limit = _int_arg(args, "limit", 50, minimum=1, maximum=MAX_LIST_LIMIT)
             handler = getattr(self.backend, "read_transcript_window", None)
             if not callable(handler):
                 raise AssistantToolError("Transcript window reading is not supported by this backend.")
-            data = handler(self.matter_id, document_id, start_seconds=start_s, end_seconds=end_s, limit=limit)
+            import inspect
+            kwargs: dict[str, object] = {"start_seconds": start_s, "end_seconds": end_s, "limit": limit}
+            if "offset" in inspect.signature(handler).parameters:
+                kwargs["offset"] = offset
+            elif offset > 0:
+                raise AssistantToolError("Transcript window offset pagination is not supported by this backend.")
+            data = handler(self.matter_id, document_id, **kwargs)
             if data is None:
                 raise AssistantAccessError("Transcript source not found in this matter.")
-            refs = [SourceRef(data["document_id"], data["source_name"], c["location"], c.get("source_version_id", ""))
-                    for c in data.get("cues", ()) if isinstance(c, Mapping)]
+            refs = []
+            for c in data.get("cues", ()):
+                if not isinstance(c, Mapping):
+                    continue
+                ver = str(c.get("source_version_id", ""))
+                refs.append(SourceRef(data["document_id"], data["source_name"], str(c["location"]), ver))
+                for extra_loc in c.get("continuation_locations") or ():
+                    if isinstance(extra_loc, str) and extra_loc:
+                        refs.append(SourceRef(data["document_id"], data["source_name"], extra_loc, ver))
             return dict(data), refs, None
         receipt_id = f"calc-{len(self._receipts) + 1}"
         precision = _int_arg(args, "precision", 6, minimum=0, maximum=12)

@@ -267,8 +267,8 @@ require review because a line anchor does not establish semantic equivalence.
 Records for diagnostics that are no longer emitted must be removed or reviewed. Deleted, renamed, excluded, binary or unscanned source cannot leave an unused receipt behind.
 No command automatically accepts a new finding or refreshes these records.
 
-The JavaScript records cover the reviewed inventory of 67 additions, 24 addition
-assignments, 234 interpolated templates and 40 joins in twelve files. They retain
+The original JavaScript records covered 67 additions, 24 addition assignments,
+234 interpolated templates and 40 joins in twelve files. They retain
 existing source bytes: native coercion, operand order, assignment behavior,
 Node path normalization, array separators, generated QA fallback and upload JSON
 bytes are not rewritten to satisfy the checker. Each construction additionally

@@ -301,10 +301,17 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
                 "('workbench_matter_model_grant','workbench_model_destination') "
                 "AND instr(sql, ?) = 0 LIMIT 1", ("'transcription'",),
             ).fetchone()
+            pending_migrations = []
             if needs_speech_grants:
-                migration = resources.files("case_intelligence").joinpath(
-                    "migrations/sqlite/0052_speech_model_grants.sql"
-                ).read_text(encoding="utf-8")
+                speech_grants = resources.files("case_intelligence").joinpath(
+                    "migrations/sqlite/0052_speech_model_grants.sql").read_text(encoding="utf-8")
+                pending_migrations.append(("speech model grants", speech_grants))
+            production_columns = {row[1] for row in self.connection.execute("PRAGMA table_info(workbench_discovery_production)")}
+            if "profile_positions_json" not in production_columns:
+                dat_profile = resources.files("case_intelligence").joinpath(
+                    "migrations/sqlite/0053_intake_dat_profile.sql").read_text(encoding="utf-8")
+                pending_migrations.append(("intake DAT profile", dat_profile))
+            for name, migration in pending_migrations:
                 statement = ""
                 for line in migration.splitlines(keepends=True):
                     statement += line
@@ -312,10 +319,10 @@ class WorkspaceStore(ModelGrantStoreMixin, NotebookStoreMixin, ReportsStoreMixin
                         self.connection.execute(statement)
                         statement = ""
                 if statement.strip():
-                    raise RuntimeError("Incomplete speech grant migration.")
-                if case_policy_exists:
-                    from .case_lifecycle_guards import install_content_guards
-                    install_content_guards(self.connection)
+                    raise RuntimeError(f"Incomplete migration {name}.")
+            if pending_migrations and case_policy_exists:
+                from .case_lifecycle_guards import install_content_guards
+                install_content_guards(self.connection)
             media_columns = {row[1] for row in self.connection.execute("PRAGMA table_info(workbench_media_job)")}
             if "dispatch_kind" not in media_columns:
                 self.connection.execute(

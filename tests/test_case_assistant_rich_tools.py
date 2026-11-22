@@ -268,11 +268,13 @@ def test_pr589_round2_section_locators_ambiguous_pipe_all_inputs_count_grounding
         wc_sec2 = backend.citations_by_key[(sources["sec2.csv"], row_loc)]
         assert "9876" in wc_sec2.excerpt
 
-        # 3. Ambiguous literal ' | ' inside extracted CSV cell fails explicitly instead of silently dropping row.
-        with pytest.raises(AssistantToolError):
-            runtime.invoke("query_table", {
-                "document_id": sources["pipe.csv"], "aggregate_column": "amount", "aggregate_op": "sum",
-            })
+        # 3. Literal ' | ' inside uploaded CSV cell is parsed directly from verified original CSV without dropping rows.
+        pipe_res = runtime.invoke("query_table", {
+            "document_id": sources["pipe.csv"], "aggregate_column": "amount", "aggregate_op": "sum",
+        })
+        assert pipe_res["matched_rows"] == 2
+        assert pipe_res["rows"][0]["note"] == "x | y"
+        assert pipe_res["calculation"]["result"] == "300"
 
         # 4. Row count derivation (3 rows of 100/200/300) passes CaseAssistant verification.
         cnt_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
@@ -285,5 +287,435 @@ def test_pr589_round2_section_locators_ambiguous_pipe_all_inputs_count_grounding
         assert any(m["source_name"] == "t4.eml" for m in tail_win["messages"])
         head_win = runtime.invoke("read_email_thread", {"document_id": sources["t4.eml"], "limit": 2, "offset": 0})
         assert head_win["count"] == 2 and head_win["has_more"] is True and head_win["next_offset"] == 2
+
+
+class _TranscriptMetaModel:
+    def __init__(self, doc_id: str) -> None:
+        self._doc_id = doc_id
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if not tool_msgs:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("t1", "read_transcript_window", {"document_id": self._doc_id, "start_seconds": 0, "limit": 10}),
+            ))
+        cue = tool_msgs[0]["cues"][0]
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "At 00:01:30, Speaker 2 confirmed delivery.",
+            "findings": [{
+                "text": "At 00:01:30, Speaker 2 confirmed delivery.",
+                "citations": [{
+                    "document_id": tool_msgs[0]["document_id"],
+                    "source_name": tool_msgs[0]["source_name"],
+                    "location": cue["location"],
+                    "source_version_id": cue["source_version_id"],
+                }],
+                "calculation_ids": [],
+            }],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
+
+
+def test_pr589_round3_xlsx_filter_ops_email_truncation_transcript_pagination_and_grounding(tmp_path):
+    from case_intelligence.case_assistant import CaseAssistant
+
+    # 1. XLSX cell-address coordinates (A1/B1 vs A2/B2) normalize to columns A/B and aggregate cleanly.
+    xlsx_text = "Row 1: A1: Name | B1: Duration\nRow 2: A2: Alice | B2: 12\nRow 3: A3: Bob | B3: 18\n"
+    res, receipt = query_table_rows(
+        "doc-xlsx", "sheet.xlsx", xlsx_text,
+        aggregate_column="Duration", aggregate_op="sum", receipt_id="calc-1",
+    )
+    assert res["matched_rows"] == 2
+    assert res["rows"][0]["Name"] == "Alice" and res["rows"][0]["Duration"] == "12"
+    assert receipt is not None and receipt.result == "30"
+
+    # 2. Unrecognized numeric filter operators fail explicitly instead of keeping all rows.
+    with pytest.raises(AssistantToolError, match="Unsupported numeric filter operator"):
+        query_table_rows(
+            "doc-xlsx", "sheet.xlsx", xlsx_text,
+            filters={"Duration": {"gt": "15"}}, aggregate_op="count",
+        )
+    with pytest.raises(AssistantToolError, match="Unsupported numeric filter operator"):
+        query_table_rows("doc-xlsx", "sheet.xlsx", xlsx_text, filters={"Duration": {}})
+
+    # 3-5. Real workbench HTTP uploads for long email, 60-cue transcript, and timestamp/speaker grounding.
+    long_body = ("A" * 4_500) + " final amount 98765."
+    sixty_cues = "\n".join(f"[00:{i // 60:02d}:{i % 60:02d}] Speaker 1: Line {i}." for i in range(1, 61))
+    grounded_tr = "[00:01:30] Speaker 2: Confirmed delivery.\n"
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test", malware_scanner=CleanScanner(), malware_scan_mode="extended")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Round 3 Rich Tools Matter")
+        up = client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("long.eml", _eml("long1", "Long Body", long_body), "message/rfc822")),
+            ("files", ("sixty.txt", sixty_cues.encode("utf-8"), "text/plain")),
+            ("files", ("delivery.txt", grounded_tr.encode("utf-8"), "text/plain")),
+        ])
+        assert up.status_code == 200
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        runtime = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        sources = {s["source_name"]: s["document_id"] for s in runtime.invoke("list_sources", {"limit": 20})["sources"]}
+
+        # 3. Email body > 4,000 chars reports body_truncated=True, truncated=True, and continuation offset.
+        em = runtime.invoke("read_email_thread", {"document_id": sources["long.eml"], "limit": 10})
+        assert em["body_truncated"] is True and em["truncated"] is True
+        span = em["messages"][0]["body_spans"][0]
+        assert span["truncated"] is True and span["omitted_chars"] > 0 and span["next_char_offset"] == 4000
+
+        # 4. 60-line transcript reports consistent count=50, total_cues=60, omitted_cues=10, and offset pagination.
+        t1 = runtime.invoke("read_transcript_window", {"document_id": sources["sixty.txt"], "start_seconds": 0, "limit": 50})
+        assert t1["count"] == 50 and len(t1["cues"]) == 50
+        assert t1["total_cues"] == 60 and t1["omitted_cues"] == 10
+        assert t1["has_more"] is True and t1["next_offset"] == 50 and t1["truncated"] is True
+        t2 = runtime.invoke("read_transcript_window", {"document_id": sources["sixty.txt"], "start_seconds": 0, "limit": 50, "offset": 50})
+        assert t2["count"] == 10 and len(t2["cues"]) == 10 and t2["omitted_cues"] == 0 and t2["has_more"] is False
+
+        # 5. Transcript finding citing timestamp 00:01:30 and Speaker 2 passes numeric grounding verification.
+        g_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        g_res = CaseAssistant(_TranscriptMetaModel(sources["delivery.txt"])).investigate("When was delivery confirmed?", g_rt)
+        assert g_res.answerable is True and g_res.omitted_findings == 0 and len(g_res.findings) == 1
+
+
+def test_pr589_round4_multisheet_xlsx_and_multiline_transcript_continuations(tmp_path):
+    # 1. Multi-sheet XLSX refuses silent schema merging and scopes cleanly when sheet= is specified.
+    sections = [
+        ("Wires, rows 1–2", "v1", "Row 1: A1: id | B1: amount\nRow 2: A2: w1 | B2: 100"),
+        ("Balances, rows 1–2", "v1", "Row 1: A1: id | B1: balance\nRow 2: A2: w2 | B2: 999"),
+    ]
+    with pytest.raises(AssistantToolError, match="multiple worksheets"):
+        query_table_rows(
+            "doc-wb", "book.xlsx", filters={"id": "w"},
+            aggregate_column="amount", aggregate_op="sum", sections=sections,
+        )
+    wires_res, wires_rcpt = query_table_rows(
+        "doc-wb", "book.xlsx", filters={"id": "w"},
+        aggregate_column="amount", aggregate_op="sum", sections=sections, sheet="Wires",
+    )
+    assert wires_res["matched_rows"] == 1 and wires_rcpt is not None and wires_rcpt.result == "100"
+    bal_res, bal_rcpt = query_table_rows(
+        "doc-wb", "book.xlsx", filters={"id": "w"},
+        aggregate_column="balance", aggregate_op="sum", sections=sections, sheet="Balances",
+    )
+    assert bal_res["matched_rows"] == 1 and bal_rcpt is not None and bal_rcpt.result == "999"
+
+    # 2. Multi-line timestamped transcript preserves continuation lines and discloses untimestamped preamble.
+    multiline_tr = (
+        "Header note before timestamps\n"
+        "[00:00:05] Speaker 1: First sentence.\n"
+        "The scheduled amount is 9876.\n"
+        "[00:00:10] Speaker 2: Acknowledged.\n"
+    )
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Multiline Transcript Matter")
+        up = client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("multi.txt", multiline_tr.encode("utf-8"), "text/plain")),
+        ])
+        assert up.status_code == 200
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        runtime = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        doc_id = runtime.invoke("list_sources", {"limit": 10})["sources"][0]["document_id"]
+        win = runtime.invoke("read_transcript_window", {"document_id": doc_id, "start_seconds": 0, "limit": 10})
+        assert win["count"] == 2
+        assert "The scheduled amount is 9876." in win["cues"][0]["text"]
+        assert win["untimestamped_lines_omitted"] == 1 and win["truncated"] is True
+
+
+class _SpanCitationModel:
+    def __init__(self, doc_id: str, cite_continuation: bool) -> None:
+        self._doc_id = doc_id
+        self._cite_continuation = cite_continuation
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if not tool_msgs:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("t1", "read_transcript_window", {"document_id": self._doc_id, "start_seconds": 0, "limit": 50}),
+            ))
+        cue = tool_msgs[0]["cues"][-1]
+        loc = cue["continuation_locations"][0] if self._cite_continuation else cue["location"]
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "Paid 9876.",
+            "findings": [{
+                "text": "Paid 9876.",
+                "citations": [{
+                    "document_id": tool_msgs[0]["document_id"],
+                    "source_name": tool_msgs[0]["source_name"],
+                    "location": loc,
+                    "source_version_id": cue["source_version_id"],
+                }],
+                "calculation_ids": [],
+            }],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
+
+
+def test_pr589_round5_duplicate_coord_rejection_and_per_span_transcript_grounding(tmp_path):
+    from case_intelligence.case_assistant import CaseAssistant
+
+    # 1. Duplicate or out-of-order normalized coordinates in extracted text fail explicitly.
+    injected = "Row 1: 1: id | 2: amount | 3: note\nRow 2: 1: w1 | 2: 100 | 3: x | 2: 999\n"
+    with pytest.raises(AssistantToolError, match="ambiguous cell delimiters"):
+        query_table_rows("doc-inj", "inj.csv", injected, aggregate_column="amount", aggregate_op="sum")
+    sparse_injected = "Row 1: 1: id | 2: amount | 3: note\nRow 2: 1: w1 | 3: x | 2: 999\n"
+    with pytest.raises(AssistantToolError, match="ambiguous cell delimiters"):
+        query_table_rows("doc-sinj", "sinj.csv", sparse_injected, aggregate_column="amount", aggregate_op="sum")
+
+    # 2. Real HTTP uploaded CSVs with blank cells + coordinate-like pipe text never manufacture column values.
+    lines = [f"[00:00:{i:02d}] Speaker 1: Intro line {i}." for i in range(1, 20)]
+    lines.append("[00:00:20] Speaker 1: Starting cross-unit cue.")
+    lines.append("Paid 9876.")
+    cross_tr = "\n".join(lines) + "\n"
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test", malware_scanner=CleanScanner(), malware_scan_mode="extended")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Cross Unit Span Matter")
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("cross.txt", cross_tr.encode("utf-8"), "text/plain")),
+            ("files", ("sparse_inj.csv", b"id,amount,note\nw1,,x | 2: 999\n", "text/csv")),
+            ("files", ("fwd_inj.csv", b"id,note,amount\nw1,x | 3: 999,\n", "text/csv")),
+            ("files", ("dup_hdr.csv", b"id,amount,amount\nw1,100,999\nw2,200,888\n", "text/csv")),
+        ]).status_code == 200
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        rt_init = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        src_map = {s["source_name"]: s["document_id"] for s in rt_init.invoke("list_sources", {"limit": 10})["sources"]}
+        doc_id = src_map["cross.txt"]
+
+        for csv_name in ("sparse_inj.csv", "fwd_inj.csv"):
+            tbl = rt_init.invoke("query_table", {"document_id": src_map[csv_name]})
+            assert tbl["matched_rows"] == 1
+            assert tbl["rows"][0]["amount"] == ""
+            with pytest.raises(AssistantToolError):
+                rt_init.invoke("query_table", {
+                    "document_id": src_map[csv_name], "aggregate_column": "amount", "aggregate_op": "sum",
+                })
+        # Duplicate headers fail explicitly instead of silently overwriting earlier columns.
+        with pytest.raises(AssistantToolError, match="duplicate column header"):
+            rt_init.invoke("query_table", {
+                "document_id": src_map["dup_hdr.csv"], "aggregate_column": "amount", "aggregate_op": "sum",
+            })
+        # Unknown/misspelled filter columns fail explicitly instead of returning a 0-row count receipt.
+        with pytest.raises(AssistantToolError, match="Filter column 'ammount' not found"):
+            rt_init.invoke("query_table", {
+                "document_id": src_map["sparse_inj.csv"], "filters": {"ammount": {"min": "150"}}, "aggregate_op": "count",
+            })
+
+        # Cyclic 3-email reply graph (A->B->C->A) terminates cleanly without hanging store._lock.
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("cyc_a.eml", _eml("cyc-a", "Cycle", "Msg A", in_reply_to="cyc-b"), "message/rfc822")),
+            ("files", ("cyc_b.eml", _eml("cyc-b", "Cycle", "Msg B", in_reply_to="cyc-c"), "message/rfc822")),
+            ("files", ("cyc_c.eml", _eml("cyc-c", "Cycle", "Msg C", in_reply_to="cyc-a"), "message/rfc822")),
+        ]).status_code == 200
+        src_map = {s["source_name"]: s["document_id"] for s in rt_init.invoke("list_sources", {"limit": 20})["sources"]}
+        cyc_thread = rt_init.invoke("read_email_thread", {"document_id": src_map["cyc_a.eml"], "limit": 10})
+        assert cyc_thread["total_messages"] == 3 and cyc_thread["count"] == 3
+
+        wrong_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        wrong_res = CaseAssistant(_SpanCitationModel(doc_id, cite_continuation=False)).investigate("How much was paid?", wrong_rt)
+        assert wrong_res.answerable is False and wrong_res.omitted_findings == 1
+
+        right_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        right_res = CaseAssistant(_SpanCitationModel(doc_id, cite_continuation=True)).investigate("How much was paid?", right_rt)
+        assert right_res.answerable is True and right_res.omitted_findings == 0 and len(right_res.findings) == 1
+
+        # Locator metadata ('Page 2') in query_table rows cannot authorize fabricated numeric claims ('2').
+        padded_csv = "amount\n" + ("\n" * 100) + "100\n200\n"
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("padded.csv", padded_csv.encode("utf-8"), "text/csv")),
+        ]).status_code == 200
+        src_map = {s["source_name"]: s["document_id"] for s in rt_init.invoke("list_sources", {"limit": 20})["sources"]}
+        fab_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        fab_res = CaseAssistant(_LocatorDigitModel(src_map["padded.csv"])).investigate("What was the amount?", fab_rt)
+        assert fab_res.answerable is False and fab_res.omitted_findings == 1
+
+        # Synthetic count premises ('1') cannot authorize 'The amount is 1.' even when citing the count receipt calc-1.
+        cnt_fab_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        cnt_fab_res = CaseAssistant(_CountPremiseLeakModel(src_map["padded.csv"])).investigate("What was the amount?", cnt_fab_rt)
+        assert cnt_fab_res.answerable is False and cnt_fab_res.omitted_findings == 1
+
+        # Numeric column headers (e.g. '2024') ground findings citing the header's originating span,
+        # but NEVER ground findings citing only a later matched-row section where the header does not appear.
+        padded_years = "2024,amount\n" + ("\n" * 100) + "cash,100\n"
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("years.csv", b"category,2024,2025\ncash,100,200\n", "text/csv")),
+            ("files", ("padded_years.csv", padded_years.encode("utf-8"), "text/csv")),
+        ]).status_code == 200
+        src_map = {s["source_name"]: s["document_id"] for s in rt_init.invoke("list_sources", {"limit": 30})["sources"]}
+        yr_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        yr_res = CaseAssistant(_YearHeaderModel(src_map["years.csv"])).investigate("What is the 2024 total?", yr_rt)
+        assert yr_res.answerable is True and yr_res.omitted_findings == 0 and len(yr_res.findings) == 1
+        cross_hdr_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        cross_hdr_res = CaseAssistant(_HeaderSectionLeakModel(src_map["padded_years.csv"])).investigate("What was the amount?", cross_hdr_rt)
+        assert cross_hdr_res.answerable is False and cross_hdr_res.omitted_findings == 1
+
+        # Malformed base64 inline attachment causing read_eml error surfaces incomplete_threading/error instead of truncated=False.
+        bad_eml = (
+            b"From: a@example.test\r\nTo: b@example.test\r\nSubject: Broken Attach\r\n"
+            b"Message-ID: <broken-1@example.test>\r\nMIME-Version: 1.0\r\n"
+            b"Content-Type: multipart/mixed; boundary=\"bnd\"\r\n\r\n"
+            b"--bnd\r\nContent-Type: text/html\r\n\r\n<p>See note.</p>\r\n"
+            b"--bnd\r\nContent-Type: text/plain; name=\"note.txt\"\r\n"
+            b"Content-Disposition: inline; filename=\"note.txt\"\r\n"
+            b"Content-Transfer-Encoding: base64\r\n\r\n!!!NOT_BASE64!!!\r\n--bnd--\r\n"
+        )
+        reply_to_bad = _eml("reply-broken", "Re: Broken Attach", "Following up.", in_reply_to="broken-1")
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("bad_attach.eml", bad_eml, "message/rfc822")),
+            ("files", ("reply_bad.eml", reply_to_bad, "message/rfc822")),
+        ]).status_code == 200
+        src_map = {s["source_name"]: s["document_id"] for s in rt_init.invoke("list_sources", {"limit": 30})["sources"]}
+        with pytest.raises(AssistantToolError, match="could not be parsed"):
+            rt_init.invoke("read_email_thread", {"document_id": src_map["bad_attach.eml"], "limit": 10})
+        rep_thread = rt_init.invoke("read_email_thread", {"document_id": src_map["reply_bad.eml"], "limit": 10})
+        assert rep_thread["incomplete_threading"] is True and rep_thread["truncated"] is True
+        assert any(e["source_name"] == "bad_attach.eml" for e in rep_thread["unthreaded_email_errors"])
+
+
+class _HeaderSectionLeakModel:
+    def __init__(self, doc_id: str) -> None:
+        self._doc_id = doc_id
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if not tool_msgs:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("q1", "query_table", {"document_id": self._doc_id}),
+            ))
+        row = tool_msgs[0]["rows"][0]
+        assert tool_msgs[0]["header_location"] != row["_location"]
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "The amount is 2024.",
+            "findings": [{
+                "text": "The amount is 2024.",
+                "citations": [{
+                    "document_id": tool_msgs[0]["document_id"],
+                    "source_name": tool_msgs[0]["source_name"],
+                    "location": row["_location"],
+                    "source_version_id": row["_source_version_id"],
+                }],
+                "calculation_ids": [],
+            }],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
+
+
+class _CountPremiseLeakModel:
+    def __init__(self, doc_id: str) -> None:
+        self._doc_id = doc_id
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if not tool_msgs:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("q1", "query_table", {"document_id": self._doc_id, "aggregate_op": "count"}),
+            ))
+        row = tool_msgs[0]["rows"][0]
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "The amount is 1.",
+            "findings": [{
+                "text": "The amount is 1.",
+                "citations": [{
+                    "document_id": tool_msgs[0]["document_id"],
+                    "source_name": tool_msgs[0]["source_name"],
+                    "location": row["_location"],
+                    "source_version_id": row["_source_version_id"],
+                }],
+                "calculation_ids": ["calc-1"],
+            }],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
+
+
+class _YearHeaderModel:
+    def __init__(self, doc_id: str) -> None:
+        self._doc_id = doc_id
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if not tool_msgs:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("q1", "query_table", {
+                    "document_id": self._doc_id, "aggregate_column": "2024", "aggregate_op": "sum",
+                }),
+            ))
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "The total for 2024 is 100.",
+            "findings": [{
+                "text": "The total for 2024 is 100.",
+                "citations": [{
+                    "document_id": tool_msgs[0]["document_id"],
+                    "source_name": tool_msgs[0]["source_name"],
+                    "location": tool_msgs[0]["location"],
+                    "source_version_id": tool_msgs[0]["source_version_id"],
+                }],
+                "calculation_ids": ["calc-1"],
+            }],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
+
+
+class _LocatorDigitModel:
+    def __init__(self, doc_id: str) -> None:
+        self._doc_id = doc_id
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if not tool_msgs:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("q1", "query_table", {"document_id": self._doc_id}),
+            ))
+        row = tool_msgs[0]["rows"][0]
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "The amount is 2.",
+            "findings": [{
+                "text": "The amount is 2.",
+                "citations": [{
+                    "document_id": tool_msgs[0]["document_id"],
+                    "source_name": tool_msgs[0]["source_name"],
+                    "location": row["_location"],
+                    "source_version_id": row["_source_version_id"],
+                }],
+                "calculation_ids": [],
+            }],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
+
+
+
+
 
 
