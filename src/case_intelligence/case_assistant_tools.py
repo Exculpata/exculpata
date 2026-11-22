@@ -343,6 +343,22 @@ def _parse_extracted_cells(line: str) -> list[tuple[str, str]] | None:
     return cells if cells else None
 
 
+def _ensure_unique_headers(headers: Sequence[str]) -> list[str]:
+    cleaned = [str(h).strip() for h in headers if str(h).strip()]
+    seen: set[str] = set()
+    dupes: list[str] = []
+    for col in cleaned:
+        key = col.casefold()
+        if key in seen and col not in dupes:
+            dupes.append(col)
+        seen.add(key)
+    if dupes:
+        raise AssistantToolError(
+            f"Table contains duplicate column header(s): {', '.join(dupes)}; disambiguate headers before querying."
+        )
+    return cleaned
+
+
 def _parse_table_sections(
     sections: Sequence[tuple[str, str, str]],
 ) -> tuple[list[str], list[tuple[dict[str, str], str, str]]]:
@@ -358,7 +374,7 @@ def _parse_table_sections(
     header_cells = _parse_extracted_cells(first_line)
     if header_cells is not None:
         coord_headers = [(coord, col) for coord, col in header_cells if col]
-        headers = [col for _, col in coord_headers]
+        headers = _ensure_unique_headers([col for _, col in coord_headers])
         rows: list[tuple[dict[str, str], str, str]] = []
         for line, loc, ver in tagged_lines[1:]:
             if line.startswith("Row 1:"):
@@ -375,7 +391,7 @@ def _parse_table_sections(
         return headers, rows
     delim = "\t" if first_line.count("\t") > first_line.count(",") else ","
     header_reader = csv.reader(io.StringIO(first_line), delimiter=delim)
-    headers = [h.strip() for h in next(header_reader, []) if h.strip()]
+    headers = _ensure_unique_headers(next(header_reader, []))
     rows = []
     for line, loc, ver in tagged_lines[1:]:
         vals = next(csv.reader(io.StringIO(line), delimiter=delim), [])
@@ -400,7 +416,7 @@ def query_table_rows(
     if aggregate_op and aggregate_op not in ALLOWED_TABLE_AGG_OPS:
         raise AssistantToolError(f"Unsupported table aggregate operation: {aggregate_op!r}.")
     if preparsed is not None:
-        columns = [str(c) for c in preparsed[0] if str(c).strip()]
+        columns = _ensure_unique_headers(preparsed[0])
         all_rows = [(dict(r), str(loc), str(ver)) for r, loc, ver in preparsed[1]]
         section_list = [(location, source_version_id, "")]
     else:
@@ -428,6 +444,10 @@ def query_table_rows(
     matched: list[tuple[dict[str, str], str, str]] = []
     filter_map = dict(filters or {})
     for col, cond in filter_map.items():
+        if col not in columns:
+            raise AssistantToolError(
+                f"Filter column {col!r} not found in table (available: {', '.join(columns)})."
+            )
         if isinstance(cond, Mapping):
             unknown = sorted(set(str(k) for k in cond.keys()) - _ALLOWED_FILTER_OPS)
             if unknown or not cond:

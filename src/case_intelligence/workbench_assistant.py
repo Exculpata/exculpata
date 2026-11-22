@@ -366,6 +366,8 @@ class WorkbenchToolBackend:
                         if not any(vals):
                             continue
                         if header_vals is None:
+                            from .case_assistant_tools import _ensure_unique_headers
+                            _ensure_unique_headers(vals)
                             header_vals = vals
                             continue
                         row_dict = {col: (vals[idx] if idx < len(vals) else "") for idx, col in enumerate(header_vals) if col}

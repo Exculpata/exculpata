@@ -565,6 +565,12 @@ def extract_xlsx_structured(path: Path, *, sheet: str = "") -> tuple[str, list[s
             row_cells[coord] = val
         if coord_headers is None:
             coord_headers = [(c, h) for c, h in row_cells.items() if h]
+            seen_h: set[str] = set()
+            dupes = [h for _, h in coord_headers if h.casefold() in seen_h or seen_h.add(h.casefold())]
+            if dupes:
+                raise ValueError(
+                    f"Table contains duplicate column header(s): {', '.join(dict.fromkeys(dupes))}; disambiguate headers before querying."
+                )
             continue
         rows.append(({col: row_cells.get(c, "") for c, col in coord_headers}, sheet_row))
     return chosen_name, [h for _, h in (coord_headers or [])], rows

@@ -486,6 +486,7 @@ def test_pr589_round5_duplicate_coord_rejection_and_per_span_transcript_groundin
             ("files", ("cross.txt", cross_tr.encode("utf-8"), "text/plain")),
             ("files", ("sparse_inj.csv", b"id,amount,note\nw1,,x | 2: 999\n", "text/csv")),
             ("files", ("fwd_inj.csv", b"id,note,amount\nw1,x | 3: 999,\n", "text/csv")),
+            ("files", ("dup_hdr.csv", b"id,amount,amount\nw1,100,999\nw2,200,888\n", "text/csv")),
         ]).status_code == 200
         bench = app.state.workbench
         actor = "development-taylor-morgan"
@@ -502,6 +503,16 @@ def test_pr589_round5_duplicate_coord_rejection_and_per_span_transcript_groundin
                 rt_init.invoke("query_table", {
                     "document_id": src_map[csv_name], "aggregate_column": "amount", "aggregate_op": "sum",
                 })
+        # Duplicate headers fail explicitly instead of silently overwriting earlier columns.
+        with pytest.raises(AssistantToolError, match="duplicate column header"):
+            rt_init.invoke("query_table", {
+                "document_id": src_map["dup_hdr.csv"], "aggregate_column": "amount", "aggregate_op": "sum",
+            })
+        # Unknown/misspelled filter columns fail explicitly instead of returning a 0-row count receipt.
+        with pytest.raises(AssistantToolError, match="Filter column 'ammount' not found"):
+            rt_init.invoke("query_table", {
+                "document_id": src_map["sparse_inj.csv"], "filters": {"ammount": {"min": "150"}}, "aggregate_op": "count",
+            })
 
         wrong_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
         wrong_res = CaseAssistant(_SpanCitationModel(doc_id, cite_continuation=False)).investigate("How much was paid?", wrong_rt)
