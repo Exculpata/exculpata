@@ -182,6 +182,91 @@ class WorkbenchToolBackend:
                                         for a in page["assertions"]["items"][:limit]]
         return output
 
+    def read_email_thread(
+        self, matter_id: str, document_id: str, *, limit: int = 25,
+        allowed_document_ids: frozenset[str] | None = None,
+    ) -> Mapping[str, object] | None:
+        from .source_email_threads import group_threads, read_eml
+        matter = self.bench._matter_by_id(matter_id)
+        store = self.bench.source_store(matter)
+        with store._lock:
+            try:
+                target = store.get(document_id)
+            except KeyError:
+                return None
+            records, by_source = [], {}
+            for doc in store.documents.values():
+                if allowed_document_ids is not None and doc.document_id not in allowed_document_ids:
+                    continue
+                if doc.stored_name and (doc.display_name.casefold().endswith(".eml") or "rfc822" in doc.media_type.casefold()):
+                    path = store.files / doc.stored_name
+                    if path.is_file():
+                        rec = read_eml(path)
+                        records.append(rec)
+                        by_source[rec.source] = doc
+            target_path = str(store.files / target.stored_name) if target.stored_name else ""
+            matched_nodes = ()
+            for thread in group_threads(records):
+                if any(node.message.source == target_path for node in thread.messages):
+                    matched_nodes = thread.messages[:limit]
+                    break
+            messages = []
+            for node in matched_nodes:
+                doc = by_source.get(node.message.source)
+                if doc is None:
+                    continue
+                units = list(enumerate(doc.iter_parsed_units(), 1))
+                loc = "Section 1"
+                if units:
+                    wc = self._unit_citation(matter, store, doc, units[0][0], units[0][1])
+                    self.citations_by_key[(wc.document_id, wc.location)] = wc
+                    loc = wc.location
+                messages.append({
+                    "document_id": doc.document_id, "source_name": doc.display_name, "location": loc,
+                    "source_version_id": doc.version_id, "subject": node.message.subject,
+                    "body": node.message.body[:4_000], "weak_link": node.weak_link,
+                })
+            return {"document_id": target.document_id, "count": len(messages), "messages": messages}
+
+    def read_transcript_window(
+        self, matter_id: str, document_id: str, *, start_seconds: float = 0.0,
+        end_seconds: float | None = None, limit: int = 50,
+    ) -> Mapping[str, object] | None:
+        import re
+        ts_re = re.compile(r"\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]\s*(?:([^:\n]{1,40}):\s*)?(.*)")
+        matter = self.bench._matter_by_id(matter_id)
+        store = self.bench.source_store(matter)
+        with store._lock:
+            try:
+                doc = store.get(document_id)
+            except KeyError:
+                return None
+            cues: list[dict[str, object]] = []
+            for ordinal, unit in enumerate(doc.iter_parsed_units(), 1):
+                wc = self._unit_citation(matter, store, doc, ordinal, unit)
+                if unit.start_ms is not None:
+                    s_sec = unit.start_ms / 1000.0
+                    e_sec = (unit.end_ms / 1000.0) if unit.end_ms is not None else s_sec
+                    if e_sec >= start_seconds and (end_seconds is None or s_sec <= end_seconds):
+                        self.citations_by_key[(wc.document_id, wc.location)] = wc
+                        cues.append({"start_seconds": s_sec, "end_seconds": e_sec, "speaker": unit.speaker_cluster,
+                                     "text": unit.text, "location": wc.location, "source_version_id": doc.version_id})
+                else:
+                    for line in unit.text.splitlines():
+                        m = ts_re.match(line.strip())
+                        if not m:
+                            continue
+                        a, b, c = int(m.group(1)), int(m.group(2)), int(m.group(3)) if m.group(3) else None
+                        sec = float(a * 3600 + b * 60 + c) if c is not None else float(a * 60 + b)
+                        if sec >= start_seconds and (end_seconds is None or sec <= end_seconds):
+                            self.citations_by_key[(wc.document_id, wc.location)] = wc
+                            cues.append({"start_seconds": sec, "end_seconds": sec, "speaker": (m.group(4) or "").strip(),
+                                         "text": m.group(5).strip(), "location": wc.location, "source_version_id": doc.version_id})
+                if len(cues) >= limit:
+                    break
+            return {"document_id": doc.document_id, "source_name": doc.display_name,
+                    "start_seconds": start_seconds, "end_seconds": end_seconds, "count": len(cues), "cues": cues[:limit]}
+
 
 def _result_to_answer(bench, result: AssistantInvestigationResult, backend: WorkbenchToolBackend, source_fingerprint: str) -> AnswerResult:
     from .case_assistant_proposals import build_verified_proposals

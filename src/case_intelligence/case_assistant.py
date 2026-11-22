@@ -265,6 +265,12 @@ class CaseAssistant:
                     for h in result.get("hits") or (): inspected_texts[(h["document_id"], h["location"])] = str(h.get("excerpt", ""))
                 elif call.name == "read_source" and "document_id" in result:
                     for p in result.get("pages") or (): inspected_texts[(result["document_id"], p["location"])] = str(p.get("text", ""))
+                elif call.name == "query_table" and "document_id" in result:
+                    inspected_texts[(result["document_id"], str(result.get("location", "Line 1")))] = json.dumps(result.get("rows") or ())
+                elif call.name == "read_email_thread":
+                    for m in result.get("messages") or (): inspected_texts[(m["document_id"], m["location"])] = str(m.get("body", ""))
+                elif call.name == "read_transcript_window" and "document_id" in result:
+                    for c in result.get("cues") or (): inspected_texts[(result["document_id"], c["location"])] = str(c.get("text", ""))
                 messages.append({"role": "tool", "tool_call_id": call.call_id, "name": call.name, "content": json.dumps(result, ensure_ascii=False)})
         else:
             budget_exhausted = True

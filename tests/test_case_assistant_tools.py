@@ -117,6 +117,9 @@ def test_fail_closed_authorization_isolation_and_invalid_inputs():
 
 
 def test_tool_schemas_are_strictly_read_only_and_allowlisted():
-    expected = {"list_sources", "search_discovery", "read_source", "get_case_knowledge", "calculate"}
+    expected = {
+        "list_sources", "search_discovery", "read_source", "get_case_knowledge",
+        "calculate", "query_table", "read_email_thread", "read_transcript_window",
+    }
     assert {entry["function"]["name"] for entry in openai_tool_schemas()} == expected
     assert {entry["function"]["name"] for entry in ollama_tool_schemas()} == expected

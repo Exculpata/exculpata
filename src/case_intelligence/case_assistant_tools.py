@@ -1,14 +1,20 @@
 """Matter-scoped, read-only discovery tools and deterministic calculation receipts."""
 from __future__ import annotations
 
+import csv
 from dataclasses import asdict, dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import io
 import time
 from typing import Mapping, Protocol, Sequence
 
-ALLOWED_TOOLS = frozenset({"list_sources", "search_discovery", "read_source", "get_case_knowledge", "calculate"})
+ALLOWED_TOOLS = frozenset({
+    "list_sources", "search_discovery", "read_source", "get_case_knowledge",
+    "calculate", "query_table", "read_email_thread", "read_transcript_window",
+})
 ALLOWED_CALC_OPS = frozenset({"sum", "subtract", "multiply", "divide", "percent", "days_between", "running_balance"})
+ALLOWED_TABLE_AGG_OPS = frozenset({"count", "sum", "min", "max"})
 ALLOWED_KNOWLEDGE_SECTIONS = frozenset({"all", "entities", "assertions", "timeline", "case_theory", "notes", "purpose"})
 MAX_LIST_LIMIT, MAX_SEARCH_LIMIT, MAX_EXCERPT_CHARS, MAX_CALC_INPUTS = 100, 50, 4_000, 500
 
@@ -98,6 +104,18 @@ TOOL_DEFINITIONS: tuple[dict[str, object], ...] = (
                            "value": {"type": "string", "minLength": 1, "maxLength": 64},
                            "source_refs": {"type": "array", "items": {"type": "object"}}}}},
         "unit": {"type": "string", "maxLength": 32}, "precision": {"type": "integer", "minimum": 0, "maximum": 12}}, required=("operation", "inputs")),
+    _tool_spec("query_table", "Filter CSV/TSV source rows and optionally compute exact Decimal column aggregates.", {
+        "document_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "filters": {"type": "object"}, "aggregate_column": {"type": "string", "maxLength": 120},
+        "aggregate_op": {"type": "string", "enum": sorted(ALLOWED_TABLE_AGG_OPS)},
+        "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIST_LIMIT}}, required=("document_id",)),
+    _tool_spec("read_email_thread", "Read the full linked email thread containing an authorized email source.", {
+        "document_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 50}}, required=("document_id",)),
+    _tool_spec("read_transcript_window", "Read timestamped transcript cues within a start/end second range.", {
+        "document_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "start_seconds": {"type": "number", "minimum": 0}, "end_seconds": {"type": "number", "minimum": 0},
+        "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIST_LIMIT}}, required=("document_id",)),
 )
 
 def openai_tool_schemas() -> list[dict[str, object]]:
@@ -195,6 +213,80 @@ def run_calculation(operation: str, *, inputs: Sequence[Mapping[str, object]],
     return CalculationReceipt(receipt_id, operation, f"{expr} = {formatted}", formatted, unit, parsed)
 
 
+def _parse_table_rows(text: str) -> tuple[list[str], list[dict[str, str]]]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return [], []
+    if lines[0].startswith("Row ") and ": " in lines[0] and " | " in lines[0]:
+        def split_extracted(line: str) -> list[str]:
+            body = line.split(": ", 1)[1] if ": " in line else line
+            return [cell.split(": ", 1)[1].strip() if ": " in cell else cell.strip() for cell in body.split(" | ")]
+        headers = split_extracted(lines[0])
+        rows = [dict(zip(headers, split_extracted(line))) for line in lines[1:]]
+        return headers, rows
+    delim = "\t" if lines[0].count("\t") > lines[0].count(",") else ","
+    reader = csv.DictReader(io.StringIO(text), delimiter=delim)
+    return list(reader.fieldnames or ()), [{k: str(v or "").strip() for k, v in r.items() if k is not None} for r in reader]
+
+
+def query_table_rows(
+    document_id: str, source_name: str, text: str, *, filters: Mapping[str, object] | None = None,
+    aggregate_column: str = "", aggregate_op: str = "", limit: int = 50,
+    source_version_id: str = "", location: str = "Line 1", receipt_id: str = "calc-1",
+) -> tuple[dict[str, object], CalculationReceipt | None]:
+    """Filter CSV/TSV/extracted spreadsheet rows and compute exact Decimal aggregates."""
+    if aggregate_op and aggregate_op not in ALLOWED_TABLE_AGG_OPS:
+        raise AssistantToolError(f"Unsupported table aggregate operation: {aggregate_op!r}.")
+    columns, all_rows = _parse_table_rows(text)
+    if not columns:
+        raise AssistantToolError("Source does not contain a tabular header row.")
+    matched: list[dict[str, str]] = []
+    filter_map = dict(filters or {})
+    for row in all_rows:
+        keep = True
+        for col, cond in filter_map.items():
+            cell = str(row.get(col, "")).strip()
+            if isinstance(cond, Mapping):
+                num = _parse_decimal(cell, col) if cell else None
+                if num is None:
+                    keep = False; break
+                if "min" in cond and num < _parse_decimal(cond["min"], f"{col}.min"):
+                    keep = False; break
+                if "max" in cond and num > _parse_decimal(cond["max"], f"{col}.max"):
+                    keep = False; break
+            elif str(cond).strip().casefold() not in cell.casefold():
+                keep = False; break
+        if keep:
+            matched.append({k: str(v or "").strip() for k, v in row.items() if k is not None})
+    receipt: CalculationReceipt | None = None
+    ref = SourceRef(document_id, source_name, location, source_version_id)
+    if aggregate_op:
+        if aggregate_op == "count":
+            val = str(len(matched))
+            receipt = CalculationReceipt(receipt_id, "count", f"count({source_name}) = {val}", val, "rows",
+                                         (CalculationInput("matched_rows", val, (ref,)),))
+        else:
+            if not aggregate_column or aggregate_column not in columns:
+                raise AssistantToolError(f"Aggregate column {aggregate_column!r} not found in table.")
+            vals = [_parse_decimal(r.get(aggregate_column, ""), aggregate_column) for r in matched if r.get(aggregate_column, "")]
+            if not vals:
+                raise AssistantToolError(f"No numeric values matched for column {aggregate_column!r}.")
+            agg = sum(vals, Decimal(0)) if aggregate_op == "sum" else (min(vals) if aggregate_op == "min" else max(vals))
+            formatted = _format_decimal(agg, 6)
+            receipt = CalculationReceipt(
+                receipt_id, aggregate_op, f"{aggregate_op}({aggregate_column} over {len(vals)} rows) = {formatted}",
+                formatted, "", tuple(CalculationInput(f"row-{i}", _format_decimal(v, 6), (ref,)) for i, v in enumerate(vals[:50], 1)),
+            )
+    payload: dict[str, object] = {
+        "document_id": document_id, "source_name": source_name, "location": location,
+        "columns": columns, "matched_rows": len(matched),
+        "rows": matched[:limit], "truncated": len(matched) > limit,
+    }
+    if receipt is not None:
+        payload["calculation"] = asdict(receipt)
+    return payload, receipt
+
+
 class MatterToolRuntime:
     """Authorize, bound, invoke, and record read-only Case Assistant tool calls."""
 
@@ -241,6 +333,14 @@ class MatterToolRuntime:
                                           self._record_refs(refs), receipt))
         return payload
 
+    def _check_doc_scope(self, document_id: str) -> str:
+        doc_id = str(document_id or "").strip()
+        if not doc_id:
+            raise AssistantToolError("document_id is required.")
+        if self.allowed_document_ids is not None and doc_id not in self.allowed_document_ids:
+            raise AssistantAccessError("Requested source is outside the authorized scope.")
+        return doc_id
+
     def _dispatch(self, tool_name: str, args: dict[str, object]):
         if tool_name == "list_sources":
             offset, limit = _int_arg(args, "offset", 0, minimum=0), _int_arg(args, "limit", 50, minimum=1, maximum=MAX_LIST_LIMIT)
@@ -267,12 +367,8 @@ class MatterToolRuntime:
                      "hits": [{**asdict(h), "excerpt": h.excerpt[:MAX_EXCERPT_CHARS], "truncated": len(h.excerpt) > MAX_EXCERPT_CHARS} for h in hits]},
                     refs, None)
         if tool_name == "read_source":
-            document_id, start_page = str(args.get("document_id", "")).strip(), _int_arg(args, "start_page", 1, minimum=1)
+            document_id, start_page = self._check_doc_scope(str(args.get("document_id", ""))), _int_arg(args, "start_page", 1, minimum=1)
             end_page = None if args.get("end_page") is None else _int_arg(args, "end_page", start_page, minimum=start_page)
-            if not document_id:
-                raise AssistantToolError("read_source requires document_id.")
-            if self.allowed_document_ids is not None and document_id not in self.allowed_document_ids:
-                raise AssistantAccessError("Requested source is outside the authorized scope.")
             result = self.backend.read_source(self.matter_id, document_id, start_page=start_page, end_page=end_page)
             if result is None:
                 raise AssistantAccessError("Source not found in this matter.")
@@ -290,6 +386,54 @@ class MatterToolRuntime:
                 raise AssistantToolError(f"Unsupported case knowledge section: {section!r}.")
             limit = _int_arg(args, "limit", 50, minimum=1, maximum=100)
             return dict(self.backend.get_case_knowledge(self.matter_id, section=section, limit=limit)), (), None
+        if tool_name == "query_table":
+            document_id = self._check_doc_scope(str(args.get("document_id", "")))
+            limit = _int_arg(args, "limit", 50, minimum=1, maximum=MAX_LIST_LIMIT)
+            result = self.backend.read_source(self.matter_id, document_id, start_page=1, end_page=20)
+            if result is None or not result.pages:
+                raise AssistantAccessError("Table source not found in this matter.")
+            full_text = "\n".join(p.text for p in result.pages)
+            first = result.pages[0]
+            receipt_id = f"calc-{len(self._receipts) + 1}"
+            payload, receipt = query_table_rows(
+                result.document_id, result.source_name, full_text,
+                filters=args.get("filters") if isinstance(args.get("filters"), Mapping) else None,
+                aggregate_column=str(args.get("aggregate_column", "")).strip(),
+                aggregate_op=str(args.get("aggregate_op", "")).strip(), limit=limit,
+                source_version_id=first.source_version_id, location=first.location, receipt_id=receipt_id,
+            )
+            if receipt is not None:
+                self._receipts[receipt_id] = receipt
+            refs = [SourceRef(result.document_id, result.source_name, p.location, p.source_version_id, p.excerpt_digest) for p in result.pages]
+            return payload, refs, receipt
+        if tool_name == "read_email_thread":
+            document_id = self._check_doc_scope(str(args.get("document_id", "")))
+            limit = _int_arg(args, "limit", 25, minimum=1, maximum=50)
+            handler = getattr(self.backend, "read_email_thread", None)
+            if not callable(handler):
+                raise AssistantToolError("Email thread traversal is not supported by this backend.")
+            data = handler(self.matter_id, document_id, limit=limit, allowed_document_ids=self.allowed_document_ids)
+            if data is None:
+                raise AssistantAccessError("Email source not found in this matter.")
+            refs = [SourceRef(m["document_id"], m["source_name"], m["location"], m.get("source_version_id", ""))
+                    for m in data.get("messages", ()) if isinstance(m, Mapping)]
+            return dict(data), refs, None
+        if tool_name == "read_transcript_window":
+            document_id = self._check_doc_scope(str(args.get("document_id", "")))
+            start_s = float(args.get("start_seconds", 0.0))
+            end_s = None if args.get("end_seconds") is None else float(args["end_seconds"])
+            if start_s < 0 or (end_s is not None and end_s < start_s):
+                raise AssistantToolError("start_seconds must be >= 0 and end_seconds >= start_seconds.")
+            limit = _int_arg(args, "limit", 50, minimum=1, maximum=MAX_LIST_LIMIT)
+            handler = getattr(self.backend, "read_transcript_window", None)
+            if not callable(handler):
+                raise AssistantToolError("Transcript window reading is not supported by this backend.")
+            data = handler(self.matter_id, document_id, start_seconds=start_s, end_seconds=end_s, limit=limit)
+            if data is None:
+                raise AssistantAccessError("Transcript source not found in this matter.")
+            refs = [SourceRef(data["document_id"], data["source_name"], c["location"], c.get("source_version_id", ""))
+                    for c in data.get("cues", ()) if isinstance(c, Mapping)]
+            return dict(data), refs, None
         receipt_id = f"calc-{len(self._receipts) + 1}"
         precision = _int_arg(args, "precision", 6, minimum=0, maximum=12)
         receipt = run_calculation(str(args.get("operation", "")), inputs=args.get("inputs", ()),
