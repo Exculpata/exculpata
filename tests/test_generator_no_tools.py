@@ -188,21 +188,104 @@ def test_t5_existing_builders_send_valid_requests(builder):
         assert not {"tool_calls", "function_call"}.intersection(message)
 
 
-def _uses_allowlisted_assistant_transport(tree: ast.AST) -> bool:
-    for node in ast.walk(tree):
+def _validated_assistant_payload_names(fn: ast.AST) -> set[str]:
+    """Return payload variable names routed directly into _bounded_assistant_request(..., payload_validator=validate_assistant_tool_payload)."""
+    validated: set[str] = set()
+    other_transports = {"_bounded_json_request", "_urllib_transport", "urlopen", "open"}
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
+        if callee in other_transports:
+            return set()
+        if callee == "_bounded_assistant_request" and any(
+            kw.arg == "payload_validator" and isinstance(kw.value, ast.Name)
+            and kw.value.id == "validate_assistant_tool_payload"
+            for kw in node.keywords
+        ):
+            payload_arg = node.args[1] if len(node.args) >= 2 else next((kw.value for kw in node.keywords if kw.arg == "payload"), None)
+            if isinstance(payload_arg, ast.Name):
+                validated.add(payload_arg.id)
+    return validated
+
+
+def _find_t6_violations(source: str, label: str) -> list[str]:
+    legacy_forbidden = {"functions", "function_call", "parallel_tool_calls"}
+    tree = ast.parse(source)
+    violations: list[str] = []
+
+    def _keys_for_node(node: ast.AST) -> list[str]:
+        if isinstance(node, ast.Dict):
+            return [k.value for k in node.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+        if isinstance(node, ast.keyword) and node.arg is not None:
+            return [node.arg]
+        if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
+            return [node.slice.value]
+        return []
+
+    def _check_subtree(node: ast.AST, allowed_payload_vars: set[str]) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            fn_allowed = _validated_assistant_payload_names(node)
+            for stmt in node.body:
+                _check_subtree(stmt, fn_allowed)
+            return
+        if isinstance(node, ast.Assign):
+            targets = [t for t in node.targets if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)]
+            for target in targets:
+                slice_key = target.slice.value if isinstance(target.slice, ast.Constant) and isinstance(target.slice.value, str) else ""
+                if slice_key in FORBIDDEN_KEYS:
+                    if slice_key in legacy_forbidden or target.value.id not in allowed_payload_vars:
+                        violations.append(f"{label}:{target.lineno}")
+            # Also handle tuple-unpacking target like: payload["tools"], payload["tool_choice"] = ...
+            for target in node.targets:
+                if isinstance(target, (ast.Tuple, ast.List)):
+                    for elt in target.elts:
+                        if isinstance(elt, ast.Subscript) and isinstance(elt.value, ast.Name):
+                            sk = elt.slice.value if isinstance(elt.slice, ast.Constant) and isinstance(elt.slice.value, str) else ""
+                            if sk in FORBIDDEN_KEYS and (sk in legacy_forbidden or elt.value.id not in allowed_payload_vars):
+                                violations.append(f"{label}:{elt.lineno}")
+            assigned_var = node.targets[0].id if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) else None
+            if assigned_var and assigned_var in allowed_payload_vars and isinstance(node.value, ast.Dict):
+                for key in _keys_for_node(node.value):
+                    if key in legacy_forbidden:
+                        violations.append(f"{label}:{node.value.lineno}")
+                return
+            _check_subtree(node.value, allowed_payload_vars)
+            return
+        if isinstance(node, ast.AnnAssign):
+            assigned_var = node.target.id if isinstance(node.target, ast.Name) else None
+            if assigned_var and assigned_var in allowed_payload_vars and isinstance(node.value, ast.Dict):
+                for key in _keys_for_node(node.value):
+                    if key in legacy_forbidden:
+                        violations.append(f"{label}:{node.value.lineno}")
+                return
+            if node.value is not None:
+                _check_subtree(node.value, allowed_payload_vars)
+            return
         if isinstance(node, ast.Call):
             callee = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
-            if callee == "_bounded_assistant_request" and any(
-                kw.arg == "payload_validator" and isinstance(kw.value, ast.Name)
-                and kw.value.id == "validate_assistant_tool_payload"
-                for kw in node.keywords
-            ):
-                return True
-    return False
+            for arg in node.args:
+                _check_subtree(arg, allowed_payload_vars)
+            for kw in node.keywords:
+                if kw.arg in FORBIDDEN_KEYS and not (callee == "complete_turn" and kw.arg == "tools"):
+                    violations.append(f"{label}:{kw.lineno}")
+                _check_subtree(kw.value, allowed_payload_vars)
+            _check_subtree(node.func, allowed_payload_vars)
+            return
+        for key in _keys_for_node(node):
+            if key in FORBIDDEN_KEYS:
+                if not (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
+                        and node.value.id in allowed_payload_vars and key not in legacy_forbidden):
+                    violations.append(f"{label}:{node.lineno}")
+        for child in ast.iter_child_nodes(node):
+            _check_subtree(child, allowed_payload_vars)
+
+    for top in tree.body:
+        _check_subtree(top, set())
+    return violations
 
 
 def test_t6_chat_request_construction_has_no_tool_keys():
-    legacy_forbidden = {"functions", "function_call", "parallel_tool_calls"}
     checked, violations = [], []
     for directory in (ROOT / "src", ROOT / "scripts"):
         for path in sorted(directory.rglob("*.py")):
@@ -211,18 +294,25 @@ def test_t6_chat_request_construction_has_no_tool_keys():
                 continue
             rel = path.relative_to(ROOT).as_posix()
             checked.append(rel)
-            tree = ast.parse(source)
-            validated_assistant = _uses_allowlisted_assistant_transport(tree)
-            disallowed = legacy_forbidden if validated_assistant else FORBIDDEN_KEYS
-            for node in ast.walk(tree):
-                keys = ([key.value for key in node.keys if isinstance(key, ast.Constant)]
-                        if isinstance(node, ast.Dict) else [node.arg] if isinstance(node, ast.keyword) else [])
-                if any(key in disallowed for key in keys):
-                    violations.append(f"{rel}:{node.lineno}")
+            violations.extend(_find_t6_violations(source, rel))
     assert "src/case_intelligence/generation.py" in checked
     assert "src/case_intelligence/generator_schema.py" in checked
     assert "src/case_intelligence/case_assistant.py" in checked
     assert violations == []
+
+
+def test_t6_rejects_unvalidated_tool_payload_even_with_unused_validated_call():
+    synthetic_bypass = """
+def unused_ok():
+    payload = {"model": "m", "messages": []}
+    payload["tools"] = []
+    return _bounded_assistant_request("http://127.0.0.1/v1/chat/completions", payload, payload_validator=validate_assistant_tool_payload)
+
+def unvalidated_path():
+    bad = {"model": "m", "messages": [], "tools": [{"type": "function", "function": {"name": "run_shell"}}]}
+    return bad
+"""
+    assert _find_t6_violations(synthetic_bypass, "synthetic.py") != []
 
 
 def qualified_name(node, aliases):

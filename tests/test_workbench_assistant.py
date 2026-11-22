@@ -99,3 +99,132 @@ def test_workbench_case_assistant_end_to_end_http_and_trace_rendering(tmp_path, 
         backend = WorkbenchToolBackend(app.state.workbench, "unauthorized-actor")
         matter = app.state.workbench.workspace.get_matter(slug, "development-taylor-morgan")
         assert backend.authorize(matter.matter_id, "unauthorized-actor") is False
+
+
+class _UnsupportedSummaryAssistantClient:
+    available = True
+
+    def __init__(self) -> None:
+        self.turn = 0
+        self.seen_notes: list[object] = []
+
+    def complete_turn(self, messages, *, tools):
+        self.turn += 1
+        if self.turn == 1:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("u1", "search_discovery", {"query": "bicycle", "mode": "exact", "limit": 5}),
+                AssistantModelCall("u2", "get_case_knowledge", {"section": "notes", "limit": 10}),
+            ))
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        hit = next(h for m in tool_msgs for h in m.get("hits", ()))
+        self.seen_notes = next((m.get("notes", []) for m in tool_msgs if "notes" in m), [])
+        cite = {k: hit[k] for k in ("document_id", "source_name", "location", "source_version_id")}
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "Unsupported 88.88% ownership summary.",
+            "findings": [
+                {"text": "The memo references a red bicycle.", "citations": [cite], "calculation_ids": []},
+                {"text": "Unsupported 88.88% ownership claim.", "citations": [cite], "calculation_ids": []},
+            ],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
+
+
+def _minimal_partial_pdf() -> bytes:
+    """Build a valid 3-page PDF where page 2 is blank and pages 1 and 3 carry text."""
+    import io
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    writer = PdfWriter()
+    font = DictionaryObject({
+        NameObject("/Type"): NameObject("/Font"),
+        NameObject("/Subtype"): NameObject("/Type1"),
+        NameObject("/BaseFont"): NameObject("/Helvetica"),
+    })
+    font_ref = writer._add_object(font)
+    for text in ("Physical page one text", "", "Physical page three text"):
+        page = writer.add_blank_page(width=612, height=792)
+        if text:
+            page[NameObject("/Resources")] = DictionaryObject({
+                NameObject("/Font"): DictionaryObject({NameObject("/F1"): font_ref}),
+            })
+            stream = DecodedStreamObject()
+            stream.set_data(f"BT /F1 12 Tf 36 750 Td ({text}) Tj ET".encode("ascii"))
+            page[NameObject("/Contents")] = writer._add_object(stream)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def test_pr587_regressions_state_scoped_exact_summary_knowledge_notes_and_partial_pdf(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASE_INTELLIGENCE_CASE_ASSISTANT", "1")
+    assistant_client = _UnsupportedSummaryAssistantClient()
+    app = create_workbench_app(tmp_path / "runtime", generator=assistant_client, auth_mode="test")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Regression Matter")
+        all_files = [("files", (f"doc-{i:02d}.txt", f"commonmarker red bicycle note {i}.\n".encode(), "text/plain")) for i in range(1, 27)]
+        all_files.append(("files", ("partial-pages.pdf", _minimal_partial_pdf(), "application/pdf")))
+        for idx in range(0, len(all_files), 9):
+            assert client.post(f"/matters/{slug}/uploads", files=all_files[idx:idx + 9]).status_code == 200
+
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        backend = WorkbenchToolBackend(bench, actor)
+
+        # Save a matter note, entity, and assertion via supported workbench services.
+        bench.workspace.create_notebook_item(
+            matter.matter_id, actor, item_type="note", title="Private working note",
+            body="Do not expose when notes disabled.", status="confirmed",
+        )
+        exact_hit = backend.search_discovery(matter.matter_id, '"bicycle"', mode="exact", limit=1).hits[0]
+        support_token = backend.citations_by_key[(exact_hit.document_id, exact_hit.location)].support_token
+        entity = bench.entity_service(matter).create(
+            matter.matter_id, actor, display_name="Jordan Ellis", support=support_token,
+        )
+        bench.assertion_service(matter).create(
+            matter.matter_id, actor, support=support_token, attributed_to="Synthetic Report",
+            roles=[{"entity_id": entity["entity_id"], "expected_revision": 1, "role": "subject"}],
+            title="Phone call timing", statement="Call placed at 09:15 before market open.",
+            raw_date="2024-09-10",
+        )
+
+        # 1. Ready sources are classified as ready, not failed.
+        ready_rows, ready_total = backend.list_sources(matter.matter_id, status="ready", limit=50)
+        failed_rows, failed_total = backend.list_sources(matter.matter_id, status="failed", limit=50)
+        assert ready_total == 27 and failed_total == 0 and failed_rows == []
+
+        # 2. Scoped exact search finds the 26th matching document beyond the first 25.
+        last_doc = next(r for r in ready_rows if r.source_name == "doc-26.txt")
+        scoped_resp = backend.search_discovery(
+            matter.matter_id, '"commonmarker"', mode="exact", limit=5,
+            document_ids=frozenset({last_doc.document_id}),
+        )
+        assert len(scoped_resp.hits) == 1 and scoped_resp.hits[0].document_id == last_doc.document_id
+
+        # 3. Knowledge tool maps actual service fields (display_name, statement, raw_date).
+        knowledge = backend.get_case_knowledge(matter.matter_id, section="all", limit=10)
+        assert knowledge["entities"][0]["name"] == "Jordan Ellis"
+        assert "09:15" in str(knowledge["assertions"][0]["summary"])
+        assert knowledge["assertions"][0]["date"] == "2024-09-10"
+
+        # 4. Partial PDF preserves physical page numbers (page 2 blank -> empty; page 3 -> Page 3).
+        pdf_doc = next(r for r in ready_rows if r.source_name == "partial-pages.pdf")
+        p2 = backend.read_source(matter.matter_id, pdf_doc.document_id, start_page=2, end_page=2)
+        assert p2 is not None and p2.total_pages == 3 and p2.pages == ()
+        p3 = backend.read_source(matter.matter_id, pdf_doc.document_id, start_page=3, end_page=3)
+        assert p3 is not None and p3.total_pages == 3 and len(p3.pages) == 1
+        assert p3.pages[0].page_number == 3 and "Physical page three text" in p3.pages[0].text
+
+        # 5 & 6. HTTP run with default "Do not use case notes" hides unselected notes
+        #        AND keeps unverified summary out of rendered/persisted answer text.
+        workspace = client.get(f"/matters/{slug}")
+        conv_id = re.search(r'name="conversation" value="([^"]+)"', workspace.text).group(1)
+        _, page = _answer_and_wait(client, slug, conv_id, "What does the memo say about the bicycle?")
+        assert page.status_code == 200
+        assert "red bicycle" in page.text
+        assert "88.88%" not in page.text
+        assert assistant_client.seen_notes == []
+
