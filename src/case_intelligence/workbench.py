@@ -16838,6 +16838,8 @@ def create_workbench_app(
     install_deeper_investigation(templates, bench=bench, auth_context=auth_context)
     from .briefing_home import install_briefing_home
     install_briefing_home(templates, bench=bench, auth_context=auth_context, readiness_for=matter_readiness_projection)
+    from .workbench_assistant import install_assistant_proposal_routes
+    install_assistant_proposal_routes(app, bench=bench, authorized_matter=authorized_matter, require_csrf=require_csrf, auth_context=auth_context)
     return app
 
 
