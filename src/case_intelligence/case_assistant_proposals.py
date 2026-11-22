@@ -69,6 +69,31 @@ def _resolve_citations(raw_cites: object, inspected: Mapping[tuple[str, str], So
     return tuple(resolved[:12])
 
 
+def _collect_calc_premise_refs(calc_ids: Sequence[str], receipts: Mapping[str, object]) -> list[SourceRef]:
+    from .case_assistant import _norm_num
+
+    refs: list[SourceRef] = []
+    seen: set[str] = set()
+    by_result: dict[str, list[str]] = {}
+    for rid, rec in receipts.items():
+        by_result.setdefault(_norm_num(rec.result), []).append(rid)
+    queue = list(calc_ids)
+    while queue:
+        cid = queue.pop(0)
+        if cid in seen:
+            continue
+        rec = receipts.get(cid)
+        if rec is None:
+            continue
+        seen.add(cid)
+        for inp in rec.inputs:
+            refs.extend(inp.source_refs)
+            for upstream_id in by_result.get(_norm_num(inp.value), ()):
+                if upstream_id not in seen:
+                    queue.append(upstream_id)
+    return refs
+
+
 def build_verified_proposals(
     result: AssistantInvestigationResult,
     *,
@@ -81,10 +106,13 @@ def build_verified_proposals(
 
     def add(category: str, title: str, detail: str, refs: Sequence[SourceRef],
             *, date_label: str = "", calc_ids: Sequence[str] = ()) -> None:
-        if category not in PROPOSAL_CATEGORIES or not refs or not title.strip():
+        if category not in PROPOSAL_CATEGORIES or not title.strip():
             return
-        unique_refs = tuple(dict.fromkeys(refs))[:12]
         valid_calcs = tuple(cid for cid in calc_ids if cid in result.receipts)
+        combined_refs = (*refs, *_collect_calc_premise_refs(valid_calcs, result.receipts))
+        if not combined_refs:
+            return
+        unique_refs = tuple(dict.fromkeys(combined_refs))[:12]
         pid = _proposal_id(category, title.strip(), unique_refs)
         if pid in seen_ids:
             return

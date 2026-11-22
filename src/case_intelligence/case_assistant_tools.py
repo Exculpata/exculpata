@@ -129,8 +129,9 @@ TOOL_DEFINITIONS: tuple[dict[str, object], ...] = (
         "filters": {"type": "object"}, "aggregate_column": {"type": "string", "maxLength": 120},
         "aggregate_op": {"type": "string", "enum": sorted(ALLOWED_TABLE_AGG_OPS)},
         "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIST_LIMIT}}, required=("document_id",)),
-    _tool_spec("read_email_thread", "Read the full linked email thread containing an authorized email source.", {
+    _tool_spec("read_email_thread", "Read the linked email thread containing an authorized email source with pagination.", {
         "document_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "offset": {"type": "integer", "minimum": 0},
         "limit": {"type": "integer", "minimum": 1, "maximum": 50}}, required=("document_id",)),
     _tool_spec("read_transcript_window", "Read timestamped transcript cues within a start/end second range.", {
         "document_id": {"type": "string", "minLength": 1, "maxLength": 128},
@@ -308,41 +309,64 @@ def _parse_extracted_cells(line: str) -> list[tuple[str, str]] | None:
     return cells if cells else None
 
 
-def _parse_table_rows(text: str) -> tuple[list[str], list[dict[str, str]]]:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines:
+def _parse_table_sections(
+    sections: Sequence[tuple[str, str, str]],
+) -> tuple[list[str], list[tuple[dict[str, str], str, str]]]:
+    tagged_lines: list[tuple[str, str, str]] = []
+    for loc, ver, text in sections:
+        for raw in text.splitlines():
+            stripped = raw.strip()
+            if stripped:
+                tagged_lines.append((stripped, loc, ver))
+    if not tagged_lines:
         return [], []
-    header_cells = _parse_extracted_cells(lines[0])
+    first_line = tagged_lines[0][0]
+    header_cells = _parse_extracted_cells(first_line)
     if header_cells is not None:
         coord_headers = [(coord, col) for coord, col in header_cells if col]
         headers = [col for _, col in coord_headers]
-        rows: list[dict[str, str]] = []
-        for line in lines[1:]:
+        rows: list[tuple[dict[str, str], str, str]] = []
+        for line, loc, ver in tagged_lines[1:]:
             parsed = _parse_extracted_cells(line)
             if parsed is None:
-                continue
+                raise AssistantToolError(
+                    "Extracted table row contains ambiguous cell delimiters and cannot be aggregated reliably."
+                )
             by_coord = dict(parsed)
-            rows.append({col: by_coord.get(coord, "") for coord, col in coord_headers})
+            rows.append(({col: by_coord.get(coord, "") for coord, col in coord_headers}, loc, ver))
         return headers, rows
-    delim = "\t" if lines[0].count("\t") > lines[0].count(",") else ","
-    reader = csv.DictReader(io.StringIO(text), delimiter=delim)
-    return list(reader.fieldnames or ()), [{k: str(v or "").strip() for k, v in r.items() if k is not None} for r in reader]
+    delim = "\t" if first_line.count("\t") > first_line.count(",") else ","
+    header_reader = csv.reader(io.StringIO(first_line), delimiter=delim)
+    headers = [h.strip() for h in next(header_reader, []) if h.strip()]
+    rows = []
+    for line, loc, ver in tagged_lines[1:]:
+        vals = next(csv.reader(io.StringIO(line), delimiter=delim), [])
+        row = {col: (vals[idx].strip() if idx < len(vals) else "") for idx, col in enumerate(headers)}
+        rows.append((row, loc, ver))
+    return headers, rows
+
+
+def _parse_table_rows(text: str) -> tuple[list[str], list[dict[str, str]]]:
+    cols, tagged = _parse_table_sections([("Line 1", "", text)])
+    return cols, [row for row, _, _ in tagged]
 
 
 def query_table_rows(
-    document_id: str, source_name: str, text: str, *, filters: Mapping[str, object] | None = None,
+    document_id: str, source_name: str, text: str = "", *, filters: Mapping[str, object] | None = None,
     aggregate_column: str = "", aggregate_op: str = "", limit: int = 50,
     source_version_id: str = "", location: str = "Line 1", receipt_id: str = "calc-1",
+    sections: Sequence[tuple[str, str, str]] | None = None,
 ) -> tuple[dict[str, object], CalculationReceipt | None]:
-    """Filter CSV/TSV/extracted spreadsheet rows and compute exact Decimal aggregates."""
+    """Filter CSV/TSV/extracted spreadsheet rows and compute exact Decimal aggregates with per-section provenance."""
     if aggregate_op and aggregate_op not in ALLOWED_TABLE_AGG_OPS:
         raise AssistantToolError(f"Unsupported table aggregate operation: {aggregate_op!r}.")
-    columns, all_rows = _parse_table_rows(text)
+    section_list = list(sections) if sections is not None else [(location, source_version_id, text)]
+    columns, all_rows = _parse_table_sections(section_list)
     if not columns:
         raise AssistantToolError("Source does not contain a tabular header row.")
-    matched: list[dict[str, str]] = []
+    matched: list[tuple[dict[str, str], str, str]] = []
     filter_map = dict(filters or {})
-    for row in all_rows:
+    for row, row_loc, row_ver in all_rows:
         keep = True
         for col, cond in filter_map.items():
             cell = str(row.get(col, "")).strip()
@@ -357,40 +381,64 @@ def query_table_rows(
             elif str(cond).strip().casefold() not in cell.casefold():
                 keep = False; break
         if keep:
-            matched.append({k: str(v or "").strip() for k, v in row.items() if k is not None})
+            cleaned = {k: str(v or "").strip() for k, v in row.items() if k is not None}
+            matched.append((cleaned, row_loc, row_ver))
     receipt: CalculationReceipt | None = None
-    ref = SourceRef(document_id, source_name, location, source_version_id)
     if aggregate_op:
         if aggregate_op == "count":
+            if len(matched) > MAX_CALC_INPUTS:
+                raise AssistantToolError(
+                    f"Row count over {len(matched)} matched rows exceeds auditable receipt limit ({MAX_CALC_INPUTS}); narrow filters."
+                )
             val = str(len(matched))
-            receipt = CalculationReceipt(receipt_id, "count", f"count({source_name}) = {val}", val, "rows",
-                                         (CalculationInput("matched_rows", val, (ref,)),))
+            count_inputs = tuple(
+                CalculationInput(f"row-{i}", "1", (SourceRef(document_id, source_name, rloc, rver),))
+                for i, (_, rloc, rver) in enumerate(matched, 1)
+            )
+            if not count_inputs:
+                first_loc, first_ver = section_list[0][0], section_list[0][1]
+                count_inputs = (CalculationInput("matched_rows", "0", (SourceRef(document_id, source_name, first_loc, first_ver),)),)
+            receipt = CalculationReceipt(receipt_id, "count", f"count({source_name}) = {val}", val, "rows", count_inputs)
         else:
             if not aggregate_column or aggregate_column not in columns:
                 raise AssistantToolError(f"Aggregate column {aggregate_column!r} not found in table.")
-            vals = [_parse_decimal(r.get(aggregate_column, ""), aggregate_column) for r in matched if r.get(aggregate_column, "")]
-            if not vals:
+            val_rows = [
+                (_parse_decimal(r.get(aggregate_column, ""), aggregate_column), rloc, rver)
+                for r, rloc, rver in matched if r.get(aggregate_column, "")
+            ]
+            if not val_rows:
                 raise AssistantToolError(f"No numeric values matched for column {aggregate_column!r}.")
+            if len(val_rows) > MAX_CALC_INPUTS:
+                raise AssistantToolError(
+                    f"Aggregate over {len(val_rows)} values exceeds auditable receipt limit ({MAX_CALC_INPUTS}); narrow filters."
+                )
             with localcontext() as ctx:
                 ctx.prec = _CALC_PRECISION
                 if aggregate_op == "sum":
                     agg = Decimal(0)
-                    for v in vals:
+                    for v, _, _ in val_rows:
                         agg += v
                 elif aggregate_op == "min":
-                    agg = min(vals)
+                    agg = min(v for v, _, _ in val_rows)
                 else:
-                    agg = max(vals)
+                    agg = max(v for v, _, _ in val_rows)
             formatted = _format_exact_decimal(agg)
             receipt = CalculationReceipt(
-                receipt_id, aggregate_op, f"{aggregate_op}({aggregate_column} over {len(vals)} rows) = {formatted}",
-                formatted, "", tuple(CalculationInput(f"row-{i}", _format_exact_decimal(v), (ref,)) for i, v in enumerate(vals[:50], 1)),
+                receipt_id, aggregate_op, f"{aggregate_op}({aggregate_column} over {len(val_rows)} rows) = {formatted}",
+                formatted, "", tuple(
+                    CalculationInput(f"row-{i}", _format_exact_decimal(v), (SourceRef(document_id, source_name, rloc, rver),))
+                    for i, (v, rloc, rver) in enumerate(val_rows, 1)
+                ),
             )
+    primary_loc = matched[0][1] if matched else section_list[0][0]
+    primary_ver = matched[0][2] if matched else section_list[0][1]
+    matched_locations = list(dict.fromkeys(rloc for _, rloc, _ in matched))
+    out_rows = [{**row, "_location": rloc, "_source_version_id": rver} for row, rloc, rver in matched[:limit]]
     payload: dict[str, object] = {
-        "document_id": document_id, "source_name": source_name, "location": location,
-        "source_version_id": source_version_id,
+        "document_id": document_id, "source_name": source_name, "location": primary_loc,
+        "source_version_id": primary_ver, "locations": matched_locations,
         "columns": columns, "total_rows": len(all_rows), "matched_rows": len(matched),
-        "rows": matched[:limit], "truncated": len(matched) > limit,
+        "rows": out_rows, "truncated": len(matched) > limit,
     }
     if receipt is not None:
         payload["calculation"] = asdict(receipt)
@@ -636,15 +684,14 @@ class MatterToolRuntime:
                 raise AssistantAccessError("Table source not found in this matter.")
             if result.total_pages > 500 or result.truncated or len(result.pages) < result.total_pages:
                 raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
-            full_text = "\n".join(p.text for p in result.pages)
-            first = result.pages[0]
+            sections = [(p.location, p.source_version_id, p.text) for p in result.pages]
             receipt_id = f"calc-{len(self._receipts) + 1}"
             payload, receipt = query_table_rows(
-                result.document_id, result.source_name, full_text,
+                result.document_id, result.source_name,
                 filters=args.get("filters") if isinstance(args.get("filters"), Mapping) else None,
                 aggregate_column=str(args.get("aggregate_column", "")).strip(),
                 aggregate_op=str(args.get("aggregate_op", "")).strip(), limit=limit,
-                source_version_id=first.source_version_id, location=first.location, receipt_id=receipt_id,
+                receipt_id=receipt_id, sections=sections,
             )
             if receipt is not None:
                 self._receipts[receipt_id] = receipt
@@ -652,11 +699,15 @@ class MatterToolRuntime:
             return payload, refs, receipt
         if tool_name == "read_email_thread":
             document_id = self._check_doc_scope(str(args.get("document_id", "")))
+            offset = None if "offset" not in args or args.get("offset") is None else _int_arg(args, "offset", 0, minimum=0)
             limit = _int_arg(args, "limit", 25, minimum=1, maximum=50)
             handler = getattr(self.backend, "read_email_thread", None)
             if not callable(handler):
                 raise AssistantToolError("Email thread traversal is not supported by this backend.")
-            data = handler(self.matter_id, document_id, limit=limit, allowed_document_ids=self.allowed_document_ids)
+            data = handler(
+                self.matter_id, document_id, limit=limit, offset=offset,
+                allowed_document_ids=self.allowed_document_ids,
+            )
             if data is None:
                 raise AssistantAccessError("Email source not found in this matter.")
             refs: list[SourceRef] = []

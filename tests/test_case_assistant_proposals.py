@@ -150,3 +150,42 @@ def test_long_unit_proposal_saves_with_bounded_notebook_preview(tmp_path, monkey
         saved = client.post(actions[0], data={"csrf_token": csrf}, headers={"Accept": "application/json"})
         assert saved.status_code == 200 and saved.json()["created"] is True
 
+
+def test_pr588_round2_frozen_notebook_context_and_calculation_premise_retention(tmp_path):
+    from case_intelligence.case_assistant_tools import CalculationInput, CalculationReceipt
+    from case_intelligence.store_records import AnswerNotebookContextRecord
+
+    # 1. Proposals retain transitive calculation-premise citations even when finding cites only denominator.
+    denom = SourceRef("doc-filing", "filing.txt", "Page 1", "v1")
+    num_a = SourceRef("doc-stmt-a", "stmt-a.txt", "Page 1", "v1")
+    r1 = CalculationReceipt("calc-1", "sum", "a=50", "50", "shares", (CalculationInput("a", "50", (num_a,)),))
+    r2 = CalculationReceipt("calc-2", "percent", "50/400", "12.5", "%", (
+        CalculationInput("combined", "50", ()), CalculationInput("outstanding", "400", (denom,)),
+    ))
+    res = AssistantInvestigationResult(
+        answerable=True, summary="12.5%",
+        findings=(AssistantFinding("Holdings reached 12.5%.", (denom,), ("calc-2",)),),
+        omitted_findings=0, gaps=(), competing_accounts=(),
+        citations=(denom, num_a), receipts={"calc-1": r1, "calc-2": r2}, trace=(), turns_used=2, elapsed_ms=5,
+    )
+    props = build_verified_proposals(res)
+    assert props and {r.document_id for r in props[0].citations} == {"doc-filing", "doc-stmt-a"}
+
+    # 2. Frozen AnswerNotebookContextRecord (using notebook_item_id) works in get_case_knowledge without AttributeError.
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Frozen Context Matter")
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        frozen = AnswerNotebookContextRecord(
+            notebook_item_id="nb-frozen-1", item_type="fact", status="confirmed",
+            title="Frozen theory", body="Theory body", date_label="2024-09-01",
+            content_digest="abc",
+        )
+        backend = WorkbenchToolBackend(bench, actor, allowed_notebook_items=(frozen,))
+        out = backend.get_case_knowledge(matter.matter_id, section="all", limit=10)
+        assert out["case_theory"][0]["item_id"] == "nb-frozen-1"
+        assert out["timeline"][0]["item_id"] == "nb-frozen-1"
+
+

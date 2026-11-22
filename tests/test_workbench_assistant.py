@@ -228,3 +228,75 @@ def test_pr587_regressions_state_scoped_exact_summary_knowledge_notes_and_partia
         assert "88.88%" not in page.text
         assert assistant_client.seen_notes == []
 
+        # 7. Hybrid search discloses its top-20 ranked bound (has_more=True) and directs offset>=20 to mode='exact'.
+        import pytest
+        from case_intelligence.case_assistant_tools import AssistantToolError
+        hyb_p1 = backend.search_discovery(matter.matter_id, "commonmarker bicycle", mode="hybrid", limit=20, offset=0)
+        assert len(hyb_p1.hits) == 20 and hyb_p1.has_more is True
+        with pytest.raises(AssistantToolError):
+            backend.search_discovery(matter.matter_id, "commonmarker bicycle", mode="hybrid", limit=20, offset=20)
+
+        # 8. ExactSearchUnavailable raises AssistantToolError rather than returning fake zero matches.
+        from case_intelligence.exact_search_results import ExactScanPolicy, ReferenceExactSearchBackend
+        orig_backend = bench.exact_search_backend
+        bench.exact_search_backend = ReferenceExactSearchBackend(ExactScanPolicy(max_documents=1))
+        try:
+            with pytest.raises(AssistantToolError):
+                backend.search_discovery(matter.matter_id, '"commonmarker"', mode="exact", limit=5)
+        finally:
+            bench.exact_search_backend = orig_backend
+
+
+def _four_page_matching_pdf() -> bytes:
+    import io
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    writer = PdfWriter()
+    font = DictionaryObject({
+        NameObject("/Type"): NameObject("/Font"),
+        NameObject("/Subtype"): NameObject("/Type1"),
+        NameObject("/BaseFont"): NameObject("/Helvetica"),
+    })
+    font_ref = writer._add_object(font)
+    for n in range(1, 5):
+        page = writer.add_blank_page(width=612, height=792)
+        page[NameObject("/Resources")] = DictionaryObject({
+            NameObject("/Font"): DictionaryObject({NameObject("/F1"): font_ref}),
+        })
+        stream = DecodedStreamObject()
+        stream.set_data(f"BT /F1 12 Tf 36 750 Td (quadmatch page {n} fact) Tj ET".encode("ascii"))
+        page[NameObject("/Contents")] = writer._add_object(stream)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def test_pr587_round2_four_page_exact_and_large_unit_compact_citations(tmp_path, monkeypatch):
+    monkeypatch.setenv("CASE_INTELLIGENCE_CASE_ASSISTANT", "1")
+    assistant_client = _UnsupportedSummaryAssistantClient()
+    app = create_workbench_app(tmp_path / "runtime", generator=assistant_client, auth_mode="test")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Compact Citation Matter")
+        huge_txt = ("bicycle " + ("a" * 58_500) + "\n" + "bicycle " + ("b" * 58_500) + "\n").encode("utf-8")
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("quad.pdf", _four_page_matching_pdf(), "application/pdf")),
+            ("files", ("huge.txt", huge_txt, "text/plain")),
+        ]).status_code == 200
+
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        backend = WorkbenchToolBackend(bench, actor)
+
+        # All 4 matching PDF pages are returned beyond the 3-unit exact-search preview cap.
+        quad = backend.search_discovery(matter.matter_id, '"quadmatch"', mode="exact", limit=10)
+        assert quad.total_matches == 4 and len(quad.hits) == 4 and quad.has_more is False
+
+        # Compact saved-answer citations succeed on >100KB source units without hitting finish_answer_job payload limit.
+        workspace = client.get(f"/matters/{slug}")
+        conv_id = re.search(r'name="conversation" value="([^"]+)"', workspace.text).group(1)
+        _, page = _answer_and_wait(client, slug, conv_id, "Check bicycle mention.")
+        assert page.status_code == 200 and "red bicycle" in page.text
+
+

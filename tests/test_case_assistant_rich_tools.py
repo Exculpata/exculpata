@@ -196,3 +196,94 @@ def test_pr589_regressions_tables_precision_email_spans_integrity_and_cue_accumu
         with pytest.raises(AssistantToolError):
             runtime.invoke("read_email_thread", {"document_id": sources["body-check.eml"]})
 
+
+class _RowCountTableModel:
+    def __init__(self, doc_id: str) -> None:
+        self.doc_id = doc_id
+        self.step = 0
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+        self.step += 1
+        if self.step == 1:
+            return AssistantTurn(tool_calls=(AssistantModelCall("tc1", "query_table", {
+                "document_id": self.doc_id, "aggregate_op": "count",
+            }),))
+        tool_msg = json.loads(messages[-1]["content"])
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "There are 3 matching rows.",
+            "findings": [{
+                "text": "There are 3 matching rows in the table.",
+                "citations": [{
+                    "document_id": self.doc_id,
+                    "source_name": tool_msg["source_name"],
+                    "location": tool_msg["location"],
+                    "source_version_id": tool_msg["source_version_id"],
+                }],
+                "calculation_ids": ["calc-1"],
+            }],
+            "gaps": [], "competing_accounts": [],
+        }))
+
+
+def test_pr589_round2_section_locators_ambiguous_pipe_all_inputs_count_grounding_and_thread_paging(tmp_path):
+    from case_intelligence.case_assistant import CaseAssistant
+
+    # 1. Complete receipt inputs (>50 rows): summing fifty 1s + 999 retains all 51 inputs.
+    fifty_one = "amount\n" + ("1\n" * 50) + "999\n"
+    _, r51 = query_table_rows("doc-51", "fiftyone.csv", fifty_one, aggregate_column="amount", aggregate_op="sum", receipt_id="calc-51")
+    assert r51 is not None and r51.result == "1049" and len(r51.inputs) == 51
+
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test", malware_scanner=CleanScanner(), malware_scan_mode="extended")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Rich Tool Round2")
+        sec2_rows = ["id,tag,amount"] + [f"r-{i},pad,1" for i in range(1, 102)] + ["r-102,hit,9876"]
+        res = client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("sec2.csv", ("\n".join(sec2_rows) + "\n").encode("utf-8"), "text/csv")),
+            ("files", ("pipe.csv", b"id,note,amount\nw1,x | y,100\nw2,ok,200\n", "text/csv")),
+            ("files", ("three.csv", b"amount\n100\n200\n300\n", "text/csv")),
+            ("files", ("t1.eml", _eml("e1", "Thread", "First message.", date="Thu, 01 Sep 2024 10:00:00 +0000"), "message/rfc822")),
+            ("files", ("t2.eml", _eml("e2", "Re: Thread", "Second message.", in_reply_to="e1", date="Thu, 01 Sep 2024 11:00:00 +0000"), "message/rfc822")),
+            ("files", ("t3.eml", _eml("e3", "Re: Thread", "Third message.", in_reply_to="e2", date="Thu, 01 Sep 2024 12:00:00 +0000"), "message/rfc822")),
+            ("files", ("t4.eml", _eml("e4", "Re: Thread", "Fourth message.", in_reply_to="e3", date="Thu, 01 Sep 2024 13:00:00 +0000"), "message/rfc822")),
+        ])
+        assert res.status_code == 200
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        backend = WorkbenchToolBackend(bench, actor)
+        runtime = MatterToolRuntime(matter.matter_id, actor, backend)
+        sources = {s["source_name"]: s["document_id"] for s in runtime.invoke("list_sources", {"limit": 20})["sources"]}
+
+        # 2. Match on row 102 (section 2) carries section 2's locator, NOT section 1.
+        sec2 = runtime.invoke("query_table", {
+            "document_id": sources["sec2.csv"], "filters": {"tag": "hit"},
+            "aggregate_column": "amount", "aggregate_op": "sum",
+        })
+        assert sec2["matched_rows"] == 1
+        row_loc = sec2["rows"][0]["_location"]
+        assert row_loc != "Page 1" and "2" in row_loc and sec2["calculation"]["inputs"][0]["source_refs"][0]["location"] == row_loc
+        wc_sec2 = backend.citations_by_key[(sources["sec2.csv"], row_loc)]
+        assert "9876" in wc_sec2.excerpt
+
+        # 3. Ambiguous literal ' | ' inside extracted CSV cell fails explicitly instead of silently dropping row.
+        with pytest.raises(AssistantToolError):
+            runtime.invoke("query_table", {
+                "document_id": sources["pipe.csv"], "aggregate_column": "amount", "aggregate_op": "sum",
+            })
+
+        # 4. Row count derivation (3 rows of 100/200/300) passes CaseAssistant verification.
+        cnt_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        cnt_res = CaseAssistant(_RowCountTableModel(sources["three.csv"])).investigate("How many rows?", cnt_rt)
+        assert cnt_res.answerable is True and cnt_res.omitted_findings == 0 and len(cnt_res.findings) == 1
+
+        # 5. Email thread pagination exposes total_messages/truncated/next_offset and includes target email.
+        tail_win = runtime.invoke("read_email_thread", {"document_id": sources["t4.eml"], "limit": 2})
+        assert tail_win["total_messages"] == 4 and tail_win["truncated"] is True
+        assert any(m["source_name"] == "t4.eml" for m in tail_win["messages"])
+        head_win = runtime.invoke("read_email_thread", {"document_id": sources["t4.eml"], "limit": 2, "offset": 0})
+        assert head_win["count"] == 2 and head_win["has_more"] is True and head_win["next_offset"] == 2
+
+
