@@ -318,11 +318,16 @@ def _parse_extracted_cells(line: str) -> list[tuple[str, str]] | None:
         return None
     body = match.group(1)
     cells: list[tuple[str, str]] = []
+    seen_coords: set[str] = set()
     for raw_cell in body.split(" | "):
         cm = _CELL_COORD_RE.match(raw_cell.strip())
         if not cm:
             return None
-        cells.append((_normalize_cell_coord(cm.group(1).strip()), cm.group(2).strip()))
+        coord = _normalize_cell_coord(cm.group(1).strip())
+        if coord in seen_coords:
+            return None
+        seen_coords.add(coord)
+        cells.append((coord, cm.group(2).strip()))
     return cells if cells else None
 
 

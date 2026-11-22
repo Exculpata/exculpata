@@ -484,24 +484,34 @@ class CaseAssistant:
                             inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(m.get("body", ""))).strip()
                 elif call.name == "read_transcript_window" and "document_id" in result:
                     for c in result.get("cues") or ():
-                        parts: list[str] = []
+                        meta_parts: list[str] = []
                         for ts_key in ("start_seconds", "end_seconds"):
                             raw_sec = c.get(ts_key)
                             if isinstance(raw_sec, (int, float)) and not isinstance(raw_sec, bool):
                                 whole = int(raw_sec)
                                 hrs, rem = divmod(whole, 3600)
                                 mins, secs = divmod(rem, 60)
-                                parts.append(f"{hrs:02d}:{mins:02d}:{secs:02d} {mins:02d}:{secs:02d} {whole}")
+                                meta_parts.append(f"{hrs:02d}:{mins:02d}:{secs:02d} {mins:02d}:{secs:02d} {whole}")
                         speaker = str(c.get("speaker") or "").strip()
                         if speaker:
-                            parts.append(speaker)
-                        parts.append(str(c.get("text", "")))
-                        cue_text = " ".join(p for p in parts if p)
+                            meta_parts.append(speaker)
+                        meta_prefix = " ".join(p for p in meta_parts if p)
                         ver = str(c.get("source_version_id") or "")
-                        for loc in (c["location"], *(c.get("continuation_locations") or ())):
-                            if isinstance(loc, str) and loc:
+                        spans = c.get("spans")
+                        if isinstance(spans, list) and spans:
+                            for span in spans:
+                                if not isinstance(span, Mapping):
+                                    continue
+                                loc = str(span.get("location") or "")
+                                if not loc:
+                                    continue
+                                span_text = f"{meta_prefix} {span.get('text', '')}".strip()
                                 key = (result["document_id"], loc, ver)
-                                inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + cue_text).strip()
+                                inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + span_text).strip()
+                        else:
+                            cue_text = f"{meta_prefix} {c.get('text', '')}".strip()
+                            key = (result["document_id"], str(c["location"]), ver)
+                            inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + cue_text).strip()
                 messages.append({"role": "tool", "tool_call_id": call.call_id, "name": call.name, "content": json.dumps(result, ensure_ascii=False)})
         else:
             budget_exhausted = True

@@ -427,5 +427,75 @@ def test_pr589_round4_multisheet_xlsx_and_multiline_transcript_continuations(tmp
         assert win["untimestamped_lines_omitted"] == 1 and win["truncated"] is True
 
 
+class _SpanCitationModel:
+    def __init__(self, doc_id: str, cite_continuation: bool) -> None:
+        self._doc_id = doc_id
+        self._cite_continuation = cite_continuation
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if not tool_msgs:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("t1", "read_transcript_window", {"document_id": self._doc_id, "start_seconds": 0, "limit": 50}),
+            ))
+        cue = tool_msgs[0]["cues"][-1]
+        loc = cue["continuation_locations"][0] if self._cite_continuation else cue["location"]
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "Paid 9876.",
+            "findings": [{
+                "text": "Paid 9876.",
+                "citations": [{
+                    "document_id": tool_msgs[0]["document_id"],
+                    "source_name": tool_msgs[0]["source_name"],
+                    "location": loc,
+                    "source_version_id": cue["source_version_id"],
+                }],
+                "calculation_ids": [],
+            }],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
+
+
+def test_pr589_round5_duplicate_coord_rejection_and_per_span_transcript_grounding(tmp_path):
+    from case_intelligence.case_assistant import CaseAssistant
+
+    # 1. Duplicate normalized coordinate injected inside note text fails explicitly instead of overwriting column 2.
+    injected = "Row 1: 1: id | 2: amount | 3: note\nRow 2: 1: w1 | 2: 100 | 3: x | 2: 999\n"
+    with pytest.raises(AssistantToolError, match="ambiguous cell delimiters"):
+        query_table_rows("doc-inj", "inj.csv", injected, aggregate_column="amount", aggregate_op="sum")
+
+    # 2. Cross-unit transcript continuation grounds 'Paid 9876.' ONLY at the continuation span, not the earlier span.
+    lines = [f"[00:00:{i:02d}] Speaker 1: Intro line {i}." for i in range(1, 20)]
+    lines.append("[00:00:20] Speaker 1: Starting cross-unit cue.")
+    lines.append("Paid 9876.")
+    cross_tr = "\n".join(lines) + "\n"
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Cross Unit Span Matter")
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("cross.txt", cross_tr.encode("utf-8"), "text/plain")),
+        ]).status_code == 200
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        doc_id = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor)).invoke(
+            "list_sources", {"limit": 10},
+        )["sources"][0]["document_id"]
+
+        wrong_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        wrong_res = CaseAssistant(_SpanCitationModel(doc_id, cite_continuation=False)).investigate("How much was paid?", wrong_rt)
+        assert wrong_res.answerable is False and wrong_res.omitted_findings == 1
+
+        right_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        right_res = CaseAssistant(_SpanCitationModel(doc_id, cite_continuation=True)).investigate("How much was paid?", right_rt)
+        assert right_res.answerable is True and right_res.omitted_findings == 0 and len(right_res.findings) == 1
+
+
+
 
 

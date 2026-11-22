@@ -431,13 +431,15 @@ class WorkbenchToolBackend:
                         if m:
                             a, b, c = int(m.group(1)), int(m.group(2)), int(m.group(3)) if m.group(3) else None
                             sec = float(a * 3600 + b * 60 + c) if c is not None else float(a * 60 + b)
+                            cue_text = m.group(5).strip()
                             cue_dict: dict[str, object] = {
                                 "start_seconds": sec,
                                 "end_seconds": sec,
                                 "speaker": (m.group(4) or "").strip(),
-                                "text": m.group(5).strip(),
+                                "text": cue_text,
                                 "location": wc.location,
                                 "source_version_id": doc.version_id,
+                                "spans": [{"location": wc.location, "text": cue_text}],
                             }
                             active_cue = cue_dict
                             active_wcs = [wc]
@@ -446,6 +448,13 @@ class WorkbenchToolBackend:
                         elif active_cue is not None:
                             prev = str(active_cue.get("text") or "")
                             active_cue["text"] = f"{prev}\n{stripped}".strip() if prev else stripped
+                            spans = active_cue.get("spans")
+                            if isinstance(spans, list):
+                                if spans and spans[-1].get("location") == wc.location:
+                                    s_prev = str(spans[-1].get("text") or "")
+                                    spans[-1]["text"] = f"{s_prev}\n{stripped}".strip() if s_prev else stripped
+                                else:
+                                    spans.append({"location": wc.location, "text": stripped})
                             if wc.location != active_cue["location"]:
                                 cont_locs = active_cue.setdefault("continuation_locations", [])
                                 if isinstance(cont_locs, list) and wc.location not in cont_locs:
