@@ -112,3 +112,54 @@ def test_pr591_regressions_trap_rejections_unused_receipts_contradiction_and_ato
     rc = main(["--backend", "scripted", "--seed", "7", "--out-json", str(raced)])
     assert rc == 2 and json.loads(raced.read_text(encoding="utf-8")) == {"winner": "first"}
 
+
+def test_pr591_round2_pagination_exact_mode_and_report_metadata(tmp_path):
+    import pytest
+    from case_intelligence.case_assistant_eval import render_markdown
+    from case_intelligence.case_assistant_tools import AssistantToolError, MatterToolRuntime
+
+    _, backend = build_stock_eval_suite(seed=7)
+    runtime = MatterToolRuntime(backend.matter_id, "eval-defender", backend)
+
+    # 1. Pagination metadata reflects the full match count and unavailable docs.
+    page1 = runtime.invoke("search_discovery", {"query": "shares", "limit": 5})
+    assert len(page1["hits"]) == 5
+    assert page1["total_matches"] > 100
+    assert page1["has_more"] is True
+    assert page1["next_offset"] == 5
+    assert page1["excluded_unavailable_count"] == 1
+    page2 = runtime.invoke("search_discovery", {"query": "shares", "limit": 5, "offset": 5})
+    assert len(page2["hits"]) == 5
+    assert page2["hits"] != page1["hits"]
+
+    # 2. Exact mode enforces phrase and Boolean semantics rather than OR-of-tokens.
+    exact = runtime.invoke(
+        "search_discovery",
+        {"query": '"never received trading instructions"', "mode": "exact", "limit": 20},
+    )
+    assert exact["total_matches"] >= 1
+    assert all("never received trading instructions" in h["excerpt"].casefold() for h in exact["hits"])
+    assert not any("trading schedule" in h["excerpt"].casefold() for h in exact["hits"])
+    with pytest.raises(AssistantToolError, match="Invalid exact query"):
+        runtime.invoke("search_discovery", {"query": '"unclosed phrase', "mode": "exact"})
+
+    # 3. Saved JSON and Markdown artifacts identify backend, model, max_turns, and synthetic reference runs.
+    out_json = tmp_path / "meta.json"
+    out_md = tmp_path / "meta.md"
+    assert main([
+        "--backend", "scripted", "--seed", "7", "--max-turns", "9",
+        "--out-json", str(out_json), "--out-md", str(out_md),
+    ]) == 0
+    report = json.loads(out_json.read_text(encoding="utf-8"))
+    assert report["backend"] == "scripted"
+    assert report["model"] == "scripted-reference"
+    assert report["max_turns"] == 9
+    assert report["synthetic_reference"] is True
+    md = out_md.read_text(encoding="utf-8")
+    assert "backend=scripted" in md and "model=scripted-reference" in md and "max_turns=9" in md
+    assert "Synthetic reference run" in md
+    live_md = render_markdown({**report, "backend": "ollama", "model": "qwen3:32b", "synthetic_reference": False})
+    assert "backend=ollama" in live_md and "model=qwen3:32b" in live_md
+    assert "Synthetic reference run" not in live_md
+
+

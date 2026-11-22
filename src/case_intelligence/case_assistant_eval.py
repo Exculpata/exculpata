@@ -15,8 +15,9 @@ from .case_assistant import (
     CaseAssistant, OllamaAssistantClient, OpenAIAssistantClient,
 )
 from .case_assistant_tools import (
-    MatterToolRuntime, SearchHit, SourcePage, SourceReadResult, SourceSummary,
+    AssistantToolError, MatterToolRuntime, SearchHit, SearchResponse, SourcePage, SourceReadResult, SourceSummary,
 )
+from .exact_search import QuerySyntaxError, match_positionals, parse_query, tokenize_text
 from .stock_case_gold import build_case
 from .stock_case_render import documents as render_stock_documents
 
@@ -61,17 +62,55 @@ class InMemoryEvalBackend:
         return rows[offset:offset + limit], len(rows)
 
     def search_discovery(self, matter_id: str, query: str, *, mode: str = "hybrid",
-                         limit: int = 20, offset: int = 0, document_ids: frozenset[str] | None = None):
-        terms = [t for t in re.findall(r"[a-z0-9_-]+", query.casefold()) if len(t) > 1]
-        hits = [
-            SearchHit(d.summary.document_id, d.summary.source_name, p.location, p.text,
-                      float(sum(1 for t in terms if t in p.text.casefold())), p.source_version_id)
-            for d in self.docs.values()
-            if d.summary.status == "ready" and (document_ids is None or d.summary.document_id in document_ids)
-            for p in d.pages if any(t in p.text.casefold() for t in terms)
+                         limit: int = 20, offset: int = 0, document_ids: frozenset[str] | None = None) -> SearchResponse:
+        scoped_docs = [
+            d for d in self.docs.values()
+            if document_ids is None or d.summary.document_id in document_ids
         ]
+        excluded_unavailable = sum(1 for d in scoped_docs if d.summary.status != "ready")
+        ready_docs = [d for d in scoped_docs if d.summary.status == "ready"]
+        hits: list[SearchHit] = []
+        if mode == "exact":
+            try:
+                parsed = parse_query(query)
+            except QuerySyntaxError as exc:
+                raise AssistantToolError(f"Invalid exact query: {exc}") from exc
+            for d in ready_docs:
+                proof = parsed.explain_units(p.text for p in d.pages)
+                if proof is None:
+                    continue
+                for p in d.pages:
+                    tokens = tokenize_text(p.text)
+                    if not tokens:
+                        continue
+                    if proof:
+                        matched_nodes = tuple(match_positionals(tokens, proof))
+                        if not matched_nodes:
+                            continue
+                        score = float(len(matched_nodes))
+                    else:
+                        score = 1.0
+                    hits.append(SearchHit(
+                        d.summary.document_id, d.summary.source_name, p.location, p.text,
+                        score, p.source_version_id,
+                    ))
+        else:
+            terms = [t for t in re.findall(r"[a-z0-9_-]+", query.casefold()) if len(t) > 1]
+            hits = [
+                SearchHit(d.summary.document_id, d.summary.source_name, p.location, p.text,
+                          float(sum(1 for t in terms if t in p.text.casefold())), p.source_version_id)
+                for d in ready_docs
+                for p in d.pages if any(t in p.text.casefold() for t in terms)
+            ]
         hits.sort(key=lambda item: (-item.score, item.document_id, item.location))
-        return hits[offset:offset + limit]
+        page = hits[offset:offset + limit]
+        return SearchResponse(
+            hits=tuple(page),
+            total_matches=len(hits),
+            offset=offset,
+            has_more=(offset + len(page) < len(hits)),
+            excluded_unavailable_count=excluded_unavailable,
+        )
 
     def read_source(self, matter_id: str, document_id: str, *, start_page: int = 1, end_page: int | None = None):
         doc = self.docs.get(document_id)
@@ -311,22 +350,53 @@ class _ScriptedEvalModel:
         }))
 
 
-def run_evaluation(client, *, seed: int = 7, tool_style: str = "openai", max_turns: int = 12) -> dict[str, object]:
-    suite, backend = build_stock_eval_suite(seed=seed)
+def run_evaluation(
+    client,
+    *,
+    seed: int = 7,
+    tool_style: str = "openai",
+    max_turns: int = 12,
+    backend: str | None = None,
+    model: str | None = None,
+) -> dict[str, object]:
+    suite, backend_impl = build_stock_eval_suite(seed=seed)
     rows = []
     for case in suite:
-        runtime = MatterToolRuntime(backend.matter_id, "eval-defender", backend)
+        runtime = MatterToolRuntime(backend_impl.matter_id, "eval-defender", backend_impl)
         result = CaseAssistant(client, tool_style=tool_style).investigate(case.question, runtime, max_turns=max_turns)
         rows.append(score_eval_case(case, result))
     avg = round(sum(r["score"] for r in rows) / len(rows), 2) if rows else 0.0
-    return {"suite": "stock-ownership", "seed": seed, "score": avg, "cases": rows}
+    resolved_backend = backend or ("scripted" if isinstance(client, _ScriptedEvalModel) else tool_style)
+    synthetic_reference = resolved_backend == "scripted"
+    resolved_model = model or ("scripted-reference" if synthetic_reference else (getattr(client, "model", "") or "unknown"))
+    return {
+        "suite": "stock-ownership",
+        "seed": seed,
+        "backend": resolved_backend,
+        "model": resolved_model,
+        "max_turns": max_turns,
+        "synthetic_reference": synthetic_reference,
+        "score": avg,
+        "cases": rows,
+    }
 
 
 def render_markdown(report: Mapping[str, object]) -> str:
+    backend = report.get("backend", "unknown")
+    model = report.get("model", "unknown")
+    max_turns = report.get("max_turns", "unknown")
     lines = [
-        f"case-assistant-eval {report['score']:.1f}/100 (suite={report['suite']}, seed={report['seed']})",
-        "", "| Case | Score | Turns | Receipts | Penalties |", "| --- | ---: | ---: | ---: | --- |",
+        (
+            f"case-assistant-eval {report['score']:.1f}/100 "
+            f"(suite={report['suite']}, seed={report['seed']}, backend={backend}, "
+            f"model={model}, max_turns={max_turns})"
+        ),
     ]
+    if report.get("synthetic_reference"):
+        lines.append(
+            "> Synthetic reference run (`backend=scripted`): harness verification only, not live-model evidence."
+        )
+    lines.extend(["", "| Case | Score | Turns | Receipts | Penalties |", "| --- | ---: | ---: | ---: | --- |"])
     for row in report["cases"]:
         pen = ", ".join(row["penalties"]) if row["penalties"] else "none"
         lines.append(f"| `{row['case_id']}` | {row['score']:.1f} | {row['turns_used']} | {row['receipts']} | {pen} |")
@@ -356,15 +426,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Refusing to overwrite existing file without --force: {out_path}", file=sys.stderr)
             return 2
     if args.backend == "scripted":
-        client, style = _ScriptedEvalModel(), "openai"
+        client, style, model_name = _ScriptedEvalModel(), "openai", "scripted-reference"
     else:
         if not args.url or not args.model:
             print("--url and --model are required for openai/ollama backends.", file=sys.stderr)
             return 2
         client = (OpenAIAssistantClient(args.url, args.model, api_key=args.api_key)
                   if args.backend == "openai" else OllamaAssistantClient(args.url, args.model, api_key=args.api_key))
-        style = args.backend
-    report = run_evaluation(client, seed=args.seed, tool_style=style, max_turns=args.max_turns)
+        style, model_name = args.backend, args.model
+    report = run_evaluation(
+        client,
+        seed=args.seed,
+        tool_style=style,
+        max_turns=args.max_turns,
+        backend=args.backend,
+        model=model_name,
+    )
     md = render_markdown(report)
     try:
         if args.out_json is not None:
