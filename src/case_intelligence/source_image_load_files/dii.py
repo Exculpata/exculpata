@@ -11,17 +11,19 @@ def document_facts(record):
     return {tags[tag]: value for tag, value in zip(record.headers, record.cells or ()) if tag in tags}
 
 
-def parse_dii(path, *, findings=None, on_event=None, cursor=None):
+def parse_dii(path, *, findings=None, on_event=None, cursor=None, on_image_name=None):
     """Yield document-only metadata and distinct declared/observed counts.
 
     Count disagreement and unsupported parent assertions are cited advisory
     findings on structurally accepted source facts. They never create page
     labels, synthetic document endpoints, or a second family authority.
+    An optional observer sees each image's block ordinal, relative directory and filename.
+    A block is provisional until its final event reports acceptance.
     """
     sink = FindingSink(findings, path)
     lines = DecodedLines(path, source_format="dii", cursor=cursor)
     records = iter_image_index_records(lines, source_format="dii", first_ordinal=lines.first_ordinal,
-                                       expect_preamble=cursor is None)
+                                       expect_preamble=cursor is None, on_image_name=on_image_name)
     try:
         for record in records:
             facts = document_facts(record) if record.kind == "accepted" else {}

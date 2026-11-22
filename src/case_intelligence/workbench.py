@@ -1113,8 +1113,8 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
         self.playback = BrowserPlaybackCoordinator(
             resolve_matter=self._matter_by_id,
             resolve_store=self.source_store,
-            reserve_capacity=self._reserve_browser_playback,
-            release_capacity=self._release_browser_playback,
+            reserve_capacity=self.reserve_temporary_space,
+            release_capacity=self.release_temporary_space,
             admit_matter=lambda matter: (
                 self.workspace.matter_lifecycle(matter.matter_id).state == "active"
             ),
@@ -1546,13 +1546,13 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
                     "Managed matter storage does not have enough protected free space.", 507
                 ) from exc
 
-    def _reserve_browser_playback(
-        self, matter_id: str, document_id: str, requested: int
+    def reserve_temporary_space(
+        self, matter_id: str, operation_id: str, requested: int, *, purpose: str = "a browser-compatible video copy"
     ) -> None:
-        """Reserve bounded temporary space before a video rendition is written."""
+        """Share temporary reservations with uploads, playback and production inspection."""
 
         amount = max(int(requested), 1)
-        key = (matter_id, document_id)
+        key = (matter_id, operation_id)
         with self._storage_reservation_lock:
             if key in self._playback_reservations:
                 return
@@ -1568,7 +1568,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
                 > self.storage_policy.matter_quota_bytes
             ):
                 raise UploadProblem(
-                    "This matter does not have enough temporary capacity for a browser-compatible video copy.",
+                    f"This matter does not have enough temporary capacity for {purpose}.",
                     507,
                 )
             all_reserved = self._playback_reserved_bytes()
@@ -1578,7 +1578,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
                 )
             except RuntimeError as exc:
                 raise UploadProblem(
-                    "Managed matter storage does not have enough protected capacity for a browser-compatible video copy.",
+                    f"Managed matter storage does not have enough protected capacity for {purpose}.",
                     507,
                 ) from exc
             self._playback_reservations[key] = amount
@@ -1591,9 +1591,9 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
                 if matter_id is None or reserved_matter == matter_id
             )
 
-    def _release_browser_playback(self, matter_id: str, document_id: str) -> None:
+    def release_temporary_space(self, matter_id: str, operation_id: str) -> None:
         with self._storage_reservation_lock:
-            self._playback_reservations.pop((matter_id, document_id), None)
+            self._playback_reservations.pop((matter_id, operation_id), None)
 
     @staticmethod
     def _validate_clip_export_matter_id(matter_id: str) -> str:
@@ -14247,6 +14247,11 @@ def create_workbench_app(
             return bench.matter(slug, current.principal_id, administrator=administrator_override)
         except KeyError as exc:
             raise _MatterAuthorityDenied(original) from exc
+    from .production_inspection_routes import install_production_inspection
+    install_production_inspection(app, bench=bench, auth_context=auth_context,
+        refresh_authority=refresh_context_authority, require_csrf_header=require_csrf_header,
+        require_response_lease=require_matter_response_lease, response_matter=response_lease_matter,
+        transfer_lease=transfer_matter_response_lease)
     from .external_model_grant_routes import install_model_grants
     install_model_grants(app, workspace=bench.workspace, templates=templates,
         authorized_matter=authorized_matter, auth_context=auth_context,
