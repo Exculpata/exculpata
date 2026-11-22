@@ -210,3 +210,11 @@ def test_scoped_inventory_knowledge_filters_pagination_continuation_decimal_and_
     with pytest.raises(TypeError):
         rt.trace[-1].arguments["operation"] = "divide"  # type: ignore[index]
 
+    # 8. Document-restricted runtime rejects calculate references outside allowed_document_ids.
+    empty_rt = MatterToolRuntime("m1", "def", backend, allowed_document_ids=frozenset())
+    with pytest.raises(AssistantAccessError):
+        empty_rt.invoke("calculate", {"operation": "sum", "inputs": [
+            {"label": "x", "value": "10", "source_refs": [{"document_id": "d-1", "source_name": "doc1.txt", "location": "Page 1"}]},
+        ]})
+    assert empty_rt.receipts == {} and empty_rt.cited_refs == ()
+

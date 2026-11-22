@@ -211,3 +211,122 @@ def test_pr586_regressions_premise_grounding_summary_signs_ollama_and_malformed_
     assert isinstance(assistant_history["tool_calls"][0]["function"]["arguments"], dict)
     assert assistant_history["tool_calls"][0]["function"]["arguments"] == {"limit": 1}
 
+
+class _VersionedAndManyFailedBackend:
+    def __init__(self) -> None:
+        self.read_count = 0
+
+    def authorize(self, m, a): return True
+
+    def list_sources(self, m, *, status="", offset=0, limit=50, **kw):
+        from case_intelligence.case_assistant_tools import SourceSummary
+        failed = [SourceSummary(f"f-{i}", f"failed-{i}.pdf", "pdf", "failed", 0) for i in range(1, 31)]
+        if status == "failed":
+            return failed[offset:offset + limit], len(failed)
+        ready = [SourceSummary("doc-v", "bal.txt", "txt", "ready", 1)]
+        rows = ready + failed
+        return rows[offset:offset + limit], len(rows)
+
+    def search_discovery(self, m, q, **kw): return ()
+
+    def read_source(self, m, d, **kw):
+        from case_intelligence.case_assistant_tools import SourcePage, SourceReadResult
+        self.read_count += 1
+        if self.read_count == 1:
+            return SourceReadResult("doc-v", "bal.txt", 1, (SourcePage(1, "Page 1", "Balance 10", "v1"),))
+        return SourceReadResult("doc-v", "bal.txt", 1, (SourcePage(1, "Page 1", "Balance 15", "v2"),))
+
+    def get_case_knowledge(self, m, **kw): return {}
+
+
+class _Round2VerifierModel:
+    def __init__(self) -> None:
+        self.step = 0
+
+    def complete_turn(self, messages, *, tools):
+        self.step += 1
+        if self.step == 1:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("r1", "list_sources", {"limit": 5}),
+                AssistantModelCall("r2", "read_source", {"document_id": "doc-v", "start_page": 1}),
+            ))
+        if self.step == 2:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("r3", "read_source", {"document_id": "doc-v", "start_page": 1}),
+                AssistantModelCall("r4", "calculate", {
+                    "operation": "sum", "inputs": [{
+                        "label": "fabricated 87.65", "value": "10",
+                        "source_refs": [{"document_id": "doc-v", "source_name": "bal.txt", "location": "Page 1", "source_version_id": "v1"}],
+                    }],
+                }),
+            ))
+        v1 = {"document_id": "doc-v", "source_name": "bal.txt", "location": "Page 1", "source_version_id": "v1"}
+        v2 = {"document_id": "doc-v", "source_name": "bal.txt", "location": "Page 1", "source_version_id": "v2"}
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "Balance 10",
+            "findings": [
+                {"text": "Balance 10", "citations": [v1], "calculation_ids": []},
+                {"text": "Balance 10", "citations": [v2], "calculation_ids": []},
+                {"text": "Balance 87.65", "citations": [v1], "calculation_ids": ["calc-1"]},
+            ],
+            "gaps": [], "competing_accounts": [],
+        }))
+
+
+def test_pr586_round2_label_laundering_version_isolation_and_unavailable_total():
+    rt = MatterToolRuntime("m1", "def", _VersionedAndManyFailedBackend())
+    res = CaseAssistant(_Round2VerifierModel()).investigate("Check balances", rt)
+    # Only the v1-cited Balance 10 passes; v2 mismatch and label-laundered 87.65 are omitted.
+    assert res.answerable is True and len(res.findings) == 1 and res.omitted_findings == 2
+    assert res.findings[0].citations[0].source_version_id == "v1"
+    # Full unavailable count (30) is preserved even though sample list caps at 25.
+    assert any("30 unavailable/unreadable source(s)" in g for g in res.gaps)
+
+
+class _SearchOnlyMetadataBackend:
+    def authorize(self, m, a): return True
+    def list_sources(self, m, **kw): return ([], 0)
+    def search_discovery(self, m, q, **kw):
+        from case_intelligence.case_assistant_tools import SearchHit, SearchResponse
+        return SearchResponse(
+            hits=(SearchHit("d1", "87.65.pdf", "Page 1", "Balance 10", 1.0, "v1"),),
+            total_matches=1, offset=0, has_more=False, excluded_unavailable_count=30,
+        )
+    def read_source(self, m, d, **kw): return None
+    def get_case_knowledge(self, m, **kw): return {}
+
+
+class _MetadataAndSciNotationModel:
+    def __init__(self) -> None:
+        self.step = 0
+    def complete_turn(self, messages, *, tools):
+        self.step += 1
+        if self.step == 1:
+            return AssistantTurn(tool_calls=(AssistantModelCall("m1", "search_discovery", {"query": "Balance", "limit": 5}),))
+        if self.step == 2:
+            ref = {"document_id": "d1", "source_name": "87.65.pdf", "location": "Page 1", "source_version_id": "v1"}
+            return AssistantTurn(tool_calls=(AssistantModelCall("m2", "calculate", {
+                "operation": "sum", "inputs": [{"label": "x", "value": "87.65", "source_refs": [ref]}],
+            }),))
+        ref = {"document_id": "d1", "source_name": "87.65.pdf", "location": "Page 1", "source_version_id": "v1"}
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "Balance is 8765e99.",
+            "findings": [
+                {"text": "Balance is 87.65.", "citations": [ref], "calculation_ids": ["calc-1"]},
+                {"text": "Balance is 8765e99.", "citations": [ref], "calculation_ids": []},
+            ],
+            "gaps": [], "competing_accounts": [],
+        }))
+
+
+def test_pr586_round3_filename_numbers_sci_notation_and_search_unavailable_count():
+    rt = MatterToolRuntime("m1", "def", _SearchOnlyMetadataBackend())
+    res = CaseAssistant(_MetadataAndSciNotationModel()).investigate("Check balance", rt)
+    # Neither filename-derived 87.65 nor scientific notation 8765e99 may pass verification.
+    assert res.answerable is False and res.findings == () and res.omitted_findings == 2
+    assert any("30 unavailable/unreadable source(s)" in g for g in res.gaps)
+
+
+
