@@ -287,3 +287,97 @@ def test_pr589_round2_section_locators_ambiguous_pipe_all_inputs_count_grounding
         assert head_win["count"] == 2 and head_win["has_more"] is True and head_win["next_offset"] == 2
 
 
+class _TranscriptMetaModel:
+    def __init__(self, doc_id: str) -> None:
+        self._doc_id = doc_id
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if not tool_msgs:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("t1", "read_transcript_window", {"document_id": self._doc_id, "start_seconds": 0, "limit": 10}),
+            ))
+        cue = tool_msgs[0]["cues"][0]
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "At 00:01:30, Speaker 2 confirmed delivery.",
+            "findings": [{
+                "text": "At 00:01:30, Speaker 2 confirmed delivery.",
+                "citations": [{
+                    "document_id": tool_msgs[0]["document_id"],
+                    "source_name": tool_msgs[0]["source_name"],
+                    "location": cue["location"],
+                    "source_version_id": cue["source_version_id"],
+                }],
+                "calculation_ids": [],
+            }],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
+
+
+def test_pr589_round3_xlsx_filter_ops_email_truncation_transcript_pagination_and_grounding(tmp_path):
+    from case_intelligence.case_assistant import CaseAssistant
+
+    # 1. XLSX cell-address coordinates (A1/B1 vs A2/B2) normalize to columns A/B and aggregate cleanly.
+    xlsx_text = "Row 1: A1: Name | B1: Duration\nRow 2: A2: Alice | B2: 12\nRow 3: A3: Bob | B3: 18\n"
+    res, receipt = query_table_rows(
+        "doc-xlsx", "sheet.xlsx", xlsx_text,
+        aggregate_column="Duration", aggregate_op="sum", receipt_id="calc-1",
+    )
+    assert res["matched_rows"] == 2
+    assert res["rows"][0]["Name"] == "Alice" and res["rows"][0]["Duration"] == "12"
+    assert receipt is not None and receipt.result == "30"
+
+    # 2. Unrecognized numeric filter operators fail explicitly instead of keeping all rows.
+    with pytest.raises(AssistantToolError, match="Unsupported numeric filter operator"):
+        query_table_rows(
+            "doc-xlsx", "sheet.xlsx", xlsx_text,
+            filters={"Duration": {"gt": "15"}}, aggregate_op="count",
+        )
+    with pytest.raises(AssistantToolError, match="Unsupported numeric filter operator"):
+        query_table_rows("doc-xlsx", "sheet.xlsx", xlsx_text, filters={"Duration": {}})
+
+    # 3-5. Real workbench HTTP uploads for long email, 60-cue transcript, and timestamp/speaker grounding.
+    long_body = ("A" * 4_500) + " final amount 98765."
+    sixty_cues = "\n".join(f"[00:{i // 60:02d}:{i % 60:02d}] Speaker 1: Line {i}." for i in range(1, 61))
+    grounded_tr = "[00:01:30] Speaker 2: Confirmed delivery.\n"
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test", malware_scanner=CleanScanner(), malware_scan_mode="extended")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Round 3 Rich Tools Matter")
+        up = client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("long.eml", _eml("long1", "Long Body", long_body), "message/rfc822")),
+            ("files", ("sixty.txt", sixty_cues.encode("utf-8"), "text/plain")),
+            ("files", ("delivery.txt", grounded_tr.encode("utf-8"), "text/plain")),
+        ])
+        assert up.status_code == 200
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        runtime = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        sources = {s["source_name"]: s["document_id"] for s in runtime.invoke("list_sources", {"limit": 20})["sources"]}
+
+        # 3. Email body > 4,000 chars reports body_truncated=True, truncated=True, and continuation offset.
+        em = runtime.invoke("read_email_thread", {"document_id": sources["long.eml"], "limit": 10})
+        assert em["body_truncated"] is True and em["truncated"] is True
+        span = em["messages"][0]["body_spans"][0]
+        assert span["truncated"] is True and span["omitted_chars"] > 0 and span["next_char_offset"] == 4000
+
+        # 4. 60-line transcript reports consistent count=50, total_cues=60, omitted_cues=10, and offset pagination.
+        t1 = runtime.invoke("read_transcript_window", {"document_id": sources["sixty.txt"], "start_seconds": 0, "limit": 50})
+        assert t1["count"] == 50 and len(t1["cues"]) == 50
+        assert t1["total_cues"] == 60 and t1["omitted_cues"] == 10
+        assert t1["has_more"] is True and t1["next_offset"] == 50 and t1["truncated"] is True
+        t2 = runtime.invoke("read_transcript_window", {"document_id": sources["sixty.txt"], "start_seconds": 0, "limit": 50, "offset": 50})
+        assert t2["count"] == 10 and len(t2["cues"]) == 10 and t2["omitted_cues"] == 0 and t2["has_more"] is False
+
+        # 5. Transcript finding citing timestamp 00:01:30 and Speaker 2 passes numeric grounding verification.
+        g_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        g_res = CaseAssistant(_TranscriptMetaModel(sources["delivery.txt"])).investigate("When was delivery confirmed?", g_rt)
+        assert g_res.answerable is True and g_res.omitted_findings == 0 and len(g_res.findings) == 1
+
+
+

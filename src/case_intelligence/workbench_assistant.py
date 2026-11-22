@@ -339,6 +339,7 @@ class WorkbenchToolBackend:
                 effective_offset = offset
             matched_nodes = full_thread[effective_offset:effective_offset + limit]
             messages = []
+            any_body_truncated = False
             for node in matched_nodes:
                 doc = by_source.get(node.message.source)
                 if doc is None:
@@ -347,24 +348,36 @@ class WorkbenchToolBackend:
                 body_units = [(ord_idx, u) for ord_idx, u in units if (u.location_label or "") != "Email headers"]
                 chosen_units = body_units if body_units else units[:1]
                 body_spans: list[dict[str, object]] = []
+                msg_truncated = False
                 for ord_idx, unit in chosen_units:
                     wc = self._unit_citation(matter, store, doc, ord_idx, unit)
                     self.citations_by_key[(wc.document_id, wc.location)] = wc
+                    full_len = len(unit.text)
+                    snippet = unit.text[:4_000]
+                    span_truncated = full_len > len(snippet)
+                    msg_truncated = msg_truncated or span_truncated
                     body_spans.append({
                         "location": wc.location,
+                        "page_number": ord_idx,
                         "source_version_id": doc.version_id,
                         "excerpt_digest": wc.excerpt_digest,
-                        "text": unit.text[:4_000],
+                        "text": snippet,
+                        "total_chars": full_len,
+                        "omitted_chars": full_len - len(snippet),
+                        "truncated": span_truncated,
+                        "next_char_offset": len(snippet) if span_truncated else None,
                     })
+                any_body_truncated = any_body_truncated or msg_truncated
                 primary = body_spans[0] if body_spans else {"location": "Section 1", "text": ""}
                 messages.append({
                     "document_id": doc.document_id, "source_name": doc.display_name,
                     "location": primary["location"],
                     "source_version_id": doc.version_id, "subject": node.message.subject,
-                    "body": primary["text"], "body_spans": body_spans, "weak_link": node.weak_link,
+                    "body": primary["text"], "body_spans": body_spans,
+                    "truncated": msg_truncated, "weak_link": node.weak_link,
                 })
             has_more = (effective_offset + len(messages)) < total_messages
-            truncated = len(messages) < total_messages
+            truncated = (len(messages) < total_messages) or any_body_truncated
             return {
                 "document_id": target.document_id,
                 "count": len(messages),
@@ -374,13 +387,14 @@ class WorkbenchToolBackend:
                 "has_more": has_more,
                 "next_offset": (effective_offset + len(messages)) if has_more else None,
                 "previous_offset": max(0, effective_offset - limit) if effective_offset > 0 else None,
+                "body_truncated": any_body_truncated,
                 "truncated": truncated,
                 "messages": messages,
             }
 
     def read_transcript_window(
         self, matter_id: str, document_id: str, *, start_seconds: float = 0.0,
-        end_seconds: float | None = None, limit: int = 50,
+        end_seconds: float | None = None, limit: int = 50, offset: int = 0,
     ) -> Mapping[str, object] | None:
         import re
         ts_re = re.compile(r"\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]\s*(?:([^:\n]{1,40}):\s*)?(.*)")
@@ -391,16 +405,18 @@ class WorkbenchToolBackend:
                 doc = store.get(document_id)
             except KeyError:
                 return None
-            cues: list[dict[str, object]] = []
+            all_cues: list[tuple[dict[str, object], object]] = []
             for ordinal, unit in enumerate(doc.iter_parsed_units(), 1):
                 wc = self._unit_citation(matter, store, doc, ordinal, unit)
                 if unit.start_ms is not None:
                     s_sec = unit.start_ms / 1000.0
                     e_sec = (unit.end_ms / 1000.0) if unit.end_ms is not None else s_sec
                     if e_sec >= start_seconds and (end_seconds is None or s_sec <= end_seconds):
-                        self.citations_by_key[(wc.document_id, wc.location)] = wc
-                        cues.append({"start_seconds": s_sec, "end_seconds": e_sec, "speaker": unit.speaker_cluster,
-                                     "text": unit.text, "location": wc.location, "source_version_id": doc.version_id})
+                        all_cues.append((
+                            {"start_seconds": s_sec, "end_seconds": e_sec, "speaker": unit.speaker_cluster,
+                             "text": unit.text, "location": wc.location, "source_version_id": doc.version_id},
+                            wc,
+                        ))
                 else:
                     for line in unit.text.splitlines():
                         m = ts_re.match(line.strip())
@@ -409,13 +425,34 @@ class WorkbenchToolBackend:
                         a, b, c = int(m.group(1)), int(m.group(2)), int(m.group(3)) if m.group(3) else None
                         sec = float(a * 3600 + b * 60 + c) if c is not None else float(a * 60 + b)
                         if sec >= start_seconds and (end_seconds is None or sec <= end_seconds):
-                            self.citations_by_key[(wc.document_id, wc.location)] = wc
-                            cues.append({"start_seconds": sec, "end_seconds": sec, "speaker": (m.group(4) or "").strip(),
-                                         "text": m.group(5).strip(), "location": wc.location, "source_version_id": doc.version_id})
-                if len(cues) >= limit:
-                    break
-            return {"document_id": doc.document_id, "source_name": doc.display_name,
-                    "start_seconds": start_seconds, "end_seconds": end_seconds, "count": len(cues), "cues": cues[:limit]}
+                            all_cues.append((
+                                {"start_seconds": sec, "end_seconds": sec, "speaker": (m.group(4) or "").strip(),
+                                 "text": m.group(5).strip(), "location": wc.location, "source_version_id": doc.version_id},
+                                wc,
+                            ))
+            total_cues = len(all_cues)
+            sliced = all_cues[offset:offset + limit]
+            page_cues: list[dict[str, object]] = []
+            for cue, wc in sliced:
+                self.citations_by_key[(wc.document_id, wc.location)] = wc
+                page_cues.append(cue)
+            omitted_cues = max(0, total_cues - (offset + len(page_cues)))
+            has_more = omitted_cues > 0
+            return {
+                "document_id": doc.document_id,
+                "source_name": doc.display_name,
+                "start_seconds": start_seconds,
+                "end_seconds": end_seconds,
+                "offset": offset,
+                "limit": limit,
+                "count": len(page_cues),
+                "total_cues": total_cues,
+                "omitted_cues": omitted_cues,
+                "has_more": has_more,
+                "next_offset": (offset + len(page_cues)) if has_more else None,
+                "truncated": len(page_cues) < total_cues,
+                "cues": page_cues,
+            }
 
 
 def _collect_calc_premise_refs(calc_ids: Sequence[str], receipts: Mapping[str, object]) -> list[object]:

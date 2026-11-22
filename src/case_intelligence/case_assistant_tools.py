@@ -136,6 +136,7 @@ TOOL_DEFINITIONS: tuple[dict[str, object], ...] = (
     _tool_spec("read_transcript_window", "Read timestamped transcript cues within a start/end second range.", {
         "document_id": {"type": "string", "minLength": 1, "maxLength": 128},
         "start_seconds": {"type": "number", "minimum": 0}, "end_seconds": {"type": "number", "minimum": 0},
+        "offset": {"type": "integer", "minimum": 0},
         "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIST_LIMIT}}, required=("document_id",)),
 )
 
@@ -295,6 +296,15 @@ def _format_exact_decimal(value: Decimal) -> str:
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
+_XLSX_CELL_COORD_RE = re.compile(r"^([A-Za-z]+)\d+$")
+_ALLOWED_FILTER_OPS = frozenset({"min", "max"})
+
+
+def _normalize_cell_coord(coord: str) -> str:
+    match = _XLSX_CELL_COORD_RE.match(coord)
+    return match.group(1).upper() if match else coord
+
+
 def _parse_extracted_cells(line: str) -> list[tuple[str, str]] | None:
     match = _EXTRACTED_ROW_RE.match(line)
     if not match:
@@ -305,7 +315,7 @@ def _parse_extracted_cells(line: str) -> list[tuple[str, str]] | None:
         cm = _CELL_COORD_RE.match(raw_cell.strip())
         if not cm:
             return None
-        cells.append((cm.group(1).strip(), cm.group(2).strip()))
+        cells.append((_normalize_cell_coord(cm.group(1).strip()), cm.group(2).strip()))
     return cells if cells else None
 
 
@@ -366,6 +376,13 @@ def query_table_rows(
         raise AssistantToolError("Source does not contain a tabular header row.")
     matched: list[tuple[dict[str, str], str, str]] = []
     filter_map = dict(filters or {})
+    for col, cond in filter_map.items():
+        if isinstance(cond, Mapping):
+            unknown = sorted(set(str(k) for k in cond.keys()) - _ALLOWED_FILTER_OPS)
+            if unknown or not cond:
+                raise AssistantToolError(
+                    f"Unsupported numeric filter operator(s) for column {col!r}: {unknown or ['empty']}. Use 'min' and/or 'max'."
+                )
     for row, row_loc, row_ver in all_rows:
         keep = True
         for col, cond in filter_map.items():
@@ -733,11 +750,18 @@ class MatterToolRuntime:
             assert start_s is not None
             if end_s is not None and end_s < start_s:
                 raise AssistantToolError("start_seconds must be >= 0 and end_seconds >= start_seconds.")
+            offset = _int_arg(args, "offset", 0, minimum=0)
             limit = _int_arg(args, "limit", 50, minimum=1, maximum=MAX_LIST_LIMIT)
             handler = getattr(self.backend, "read_transcript_window", None)
             if not callable(handler):
                 raise AssistantToolError("Transcript window reading is not supported by this backend.")
-            data = handler(self.matter_id, document_id, start_seconds=start_s, end_seconds=end_s, limit=limit)
+            import inspect
+            kwargs: dict[str, object] = {"start_seconds": start_s, "end_seconds": end_s, "limit": limit}
+            if "offset" in inspect.signature(handler).parameters:
+                kwargs["offset"] = offset
+            elif offset > 0:
+                raise AssistantToolError("Transcript window offset pagination is not supported by this backend.")
+            data = handler(self.matter_id, document_id, **kwargs)
             if data is None:
                 raise AssistantAccessError("Transcript source not found in this matter.")
             refs = [SourceRef(data["document_id"], data["source_name"], c["location"], c.get("source_version_id", ""))
