@@ -17,6 +17,11 @@
   {% if panel.production.state in ('pending', 'paused') %}<p class="dr-notice" role="status" data-production-state="{{ panel.production.state }}" data-production-restarts="{{ panel.production.restarts|default(0) }}">{% if panel.production.state == 'paused' %}Indexing paused: the sources keep changing. Reload to resume. {{ panel.production.restarts }} restarts.{% else %}Indexing, reload shortly.{% endif %} <a href="{{ panel.production_reload }}">Reload</a></p>{% endif %}
   {% if panel.production.diagnostics %}<ul class="dr-production-findings" aria-label="Production findings">{% for finding in panel.production.diagnostics %}<li>{{ finding }}</li>{% endfor %}</ul>{% endif %}
   {% if panel.record_sources %}<nav class="dr-production-findings" aria-label="Original load-file records">{% for source in panel.record_sources %}<p><a href="{{ source.url }}">Inspect original records: {{ source.name }}</a>{% if source.status %} · {{ source.status }}{% endif %}</p>{% endfor %}</nav>{% endif %}
+  {% macro image_status(status) -%}
+    {%- if status == 'ambiguous' %}More than one admitted file matches this image reference.
+    {%- elif status == 'unsafe_path' %}The image reference is outside the supported production-relative path syntax.
+    {%- else %}The referenced image file is unavailable in this production.{% endif -%}
+  {%- endmacro %}
   {% macro production_records(records) %}
   <section class="dr-production-records" data-production-records data-record-kind="{{ records.kind }}" data-attempt="{{ records.attempt.attempt_id }}" aria-label="{{ 'Document metadata records' if records.kind == 'dat' else 'Page records' }}">
     <header class="dr-record-bar">
@@ -50,6 +55,29 @@
       {% if record.recoverable %}<dl>
         {% for cell in record.display_cells %}<div data-record-cell="{{ cell.position }}"><dt><span class="dr-muted">Position {{ cell.position }}</span>{% if cell.has_header %}<pre>{{ cell.label }}</pre>{% endif %}</dt><dd>{% if cell.has_value %}<pre>{{ cell.value }}</pre>{% else %}<span class="dr-muted">No recoverable cell</span>{% endif %}</dd></div>{% endfor %}
       </dl>{% else %}<p class="dr-muted">The original cells could not be recovered. The record location and diagnostics are preserved.</p>{% endif %}
+      {% set images = record.indexed_images %}
+      {% if images.page_file %}
+        {% if images.page_file.url %}
+        <p><a data-image-file href="{{ images.page_file.url }}">Open indexed image</a> · {{ images.page_file.path }}{% if images.page_file.source.media_type == 'image/tiff' %} · <span data-page-image-unavailable>TIFF preview unavailable</span>{% endif %}</p>
+        {% else %}<p class="dr-muted" data-page-image-unavailable>{{ image_status(images.page_file.status) }}</p>{% endif %}
+      {% elif images.open %}
+      <p><a data-dii-files="open" href="{{ images.open }}">Browse listed image files</a></p>
+      {% elif images.rows %}
+      <section aria-label="Image files listed in this DII record">
+        <h4>Listed image files</h4>
+        <p>Entries {{ images.start }}–{{ images.start + images.rows|length - 1 }} of {{ images.total }}</p>
+        <ol start="{{ images.start }}">
+          {% for entry in images.rows %}<li data-image-entry="{{ entry.ordinal }}" data-image-status="{{ entry.status }}">
+            {% if entry.url %}<a data-image-file href="{{ entry.url }}">{{ entry.path }}</a>
+            {% else %}{{ entry.path }} · {{ image_status(entry.status) }}{% endif %}
+          </li>{% endfor %}
+        </ol>
+        {% if images.previous or images.next %}<nav class="dr-pager" aria-label="Listed image files">
+          {% if images.previous %}<a data-dii-files="previous" href="{{ images.previous }}">Previous files</a>{% endif %}
+          {% if images.next %}<a data-dii-files="next" href="{{ images.next }}">Next files</a>{% endif %}
+        </nav>{% endif %}
+      </section>
+      {% endif %}
       {% if record.optional_values %}<dl>{% for label, value in record.optional_values %}<div><dt>{{ label }}</dt><dd><pre>{{ value }}</pre></dd></div>{% endfor %}</dl>{% endif %}
     </article>
     {% else %}<p class="dr-muted">No stored record is available in this attempt yet.</p>{% endfor %}
@@ -68,7 +96,7 @@
   {% if panel.active == 'document' %}
   {% if panel.records %}
   {{ production_records(panel.records) }}
-  {% if not panel.embed %}<p class="dr-state" data-page-image-unavailable>The page image is unavailable. The supplied label and image path remain visible as metadata. TIFF previews are not available yet.</p>{% endif %}
+  {% if not panel.embed and not panel.records.rows[0].indexed_images.page_file %}<p class="dr-state" data-page-image-unavailable>The page image is unavailable. Inspect the supplied page record for its label and image path.</p>{% endif %}
   {% endif %}
   {% if panel.embed %}
   <div class="dr-document">

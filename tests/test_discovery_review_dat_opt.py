@@ -636,6 +636,12 @@ def test_record_cursor_validation_and_matter_isolation(review):
         for changes in ({"record_dir": "sideways"}, {"record": "", "record_dir": "next"},
                         {"view": "fields"}, {"record": f"dat:{attempt}:1", "view": "document"}):
             assert review.client.get(endpoint, params={**common, **changes}).status_code == 422
+        dat_cursor = "dat:" + attempts["Generated/load.dat"] + ":1"
+        for options in ({"image_start": 1}, {"view": "fields", "record": "", "image_start": 1},
+                        {"view": "fields", "record": dat_cursor, "image_start": 1, "record_dir": "next"},
+                        {"view": "fields", "record": dat_cursor, "image_start": 1},
+                        {"view": "fields", "record": dat_cursor, "image_start": 0}):
+            assert review.client.get(endpoint, params={**common, **options}).status_code == 422
         assert review.client.get(endpoint, params={**common, "record": f"opt:{attempt}:{MAX_ORDINAL}"}).status_code == 404
         assert review.client.get(endpoint, params={**common, "record": f"opt:{attempt}:2"}).status_code == 404
         assert review.client.get(endpoint, params={**common, "record": f"opt:{'0' * 32}:1"}).status_code == 404
@@ -1018,13 +1024,14 @@ def test_volume_named_subfolder_requires_a_unique_exact_path(tmp_path, role, col
                 assert candidate["relative_path"] == "Generated/" + supplied
 
 
-def test_reopening_prior_matcher_rebuilds_dat_associations(tmp_path, monkeypatch):
+@pytest.mark.parametrize("prior_revision", ["production-record-events-1", "production-record-events-2"])
+def test_reopening_prior_matcher_rebuilds_dat_associations(tmp_path, monkeypatch, prior_revision):
     from case_intelligence.modules.discovery_review.production import service
     from tests.test_discovery_review_dat_opt_storage import finish_import, reopen_storage_case, storage_case
 
     with storage_case(tmp_path, count=1) as current:
         with monkeypatch.context() as previous:
-            previous.setattr(service, "PARSER_REVISION", "production-record-events-1")
+            previous.setattr(service, "PARSER_REVISION", prior_revision)
             old = finish_import(current)
         reopen_storage_case(current, tmp_path)
         for _ in range(30):
@@ -1033,6 +1040,38 @@ def test_reopening_prior_matcher_rebuilds_dat_associations(tmp_path, monkeypatch
         new = current.repository.current_attempt(current.matter.matter_id, old["document_id"])
         assert new["status"] == "complete" and new["parser_revision"] == service.PARSER_REVISION
         assert new["attempt_id"] != old["attempt_id"] and new["digest"] == old["digest"]
+
+
+def test_reopen_rebuilds_v3_unmatched_decomposed_native_from_original(tmp_path, monkeypatch):
+    from case_intelligence.modules.discovery_review.production import matching, service
+    from tests.test_discovery_review_dat_opt_storage import finish_import, reopen_storage_case, storage_case
+
+    supplied = "Natives/cafe\u0301.txt"
+    selected = "Natives/café.txt"
+    original = dat_bytes(("BEGBATES", "NATIVEPATH"), [("SYN0001", supplied)])
+    with storage_case(tmp_path, count=1, primary_bytes=original, extra_files=[(selected, source_text(1))]) as current:
+        matter_id = current.matter.matter_id
+        with monkeypatch.context() as v3:
+            v3.setattr(service, "PARSER_REVISION", "production-record-events-3")
+            v3.setattr(matching, "unicodedata", SimpleNamespace(
+                category=matching.unicodedata.category, normalize=lambda form, value: value))
+            old = finish_import(current)
+        old_row, = current.repository.records(matter_id, old["attempt_id"], category="document")
+        assert old_row["association_status"] == "unmatched" and not old_row["document_id"]
+        assert old_row["path_key"] == supplied.casefold()
+
+        reopen_storage_case(current, tmp_path)
+        for _ in range(30):
+            if current.service.advance(matter_id, max_steps=128)["state"] == "complete":
+                break
+        rebuilt = current.repository.current_attempt(matter_id, old["document_id"])
+        assert rebuilt["status"] == "complete" and rebuilt["attempt_id"] != old["attempt_id"]
+        assert rebuilt["version_id"] == old["version_id"]
+        assert rebuilt["digest"] == old["digest"] == hashlib.sha256(original).hexdigest()
+        row, = current.repository.records(matter_id, rebuilt["attempt_id"], category="document")
+        assert row["cells"] == old_row["cells"] == ["SYN0001", supplied]
+        assert row["path_key"] == selected.casefold() and row["association_status"] == "matched"
+        assert current.store.get(row["document_id"]).relative_path == "Generated/" + selected
 
 
 def test_reopened_store_requires_new_production_validation(tmp_path):

@@ -194,7 +194,15 @@ def group_threads(records: list[EmailRecord] | tuple[EmailRecord, ...]) -> tuple
     for index, node in enumerate(nodes):
         identity = node.message.message_id or f"anonymous:{index}"
         root = roots.get(identity, identity)
+        path = [identity]
+        if root != identity:
+            path.append(root)
         while root in roots and roots[root] != root:
-            root = roots[root]
+            nxt = roots[root]
+            if nxt in path:
+                root = min(path[path.index(nxt):])
+                break
+            path.append(nxt)
+            root = nxt
         grouped.setdefault(root, []).append(node)
     return tuple(EmailThread(key, tuple(messages)) for key, messages in grouped.items())

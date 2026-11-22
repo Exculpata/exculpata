@@ -1,7 +1,7 @@
 """App-shell adapter wiring CaseAssistant and MatterToolRuntime into WorkbenchService."""
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import os
 from typing import Callable, Mapping, Sequence
 
@@ -56,6 +56,26 @@ class WorkbenchToolBackend:
         self.actor_id = actor_id
         self.allowed_notebook_items = None if allowed_notebook_items is None else tuple(allowed_notebook_items)
         self.citations_by_key: dict[tuple[str, str], object] = {}
+        self.citations_by_identity: dict[tuple[str, str, str, str], object] = {}
+
+    def _remember_citation(self, wc) -> None:
+        self.citations_by_key[(wc.document_id, wc.location)] = wc
+        identity = (wc.document_id, wc.location, wc.source_version_id, wc.excerpt_digest)
+        self.citations_by_identity.setdefault(identity, wc)
+
+    def citation_for_ref(self, ref) -> object | None:
+        """Resolve a verified SourceRef only against its exact inspected source identity."""
+        doc_id = str(getattr(ref, "document_id", "") or "")
+        location = str(getattr(ref, "location", "") or "")
+        version_id = str(getattr(ref, "source_version_id", "") or "")
+        digest = str(getattr(ref, "excerpt_digest", "") or "")
+        if digest:
+            return self.citations_by_identity.get((doc_id, location, version_id, digest))
+        matches = [
+            wc for (d, loc, ver, _dig), wc in self.citations_by_identity.items()
+            if d == doc_id and loc == location and (not version_id or ver == version_id)
+        ]
+        return matches[0] if len(matches) == 1 else None
 
     def authorize(self, matter_id: str, actor_id: str) -> bool:
         try:
@@ -137,25 +157,35 @@ class WorkbenchToolBackend:
                                 for idx, u in all_units
                             }
                             if item.matching_unit_count > len(item.passages):
-                                positives = getattr(item.explanation.expression, "operands", ())
-                                matched_pairs = [
-                                    (idx, u) for idx, u in all_units
-                                    if positives and match_positionals(tokenize_text(u.text), positives)
-                                ]
+                                proof = item.explanation.explain_units(u.text for _, u in all_units)
+                                if proof is not None:
+                                    matched_pairs = [
+                                        (idx, u) for idx, u in all_units
+                                        if (
+                                            any(match_positionals(tokenize_text(u.text), proof))
+                                            if proof
+                                            else bool(tokenize_text(u.text))
+                                        )
+                                    ]
+                                else:
+                                    matched_pairs = []
                                 if not matched_pairs:
                                     matched_pairs = [
                                         (unit_ordinals.get((u.number, u.line_start, u.line_end, u.excerpt_digest), 1), u)
                                         for u in item.passages
                                     ]
-                            else:
+                            elif item.passages:
                                 matched_pairs = [
                                     (unit_ordinals.get((u.number, u.line_start, u.line_end, u.excerpt_digest), 1), u)
                                     for u in item.passages
                                 ]
+                            else:
+                                first_unit = next(((idx, u) for idx, u in all_units if u.text.strip()), None)
+                                matched_pairs = [first_unit] if first_unit is not None else []
                             omitted_preview += max(0, item.matching_unit_count - len(matched_pairs))
                             for ordinal, unit in matched_pairs:
                                 wc = self._unit_citation(matter, store, doc, ordinal, unit)
-                                self.citations_by_key[(wc.document_id, wc.location)] = wc
+                                self._remember_citation(wc)
                                 all_hits.append(SearchHit(
                                     wc.document_id, wc.source_name, wc.location, wc.excerpt, 1.0,
                                     wc.source_version_id, wc.excerpt_digest, wc.evidence_kind,
@@ -176,7 +206,7 @@ class WorkbenchToolBackend:
         citations = self.bench.search(matter, query, limit=fetch_limit, document_ids=document_ids)
         result: list[SearchHit] = []
         for wc in citations:
-            self.citations_by_key[(wc.document_id, wc.location)] = wc
+            self._remember_citation(wc)
             result.append(SearchHit(wc.document_id, wc.source_name, wc.location, wc.excerpt, 1.0,
                                     wc.source_version_id, wc.excerpt_digest, wc.evidence_kind))
         sliced = tuple(result[offset:offset + limit])
@@ -204,16 +234,41 @@ class WorkbenchToolBackend:
                 if page_key < start_page or page_key > stop:
                     continue
                 wc = self._unit_citation(matter, store, doc, ordinal, unit)
-                self.citations_by_key[(wc.document_id, wc.location)] = wc
+                self._remember_citation(wc)
                 pages.append(SourcePage(page_key, wc.location, unit.text, doc.version_id, unit.excerpt_digest))
             return SourceReadResult(doc.document_id, doc.display_name, total_pages, tuple(pages))
 
+    def _paginate_knowledge_bucket(
+        self, service: MatterKnowledgeService, matter_id: str, bucket: str, *, offset: int, limit: int,
+    ) -> tuple[list[Mapping[str, object]], int]:
+        """Traverse MatterKnowledgeService pages until offset + limit items are collected."""
+        target = offset + limit
+        collected: list[Mapping[str, object]] = []
+        total = 0
+        page_num = 1
+        total_pages = 1
+        while page_num <= total_pages and len(collected) < target:
+            kwargs = {"entity_page": page_num, "assertion_page": 1} if bucket == "entities" else {
+                "entity_page": 1, "assertion_page": page_num,
+            }
+            page = service.page(matter_id, self.actor_id, **kwargs)
+            part = page.get(bucket) or {}
+            items = list(part.get("items") or ())
+            if page_num == 1:
+                total = int(part.get("total", len(items)))
+                total_pages = max(1, int(part.get("pages", 1)))
+            if not items:
+                break
+            collected.extend(items)
+            page_num += 1
+        return collected[offset:offset + limit], max(total, len(collected))
+
     def _notebook_section_rows(
-        self, matter_id: str, *, limit: int, document_ids: frozenset[str] | None,
+        self, matter_id: str, *, limit: int, offset: int = 0, document_ids: frozenset[str] | None,
         item_types: tuple[str, ...] | None = None, include_dated: bool = False,
-    ) -> list[dict[str, object]]:
+    ) -> tuple[list[dict[str, object]], int, int, bool]:
         if self.allowed_notebook_items is not None:
-            items = []
+            raw_items = []
             for n in self.allowed_notebook_items:
                 if item_types:
                     matches = (n.item_type in item_types) or (include_dated and bool((n.date_label or "").strip()))
@@ -221,18 +276,35 @@ class WorkbenchToolBackend:
                         continue
                 elif include_dated and not (n.date_label or "").strip():
                     continue
-                items.append(n)
-            items = items[:limit]
+                raw_items.append(n)
+            filtered = []
+            for n in raw_items:
+                ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
+                if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
+                    continue
+                filtered.append((n, ref_ids))
+            total = len(filtered)
+            page_items = filtered[offset:offset + limit]
+            omitted = max(0, total - (offset + len(page_items)))
+            has_more = omitted > 0
         else:
-            items = list(self.bench.workspace.all_notebook_items(
-                matter_id, self.actor_id, include_dismissed=False, limit=limit,
+            fetch_cap = offset + limit + 1
+            raw_items = list(self.bench.workspace.all_notebook_items(
+                matter_id, self.actor_id, include_dismissed=False, limit=fetch_cap,
                 item_types=item_types, include_dated=include_dated,
             ))
+            filtered = []
+            for n in raw_items:
+                ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
+                if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
+                    continue
+                filtered.append((n, ref_ids))
+            has_more = len(filtered) > offset + limit
+            page_items = filtered[offset:offset + limit]
+            total = len(filtered) if not has_more else offset + len(page_items) + 1
+            omitted = max(0, total - (offset + len(page_items)))
         rows: list[dict[str, object]] = []
-        for n in items:
-            ref_ids = sorted({r.document_id for r in getattr(n, "citations", ()) if getattr(r, "document_id", "")})
-            if document_ids is not None and (not ref_ids or not set(ref_ids).issubset(document_ids)):
-                continue
+        for n, ref_ids in page_items:
             item_id = getattr(n, "item_id", None) or getattr(n, "notebook_item_id", "")
             row: dict[str, object] = {
                 "item_id": item_id,
@@ -245,41 +317,82 @@ class WorkbenchToolBackend:
             if ref_ids:
                 row["source_document_ids"] = ref_ids
             rows.append(row)
-        return rows
+        return rows, total, omitted, has_more
 
     def get_case_knowledge(
-        self, matter_id: str, *, section: str = "all", limit: int = 50,
+        self, matter_id: str, *, section: str = "all", limit: int = 50, offset: int = 0,
         document_ids: frozenset[str] | None = None,
     ) -> Mapping[str, object]:
         matter = self.bench._matter_by_id(matter_id)
-        output: dict[str, object] = {}
+        output: dict[str, object] = {"offset": offset, "limit": limit}
+        any_has_more = False
         if section in {"all", "notes"}:
-            output["notes"] = self._notebook_section_rows(matter_id, limit=limit, document_ids=document_ids)
+            note_rows, notes_total, notes_omitted, notes_has_more = self._notebook_section_rows(
+                matter_id, limit=limit, offset=offset, document_ids=document_ids,
+            )
+            output["notes"] = note_rows
+            output["notes_total"] = notes_total
+            output["notes_omitted"] = notes_omitted
+            output["notes_has_more"] = notes_has_more
+            any_has_more = any_has_more or notes_has_more
         if section in {"all", "case_theory"}:
-            output["case_theory"] = self._notebook_section_rows(
-                matter_id, limit=limit, document_ids=document_ids, item_types=("fact", "issue"),
+            theory_rows, theory_total, theory_omitted, theory_has_more = self._notebook_section_rows(
+                matter_id, limit=limit, offset=offset, document_ids=document_ids, item_types=("fact", "issue"),
             )
+            output["case_theory"] = theory_rows
+            output["case_theory_total"] = theory_total
+            output["case_theory_omitted"] = theory_omitted
+            output["case_theory_has_more"] = theory_has_more
+            any_has_more = any_has_more or theory_has_more
         if section in {"all", "timeline"}:
-            output["timeline"] = self._notebook_section_rows(
-                matter_id, limit=limit, document_ids=document_ids, item_types=("event", "date"), include_dated=True,
+            tl_rows, tl_total, tl_omitted, tl_has_more = self._notebook_section_rows(
+                matter_id, limit=limit, offset=offset, document_ids=document_ids,
+                item_types=("event", "date"), include_dated=True,
             )
+            output["timeline"] = tl_rows
+            output["timeline_total"] = tl_total
+            output["timeline_omitted"] = tl_omitted
+            output["timeline_has_more"] = tl_has_more
+            any_has_more = any_has_more or tl_has_more
         if section in {"all", "entities", "assertions"}:
             if document_ids is not None:
                 if section in {"all", "entities"}:
                     output["entities"] = []
+                    output["entities_total"] = 0
+                    output["entities_omitted"] = 0
+                    output["entities_has_more"] = False
                 if section in {"all", "assertions"}:
                     output["assertions"] = []
+                    output["assertions_total"] = 0
+                    output["assertions_omitted"] = 0
+                    output["assertions_has_more"] = False
+                output["has_more"] = any_has_more
+                output["next_offset"] = (offset + limit) if any_has_more else None
                 return output
             try:
-                page = MatterKnowledgeService(self.bench.assertion_service(matter)).page(matter_id, self.actor_id)
+                service = MatterKnowledgeService(self.bench.assertion_service(matter))
             except Exception:
-                page = {"entities": {"items": []}, "assertions": {"items": []}}
+                service = None
             if section in {"all", "entities"}:
+                ent_items, ent_total = (
+                    self._paginate_knowledge_bucket(service, matter_id, "entities", offset=offset, limit=limit)
+                    if service is not None else ([], 0)
+                )
                 output["entities"] = [
                     {"name": e.get("display_name") or e.get("canonical_name"), "type": e.get("entity_type"), "status": e.get("status")}
-                    for e in page["entities"]["items"][:limit]
+                    for e in ent_items
                 ]
+                ent_omitted = max(0, ent_total - (offset + len(ent_items)))
+                ent_has_more = ent_omitted > 0
+                output["entities_total"] = ent_total
+                output["entities_omitted"] = ent_omitted
+                output["entities_has_more"] = ent_has_more
+                any_has_more = any_has_more or ent_has_more
             if section in {"all", "assertions"}:
+                asn_items, asn_total = (
+                    self._paginate_knowledge_bucket(service, matter_id, "assertions", offset=offset, limit=limit)
+                    if service is not None else ([], 0)
+                )
                 output["assertions"] = [
                     {
                         "title": a.get("title"),
@@ -287,9 +400,113 @@ class WorkbenchToolBackend:
                         "date": a.get("raw_date") or a.get("date_label"),
                         "status": a.get("status"),
                     }
-                    for a in page["assertions"]["items"][:limit]
+                    for a in asn_items
                 ]
+                asn_omitted = max(0, asn_total - (offset + len(asn_items)))
+                asn_has_more = asn_omitted > 0
+                output["assertions_total"] = asn_total
+                output["assertions_omitted"] = asn_omitted
+                output["assertions_has_more"] = asn_has_more
+                any_has_more = any_has_more or asn_has_more
+        output["has_more"] = any_has_more
+        output["next_offset"] = (offset + limit) if any_has_more else None
         return output
+
+
+    def read_structured_table(
+        self, matter_id: str, document_id: str, *, sheet: str = "",
+    ):
+        """Parse CSV/TSV/XLSX directly from the digest-verified original file with exact per-section citations."""
+        import csv
+        import io
+        from pathlib import Path
+        import re
+        from .case_assistant_tools import AssistantToolError, SourceRef
+        from .extended_extract import (
+            MAX_COLUMNS, MAX_ROWS, MAX_TEXT_CONTAINER_BYTES, _cell_text, extract_xlsx_structured,
+        )
+
+        matter = self.bench._matter_by_id(matter_id)
+        store = self.bench.source_store(matter)
+        with store._lock:
+            try:
+                doc = store.get(document_id)
+            except KeyError:
+                return None
+            suffix = Path(doc.display_name).suffix.casefold()
+            media = (doc.media_type or "").casefold()
+            is_csv = suffix == ".csv" or media == "text/csv"
+            is_tsv = suffix == ".tsv" or media == "text/tab-separated-values"
+            is_xlsx = suffix == ".xlsx" or "spreadsheetml" in media
+            if not (is_csv or is_tsv or is_xlsx):
+                return None
+            if doc.origin != "upload":
+                return None
+            try:
+                verified_path = store.source_path(doc.document_id, verify_digest=True)
+            except Exception as exc:
+                raise AssistantToolError(f"Original table integrity check failed for {doc.display_name}.") from exc
+            all_units = list(enumerate(doc.iter_parsed_units(), 1))
+            if not all_units or len(all_units) > 500:
+                raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
+            unit_meta: list[tuple[str | None, int, int, object]] = []
+            refs: list[SourceRef] = []
+            row_range_re = re.compile(r"^(?:(.+?),\s*)?rows\s+(\d+)[–-](\d+)", re.IGNORECASE)
+            for ordinal, unit in all_units:
+                wc = self._unit_citation(matter, store, doc, ordinal, unit)
+                self._remember_citation(wc)
+                refs.append(SourceRef(wc.document_id, wc.source_name, wc.location, wc.source_version_id, wc.excerpt_digest))
+                m = row_range_re.match((unit.location_label or wc.location).strip())
+                if m:
+                    unit_meta.append(((m.group(1) or "").strip() or None, int(m.group(2)), int(m.group(3)), wc))
+                else:
+                    unit_meta.append((None, (ordinal - 1) * 100 + 1, ordinal * 100, wc))
+
+            def loc_for(row_num: int, sheet_name: str | None = None) -> str:
+                for u_sheet, start_r, end_r, wc in unit_meta:
+                    if sheet_name is not None and (u_sheet or "").casefold() != sheet_name.casefold():
+                        continue
+                    if start_r <= row_num <= end_r:
+                        return wc.location
+                return unit_meta[-1][3].location
+
+            if is_csv or is_tsv:
+                if verified_path.stat().st_size > MAX_TEXT_CONTAINER_BYTES:
+                    raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
+                raw = verified_path.read_bytes()
+                try:
+                    text = raw.decode("utf-8-sig", errors="strict")
+                    rows_iter = csv.reader(io.StringIO(text), delimiter="\t" if is_tsv else ",", strict=True)
+                    header_vals: list[str] | None = None
+                    header_row_num = 1
+                    tagged: list[tuple[dict[str, str], str, str]] = []
+                    for row_num, row in enumerate(rows_iter, 1):
+                        if row_num > MAX_ROWS:
+                            raise AssistantToolError("Table source exceeds complete-aggregation coverage bounds.")
+                        vals = [_cell_text(v) for v in row]
+                        if len(vals) > MAX_COLUMNS:
+                            raise AssistantToolError("Table source exceeds supported column limit.")
+                        if not any(vals):
+                            continue
+                        if header_vals is None:
+                            from .case_assistant_tools import _ensure_unique_headers
+                            _ensure_unique_headers(vals)
+                            header_vals = vals
+                            header_row_num = row_num
+                            continue
+                        row_dict = {col: (vals[idx] if idx < len(vals) else "") for idx, col in enumerate(header_vals) if col}
+                        tagged.append((row_dict, loc_for(row_num), doc.version_id))
+                except (UnicodeDecodeError, csv.Error) as exc:
+                    raise AssistantToolError(f"Malformed delimited table {doc.display_name}: {exc}") from exc
+                columns = [h for h in (header_vals or []) if h]
+                return doc.display_name, columns, tagged, refs, loc_for(header_row_num)
+
+            try:
+                chosen_name, columns, sheet_rows, header_row = extract_xlsx_structured(verified_path, sheet=sheet)
+            except ValueError as exc:
+                raise AssistantToolError(str(exc)) from exc
+            tagged = [(row_dict, loc_for(sheet_row, chosen_name), doc.version_id) for row_dict, sheet_row in sheet_rows]
+            return doc.display_name, columns, tagged, refs, loc_for(header_row, chosen_name)
 
     def read_email_thread(
         self, matter_id: str, document_id: str, *, limit: int = 25, offset: int | None = None,
@@ -309,6 +526,7 @@ class WorkbenchToolBackend:
             except Exception as exc:
                 raise AssistantToolError(f"Original email integrity check failed for {target.display_name}.") from exc
             records, by_source = [], {}
+            unthreaded_errors: list[dict[str, str]] = []
             for doc in store.documents.values():
                 if allowed_document_ids is not None and doc.document_id not in allowed_document_ids:
                     continue
@@ -319,6 +537,17 @@ class WorkbenchToolBackend:
                         raise AssistantToolError(f"Original email integrity check failed for {doc.display_name}.") from exc
                     if verified_path.is_file():
                         rec = read_eml(verified_path)
+                        if rec.error:
+                            if doc.document_id == target.document_id:
+                                raise AssistantToolError(
+                                    f"Email headers/thread links could not be parsed for {doc.display_name}: {rec.error}"
+                                )
+                            unthreaded_errors.append({
+                                "document_id": doc.document_id,
+                                "source_name": doc.display_name,
+                                "error": str(rec.error),
+                            })
+                            continue
                         records.append(rec)
                         by_source[rec.source] = doc
             target_path = str(target_verified)
@@ -339,6 +568,7 @@ class WorkbenchToolBackend:
                 effective_offset = offset
             matched_nodes = full_thread[effective_offset:effective_offset + limit]
             messages = []
+            any_body_truncated = False
             for node in matched_nodes:
                 doc = by_source.get(node.message.source)
                 if doc is None:
@@ -347,24 +577,37 @@ class WorkbenchToolBackend:
                 body_units = [(ord_idx, u) for ord_idx, u in units if (u.location_label or "") != "Email headers"]
                 chosen_units = body_units if body_units else units[:1]
                 body_spans: list[dict[str, object]] = []
+                msg_truncated = False
                 for ord_idx, unit in chosen_units:
                     wc = self._unit_citation(matter, store, doc, ord_idx, unit)
-                    self.citations_by_key[(wc.document_id, wc.location)] = wc
+                    self._remember_citation(wc)
+                    full_len = len(unit.text)
+                    snippet = unit.text[:4_000]
+                    span_truncated = full_len > len(snippet)
+                    msg_truncated = msg_truncated or span_truncated
                     body_spans.append({
                         "location": wc.location,
+                        "page_number": ord_idx,
                         "source_version_id": doc.version_id,
                         "excerpt_digest": wc.excerpt_digest,
-                        "text": unit.text[:4_000],
+                        "text": snippet,
+                        "total_chars": full_len,
+                        "omitted_chars": full_len - len(snippet),
+                        "truncated": span_truncated,
+                        "next_char_offset": len(snippet) if span_truncated else None,
                     })
+                any_body_truncated = any_body_truncated or msg_truncated
                 primary = body_spans[0] if body_spans else {"location": "Section 1", "text": ""}
                 messages.append({
                     "document_id": doc.document_id, "source_name": doc.display_name,
                     "location": primary["location"],
                     "source_version_id": doc.version_id, "subject": node.message.subject,
-                    "body": primary["text"], "body_spans": body_spans, "weak_link": node.weak_link,
+                    "body": primary["text"], "body_spans": body_spans,
+                    "truncated": msg_truncated, "weak_link": node.weak_link,
                 })
             has_more = (effective_offset + len(messages)) < total_messages
-            truncated = len(messages) < total_messages
+            incomplete_threading = bool(unthreaded_errors)
+            truncated = (len(messages) < total_messages) or any_body_truncated or incomplete_threading
             return {
                 "document_id": target.document_id,
                 "count": len(messages),
@@ -374,13 +617,16 @@ class WorkbenchToolBackend:
                 "has_more": has_more,
                 "next_offset": (effective_offset + len(messages)) if has_more else None,
                 "previous_offset": max(0, effective_offset - limit) if effective_offset > 0 else None,
+                "body_truncated": any_body_truncated,
+                "incomplete_threading": incomplete_threading,
+                "unthreaded_email_errors": unthreaded_errors,
                 "truncated": truncated,
                 "messages": messages,
             }
 
     def read_transcript_window(
         self, matter_id: str, document_id: str, *, start_seconds: float = 0.0,
-        end_seconds: float | None = None, limit: int = 50,
+        end_seconds: float | None = None, limit: int = 50, offset: int = 0,
     ) -> Mapping[str, object] | None:
         import re
         ts_re = re.compile(r"\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]\s*(?:([^:\n]{1,40}):\s*)?(.*)")
@@ -391,31 +637,123 @@ class WorkbenchToolBackend:
                 doc = store.get(document_id)
             except KeyError:
                 return None
-            cues: list[dict[str, object]] = []
+            all_cues: list[tuple[dict[str, object], list[object]]] = []
+            active_cue: dict[str, object] | None = None
+            active_wcs: list[object] = []
+            untimestamped_omitted = 0
             for ordinal, unit in enumerate(doc.iter_parsed_units(), 1):
                 wc = self._unit_citation(matter, store, doc, ordinal, unit)
                 if unit.start_ms is not None:
+                    active_cue = None
+                    active_wcs = []
                     s_sec = unit.start_ms / 1000.0
                     e_sec = (unit.end_ms / 1000.0) if unit.end_ms is not None else s_sec
                     if e_sec >= start_seconds and (end_seconds is None or s_sec <= end_seconds):
-                        self.citations_by_key[(wc.document_id, wc.location)] = wc
-                        cues.append({"start_seconds": s_sec, "end_seconds": e_sec, "speaker": unit.speaker_cluster,
-                                     "text": unit.text, "location": wc.location, "source_version_id": doc.version_id})
+                        all_cues.append((
+                            {"start_seconds": s_sec, "end_seconds": e_sec, "speaker": unit.speaker_cluster,
+                             "text": unit.text, "location": wc.location, "source_version_id": doc.version_id},
+                            [wc],
+                        ))
                 else:
-                    for line in unit.text.splitlines():
-                        m = ts_re.match(line.strip())
-                        if not m:
+                    for raw_line in unit.text.splitlines():
+                        stripped = raw_line.strip()
+                        if not stripped:
                             continue
-                        a, b, c = int(m.group(1)), int(m.group(2)), int(m.group(3)) if m.group(3) else None
-                        sec = float(a * 3600 + b * 60 + c) if c is not None else float(a * 60 + b)
-                        if sec >= start_seconds and (end_seconds is None or sec <= end_seconds):
-                            self.citations_by_key[(wc.document_id, wc.location)] = wc
-                            cues.append({"start_seconds": sec, "end_seconds": sec, "speaker": (m.group(4) or "").strip(),
-                                         "text": m.group(5).strip(), "location": wc.location, "source_version_id": doc.version_id})
-                if len(cues) >= limit:
-                    break
-            return {"document_id": doc.document_id, "source_name": doc.display_name,
-                    "start_seconds": start_seconds, "end_seconds": end_seconds, "count": len(cues), "cues": cues[:limit]}
+                        m = ts_re.match(stripped)
+                        if m:
+                            a, b, c = int(m.group(1)), int(m.group(2)), int(m.group(3)) if m.group(3) else None
+                            sec = float(a * 3600 + b * 60 + c) if c is not None else float(a * 60 + b)
+                            cue_text = m.group(5).strip()
+                            cue_dict: dict[str, object] = {
+                                "start_seconds": sec,
+                                "end_seconds": sec,
+                                "speaker": (m.group(4) or "").strip(),
+                                "text": cue_text,
+                                "location": wc.location,
+                                "source_version_id": doc.version_id,
+                                "spans": [{"location": wc.location, "text": cue_text}],
+                            }
+                            active_cue = cue_dict
+                            active_wcs = [wc]
+                            if sec >= start_seconds and (end_seconds is None or sec <= end_seconds):
+                                all_cues.append((cue_dict, active_wcs))
+                        elif active_cue is not None:
+                            prev = str(active_cue.get("text") or "")
+                            active_cue["text"] = f"{prev}\n{stripped}".strip() if prev else stripped
+                            spans = active_cue.get("spans")
+                            if isinstance(spans, list):
+                                if spans and spans[-1].get("location") == wc.location:
+                                    s_prev = str(spans[-1].get("text") or "")
+                                    spans[-1]["text"] = f"{s_prev}\n{stripped}".strip() if s_prev else stripped
+                                else:
+                                    spans.append({"location": wc.location, "text": stripped})
+                            if wc.location != active_cue["location"]:
+                                cont_locs = active_cue.setdefault("continuation_locations", [])
+                                if isinstance(cont_locs, list) and wc.location not in cont_locs:
+                                    cont_locs.append(wc.location)
+                                if not any(existing.location == wc.location for existing in active_wcs):
+                                    active_wcs.append(wc)
+                        else:
+                            untimestamped_omitted += 1
+            total_cues = len(all_cues)
+            sliced = all_cues[offset:offset + limit]
+            page_cues: list[dict[str, object]] = []
+            for cue, wcs in sliced:
+                for wc in wcs:
+                    self._remember_citation(wc)
+                page_cues.append(cue)
+            omitted_cues = max(0, total_cues - (offset + len(page_cues)))
+            has_more = omitted_cues > 0
+            return {
+                "document_id": doc.document_id,
+                "source_name": doc.display_name,
+                "start_seconds": start_seconds,
+                "end_seconds": end_seconds,
+                "offset": offset,
+                "limit": limit,
+                "count": len(page_cues),
+                "total_cues": total_cues,
+                "omitted_cues": omitted_cues,
+                "untimestamped_lines_omitted": untimestamped_omitted,
+                "has_more": has_more,
+                "next_offset": (offset + len(page_cues)) if has_more else None,
+                "truncated": (len(page_cues) < total_cues) or (untimestamped_omitted > 0),
+                "cues": page_cues,
+            }
+
+def _verified_receipt_expression(receipt) -> str:
+    """Format verified calculation arithmetic from operation, verified numeric inputs, and result only."""
+    values = ", ".join(str(inp.value) for inp in receipt.inputs)
+    return f"{receipt.operation}({values}) = {receipt.result}"
+
+
+def format_assistant_qualifications(payload: Mapping[str, object]) -> str:
+    """Render saved Case Assistant gaps, competing accounts, and calculation receipts for reports."""
+    ca = payload.get("case_assistant")
+    if not isinstance(ca, Mapping):
+        return ""
+    sections: list[str] = []
+    gaps = [str(g).strip() for g in (ca.get("gaps") or ()) if isinstance(g, str) and g.strip()]
+    if gaps:
+        sections.append("Investigation gaps:\n" + "\n".join(f"- {g}" for g in gaps))
+    competing = [str(c).strip() for c in (ca.get("competing_accounts") or ()) if isinstance(c, str) and c.strip()]
+    if competing:
+        sections.append("Competing accounts:\n" + "\n".join(f"- {c}" for c in competing))
+    receipts = [r for r in (ca.get("receipts") or ()) if isinstance(r, Mapping)]
+    if receipts:
+        lines = []
+        for r in receipts:
+            rid = str(r.get("receipt_id", "")).strip()
+            expr = str(r.get("expression", "")).strip()
+            res = str(r.get("result", "")).strip()
+            unit = str(r.get("unit", "")).strip()
+            label = f"[{rid}] " if rid else ""
+            suffix = f" {unit}" if unit else ""
+            rendered = expr if (not res or expr.endswith(f"= {res}")) else f"{expr} = {res}"
+            lines.append(f"- {label}{rendered}{suffix}".strip())
+        if lines:
+            sections.append("Calculation receipts:\n" + "\n".join(lines))
+    return "\n\n".join(sections)
 
 
 def _collect_calc_premise_refs(calc_ids: Sequence[str], receipts: Mapping[str, object]) -> list[object]:
@@ -444,35 +782,144 @@ def _collect_calc_premise_refs(calc_ids: Sequence[str], receipts: Mapping[str, o
     return refs
 
 
-def _result_to_answer(bench, result: AssistantInvestigationResult, backend: WorkbenchToolBackend, source_fingerprint: str) -> AnswerResult:
-    from .case_assistant_proposals import build_verified_proposals
+_DETERMINISTIC_OP_UNITS = {"percent": "%", "days_between": "days", "count": "rows"}
 
+
+def _verified_receipt_unit(receipt, premise_wcs: Sequence[object]) -> str:
+    """Retain only operation-derived or source-grounded unit tokens for verified display."""
+    import re
+    raw_unit = str(getattr(receipt, "unit", "") or "").strip()
+    if not raw_unit:
+        return ""
+    if _DETERMINISTIC_OP_UNITS.get(receipt.operation) == raw_unit:
+        return raw_unit
+    if not re.fullmatch(r"[A-Za-z%$]{1,16}", raw_unit):
+        return ""
+    premise_text = "\n".join(str(getattr(wc, "excerpt", "") or "") for wc in premise_wcs)
+    return raw_unit if raw_unit.casefold() in premise_text.casefold() else ""
+
+
+def _result_to_answer(bench, result: AssistantInvestigationResult, backend: WorkbenchToolBackend, source_fingerprint: str) -> AnswerResult:
     claims_payload: list[dict[str, object]] = []
+    retained_findings: list[object] = []
     used_citations: list[object] = []
     seen_tokens: set[str] = set()
+    extra_omitted = 0
 
-    def collect_cites(refs) -> list[dict[str, object]]:
-        rows: list[dict[str, object]] = []
-        seen_local: set[str] = set()
-        for ref in refs:
-            wc = backend.citations_by_key.get((ref.document_id, ref.location))
-            if wc is None:
-                continue
+    for finding in result.findings:
+        combined_refs = (*finding.citations, *_collect_calc_premise_refs(finding.calculation_ids, result.receipts))
+        resolved_wcs = [backend.citation_for_ref(ref) for ref in combined_refs]
+        if not resolved_wcs or any(wc is None for wc in resolved_wcs):
+            extra_omitted += 1
+            continue
+        cite_rows: list[dict[str, object]] = []
+        seen_claim_tokens: set[str] = set()
+        for wc in resolved_wcs:
+            assert wc is not None
             if wc.support_token not in seen_tokens:
                 seen_tokens.add(wc.support_token)
                 used_citations.append(wc)
-            if wc.support_token not in seen_local:
-                seen_local.add(wc.support_token)
-                rows.append(bench._saved_answer_citation_payload(wc))
-        return rows
+            if wc.support_token in seen_claim_tokens:
+                continue
+            seen_claim_tokens.add(wc.support_token)
+            cite_rows.append(bench._saved_answer_citation_payload(wc))
+        if not cite_rows:
+            extra_omitted += 1
+            continue
+        retained_findings.append(finding)
+        claims_payload.append({"text": finding.text, "citations": cite_rows, "calculation_ids": list(finding.calculation_ids)})
+    trace_rows = [{"call_id": rec.call_id, "tool_name": rec.tool_name, "status": rec.status,
+                   "elapsed_ms": rec.elapsed_ms, "cited_count": len(rec.cited_refs), "error": rec.error}
+                  for rec in result.trace]
+    receipt_rows: list[dict[str, object]] = []
+    for receipt in result.receipts.values():
+        premise_refs = _collect_calc_premise_refs((receipt.receipt_id,), result.receipts)
+        premise_wcs = [backend.citation_for_ref(ref) for ref in premise_refs]
+        if not premise_wcs or any(wc is None for wc in premise_wcs):
+            continue
+        receipt_cites: list[dict[str, object]] = []
+        seen_receipt_tokens: set[str] = set()
+        for wc in premise_wcs:
+            assert wc is not None
+            if wc.support_token not in seen_tokens:
+                seen_tokens.add(wc.support_token)
+                used_citations.append(wc)
+            if wc.support_token not in seen_receipt_tokens:
+                seen_receipt_tokens.add(wc.support_token)
+                receipt_cites.append(bench._saved_answer_citation_payload(wc))
+        receipt_rows.append({
+            "receipt_id": receipt.receipt_id,
+            "operation": receipt.operation,
+            "expression": _verified_receipt_expression(receipt),
+            "result": receipt.result,
+            "unit": _verified_receipt_unit(receipt, premise_wcs),
+            "citations": receipt_cites,
+            "inputs": [
+                {"value": inp.value, "source_refs": [asdict(sref) for sref in inp.source_refs]}
+                for inp in receipt.inputs
+            ],
+        })
+    import re
+    from .case_assistant import _extract_nums
 
-    for finding in result.findings:
-        combined = (*finding.citations, *_collect_calc_premise_refs(finding.calculation_ids, result.receipts))
-        claims_payload.append({"text": finding.text, "citations": collect_cites(combined),
-                               "calculation_ids": list(finding.calculation_ids)})
-    proposals_payload = []
-    for prop in build_verified_proposals(result):
-        prop_cites = collect_cites(prop.citations)
+    allowed_nums: set[str] = set()
+    for wc in used_citations:
+        allowed_nums.update(_extract_nums(str(getattr(wc, "excerpt", "") or "")))
+    for r in receipt_rows:
+        allowed_nums.update(_extract_nums(str(r.get("result", ""))))
+    verified_competing: list[str] = []
+    if used_citations:
+        for account in result.competing_accounts:
+            text = str(account or "").strip()
+            if not text:
+                continue
+            nums = _extract_nums(text)
+            if nums and not nums.issubset(allowed_nums):
+                continue
+            verified_competing.append(text)
+    _system_gap_re = re.compile(
+        r"^(?:\d+\s+unavailable\b|Turn budget\b|Model returned\b|Investigation\b)",
+        re.IGNORECASE,
+    )
+    verified_gaps: list[str] = []
+    for gap in result.gaps:
+        text = str(gap or "").strip()
+        if not text:
+            continue
+        if _system_gap_re.match(text):
+            verified_gaps.append(text)
+            continue
+        nums = _extract_nums(text)
+        if nums and not nums.issubset(allowed_nums):
+            continue
+        verified_gaps.append(text)
+    from .case_assistant_proposals import build_verified_proposals
+
+    verified_receipts = {
+        str(r["receipt_id"]): replace(
+            result.receipts[str(r["receipt_id"])],
+            expression=str(r["expression"]),
+            unit=str(r["unit"]),
+        )
+        for r in receipt_rows
+        if str(r["receipt_id"]) in result.receipts
+    }
+    verified_result = replace(result, findings=tuple(retained_findings), receipts=verified_receipts)
+    proposals_payload: list[dict[str, object]] = []
+    for prop in build_verified_proposals(verified_result):
+        resolved_prop_wcs = [backend.citation_for_ref(ref) for ref in prop.citations]
+        if not resolved_prop_wcs or any(wc is None for wc in resolved_prop_wcs):
+            continue
+        prop_cites: list[dict[str, object]] = []
+        seen_prop_tokens: set[str] = set()
+        for wc in resolved_prop_wcs:
+            assert wc is not None
+            if wc.support_token not in seen_tokens:
+                seen_tokens.add(wc.support_token)
+                used_citations.append(wc)
+            if wc.support_token not in seen_prop_tokens:
+                seen_prop_tokens.add(wc.support_token)
+                prop_cites.append(bench._saved_answer_citation_payload(wc))
         if prop_cites:
             proposals_payload.append({
                 "proposal_id": prop.proposal_id, "category": prop.category, "label": prop.label,
@@ -480,10 +927,6 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
                 "calculation_ids": list(prop.calculation_ids), "disclosure_note": prop.disclosure_note,
                 "citations": prop_cites,
             })
-    trace_rows = [{"call_id": rec.call_id, "tool_name": rec.tool_name, "status": rec.status,
-                   "elapsed_ms": rec.elapsed_ms, "cited_count": len(rec.cited_refs), "error": rec.error}
-                  for rec in result.trace]
-    receipt_rows = [asdict(receipt) for receipt in result.receipts.values()]
     supported = bool(result.answerable and claims_payload)
     intro = _VERIFIED_INTRO if supported else _ABSTENTION_INTRO
     payload: dict[str, object] = {
@@ -495,13 +938,14 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
         "limitation": None,
         "missing_information": "" if supported else _ABSTENTION_INTRO,
         "case_assistant": {
-            "receipts": receipt_rows, "gaps": list(result.gaps),
-            "competing_accounts": list(result.competing_accounts),
+            "receipts": receipt_rows, "gaps": verified_gaps,
+            "competing_accounts": verified_competing,
             "proposals": proposals_payload,
-            "trace": trace_rows, "turns_used": result.turns_used, "omitted_findings": result.omitted_findings,
+            "trace": trace_rows, "turns_used": result.turns_used,
+            "omitted_findings": result.omitted_findings + extra_omitted,
         },
     }
-    text_parts = [f.text for f in result.findings] if supported else [_ABSTENTION_INTRO]
+    text_parts = [f.text for f in retained_findings] if supported else [_ABSTENTION_INTRO]
     return AnswerResult("\n".join(p for p in text_parts if p), payload, tuple(used_citations),
                         retrieval_source_fingerprint=source_fingerprint)
 
@@ -516,6 +960,9 @@ def run_workbench_assistant_job(
     backend = WorkbenchToolBackend(bench, job.actor_id, allowed_notebook_items=notebook_items)
     runtime = MatterToolRuntime(matter.matter_id, job.actor_id, backend, allowed_document_ids=scoped_document_ids)
     history = tuple((m.role, m.content) for m in prior[-8:])
+    fingerprint = retrieval_boundary.get("source_fingerprint") or bench.workspace.source_availability_fingerprint(
+        matter.matter_id, retrieval_boundary.get("source_set_id") or None,
+    )
 
     def stage_bridge(stage_key: str, message: str) -> None:
         persisted = "verifying" if stage_key == "verifying" else "generating"
@@ -530,9 +977,6 @@ def run_workbench_assistant_job(
         raise AnswerJobFailure("Access to this matter was removed before the answer completed.") from exc
     if not backend.authorize(job.matter_id, job.actor_id):
         raise AnswerJobFailure("Access to this matter was removed before the answer completed.")
-    fingerprint = retrieval_boundary.get("source_fingerprint") or bench.workspace.source_availability_fingerprint(
-        matter.matter_id, retrieval_boundary.get("source_set_id") or None,
-    )
     return _result_to_answer(bench, result, backend, fingerprint)
 
 

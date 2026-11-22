@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from pathlib import PurePosixPath
 
 from .loose_file_preflight import PREFLIGHT_STATES, evaluate_loose_file_preflight
+from .source_load_files import DAT_INTAKE_ROLES, FieldProfile
 from .workspace_store import WorkspaceProblem, WorkspaceStore
 
 MAX_SELECTION_ITEMS = 10_000
@@ -52,14 +53,37 @@ def _integer(value: object, minimum: int, maximum: int) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and minimum <= value <= maximum
 
 
+def _profile_text(value, maximum):
+    return (isinstance(value, str) and 0 < len(value) <= maximum and bool(value.strip())
+            and not any(unicodedata.category(char) in {'Cc', 'Cf', 'Cs'} for char in value))
+
+
+def _dat_mapping(data):
+    if (not isinstance(data, dict) or set(data) != {'producer', 'sha256', 'fields'}
+            or not _profile_text(data['producer'], 160)
+            or not isinstance(data['sha256'], str) or not _FINGERPRINT.fullmatch(data['sha256'])
+            or not isinstance(data['fields'], dict) or not 1 <= len(data['fields']) <= len(DAT_INTAKE_ROLES)
+            or any(not _profile_text(header, 200) or not isinstance(role, str) or role not in DAT_INTAKE_ROLES
+                   for header, role in data['fields'].items())):
+        raise WorkspaceProblem('Choose a producer and valid DAT fields for this file.')
+    try:
+        profile = FieldProfile(data['producer'], data['fields'])
+    except ValueError as exc:
+        raise WorkspaceProblem('Assign each DAT field role only once.') from exc
+    return profile.producer, data['sha256'], _json(sorted(profile.fields.items()))
+
+
 # All joins include matter identity. A received file may fail parsing; byte
 # receipt and current source availability intentionally remain distinct axes.
 _PROJECTED = '''WITH linked AS (
-    SELECT i.*,u.upload_session_id,u.state AS upload_state,u.received_size,
+    SELECT i.*,dp.producer,dp.digest AS inspected_digest,dp.fields_json,
+      u.upload_session_id,u.state AS upload_state,u.received_size,
       u.document_id,u.message AS upload_message,
       c.document_id AS catalog_document_id,c.version_id,c.tone,c.source_state,
       ij.state AS ingest_state,mj.state AS media_state
     FROM workbench_intake_item i
+    LEFT JOIN workbench_intake_dat_profile dp ON dp.receipt_id=i.receipt_id
+      AND dp.ordinal=i.ordinal AND dp.matter_id=i.matter_id
     LEFT JOIN workbench_intake_transfer t ON t.receipt_id=i.receipt_id
       AND t.ordinal=i.ordinal AND t.matter_id=i.matter_id
     LEFT JOIN workbench_upload_item u ON u.upload_item_id=t.upload_item_id AND u.matter_id=i.matter_id
@@ -187,11 +211,13 @@ class IntakeReceipts:
         # Bound direct callers as well as HTTP requests; never stringify nested
         # client values or write part of a malformed metadata batch.
         for file in files:
-            if (not isinstance(file, dict) or set(file) - {'name', 'relative_path', 'size', 'media_type'}
+            if (not isinstance(file, dict) or set(file) - {'name', 'relative_path', 'size', 'media_type', 'dat_profile'}
                 or any(file.get(k) is not None and not isinstance(file[k], str)
                        for k in ('name', 'relative_path', 'media_type'))
                 or (file.get('size') is not None and not _integer(file['size'], 0, 2**53 - 1))):
                 raise WorkspaceProblem('The selection entry is invalid. Review the selection again.')
+            if 'dat_profile' in file:
+                _dat_mapping(file['dat_profile'])
         try:
             encoded_size = len(json.dumps([files, reviewed_states], ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
         except UnicodeEncodeError as exc:
@@ -207,7 +233,7 @@ class IntakeReceipts:
             if start + len(files) > receipt['selected_count']:
                 raise WorkspaceProblem('This receipt batch exceeds the confirmed selection.')
             eligible = set(json.loads(receipt['eligible_indexes_json']))
-            pending = []
+            pending, profiles = [], []
             for offset, (raw, result, digest) in enumerate(zip(files, evaluated['items'], digests)):
                 ordinal = start + offset
                 existing = self.connection.execute(
@@ -229,6 +255,10 @@ class IntakeReceipts:
                     path = str(PurePosixPath(unicodedata.normalize('NFC', raw.get('relative_path') or raw.get('name'))))
                 size = result['size'] if _integer(result['size'], 0, 2**53 - 1) else None
                 name = result['display_name'] if path else f'Selected file {ordinal + 1}'
+                if 'dat_profile' in raw:
+                    if not included or PurePosixPath(path).suffix.lower() != '.dat':
+                        raise WorkspaceProblem('A DAT mapping requires a selected DAT file.')
+                    profiles.append((receipt_id, matter_id, ordinal, *_dat_mapping(raw['dat_profile'])))
                 reason = str(result['message'])
                 reviewed_reason = reason
                 if not included and (reviewed_state == 'valid' or reviewed_state != result['state']):
@@ -238,10 +268,11 @@ class IntakeReceipts:
                      result['expected_type'] or '', result['supplied_type'] or '', result['state'],
                      int(included), reason, reviewed_state, reviewed_reason))
             charged = sum(256 + sum(len(str(value).encode('utf-8')) for value in row if value is not None)
-                for row in pending)
+                for row in (*pending, *profiles))
             if pending:
                 self._admit_locked(matter_id, actor_id, metadata_bytes=charged)
                 self.connection.executemany('INSERT INTO workbench_intake_item VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', pending)
+                self.connection.executemany('INSERT INTO workbench_intake_dat_profile VALUES (?,?,?,?,?,?)', profiles)
             self.connection.execute('UPDATE workbench_intake_receipt SET updated_at=?,metadata_bytes=metadata_bytes+? '
                 'WHERE receipt_id=? AND matter_id=?', (self.workspace._now(), charged, receipt_id, matter_id))
         return self.get(matter_id, actor_id, receipt_id)
@@ -356,9 +387,30 @@ class IntakeReceipts:
             rows = self.connection.execute(_PROJECTED + '''SELECT ordinal,relative_path,display_name,expected_size,
                 expected_type,supplied_type,preflight_state,reason,reviewed_state,reviewed_reason,selection_state,transfer_state,availability,
                 COALESCE(received_size,0) AS received_size,document_id,catalog_document_id,version_id,
-                COALESCE(upload_message,'') AS upload_message FROM projected ORDER BY ordinal LIMIT ? OFFSET ?''',
+                producer,inspected_digest,fields_json,COALESCE(upload_message,'') AS upload_message
+                FROM projected ORDER BY ordinal LIMIT ? OFFSET ?''',
                 (matter_id, receipt_id, limit, offset)).fetchall()
-            return [dict(row) | {'reviewed_basis': 'browser_report'} for row in rows]
+            items = []
+            for row in rows:
+                item = dict(row)
+                producer, digest, fields = (item.pop(k) for k in ('producer', 'inspected_digest', 'fields_json'))
+                if producer is not None:
+                    item['dat_profile'] = {'producer': producer, 'sha256': digest, 'fields': dict(json.loads(fields))}
+                items.append(dict(item, reviewed_basis='browser_report'))
+            return items
+
+    def producer_profile(self, matter_id: str, actor_id: str, producer: str) -> dict | None:
+        """Return the mapping from the newest confirmed selection for this producer."""
+        with self.workspace._lock:
+            self.workspace.membership(matter_id, actor_id)
+            if not _profile_text(producer, 160):
+                raise WorkspaceProblem('Enter a producer name of up to 160 characters.')
+            row = self.connection.execute(
+                "SELECT p.fields_json FROM workbench_intake_dat_profile p JOIN workbench_intake_receipt r "
+                "ON r.receipt_id=p.receipt_id AND r.matter_id=p.matter_id WHERE p.matter_id=? "
+                "AND p.producer=? AND r.state='ready' ORDER BY r.created_at DESC,p.receipt_id DESC,p.ordinal DESC LIMIT 1",
+                (matter_id, producer)).fetchone()
+            return {'producer': producer, 'fields': dict(json.loads(row[0]))} if row else None
 
     @contextmanager
     def _read_snapshot(self):

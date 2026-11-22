@@ -335,8 +335,9 @@ def verify_assistant_answer(
                 receipt = receipts.get(str(cid))
                 if receipt is None: valid = False; break
                 calc_ids.append(receipt.receipt_id); allowed_nums.add(_norm_num(receipt.result))
-                for inp in receipt.inputs:
-                    allowed_nums.add(_norm_num(inp.value))
+                if receipt.operation != "count":
+                    for inp in receipt.inputs:
+                        allowed_nums.add(_norm_num(inp.value))
                 if receipt.operation == "running_balance":
                     try:
                         with localcontext() as ctx:
@@ -464,14 +465,23 @@ class CaseAssistant:
                     doc_id = result["document_id"]
                     default_loc = str(result.get("location", "Line 1"))
                     default_ver = str(result.get("source_version_id") or "")
+                    cols_text = " ".join(str(c) for c in (result.get("columns") or ()) if str(c).strip())
+                    if cols_text:
+                        hdr_loc = str(result.get("header_location") or default_loc)
+                        hdr_ver = str(result.get("header_source_version_id") or default_ver)
+                        hdr_key = (doc_id, hdr_loc, hdr_ver)
+                        inspected_texts[hdr_key] = (inspected_texts.get(hdr_key, "") + "\n" + cols_text).strip()
                     for row in result.get("rows") or ():
                         if isinstance(row, Mapping):
                             rloc = str(row.get("_location") or default_loc)
                             rver = str(row.get("_source_version_id") or default_ver)
                             key = (doc_id, rloc, rver)
-                            inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + json.dumps(row)).strip()
+                            cell_text = " ".join(
+                                str(v) for k, v in row.items() if k not in {"_location", "_source_version_id"}
+                            )
+                            inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + cell_text).strip()
                     calc_payload = result.get("calculation")
-                    if isinstance(calc_payload, Mapping):
+                    if isinstance(calc_payload, Mapping) and calc_payload.get("operation") != "count":
                         for inp in calc_payload.get("inputs") or ():
                             if not isinstance(inp, Mapping):
                                 continue
@@ -496,8 +506,34 @@ class CaseAssistant:
                             inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(m.get("body", ""))).strip()
                 elif call.name == "read_transcript_window" and "document_id" in result:
                     for c in result.get("cues") or ():
-                        key = (result["document_id"], c["location"], str(c.get("source_version_id") or ""))
-                        inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(c.get("text", ""))).strip()
+                        meta_parts: list[str] = []
+                        for ts_key in ("start_seconds", "end_seconds"):
+                            raw_sec = c.get(ts_key)
+                            if isinstance(raw_sec, (int, float)) and not isinstance(raw_sec, bool):
+                                whole = int(raw_sec)
+                                hrs, rem = divmod(whole, 3600)
+                                mins, secs = divmod(rem, 60)
+                                meta_parts.append(f"{hrs:02d}:{mins:02d}:{secs:02d} {mins:02d}:{secs:02d} {whole}")
+                        speaker = str(c.get("speaker") or "").strip()
+                        if speaker:
+                            meta_parts.append(speaker)
+                        meta_prefix = " ".join(p for p in meta_parts if p)
+                        ver = str(c.get("source_version_id") or "")
+                        spans = c.get("spans")
+                        if isinstance(spans, list) and spans:
+                            for span in spans:
+                                if not isinstance(span, Mapping):
+                                    continue
+                                loc = str(span.get("location") or "")
+                                if not loc:
+                                    continue
+                                span_text = f"{meta_prefix} {span.get('text', '')}".strip()
+                                key = (result["document_id"], loc, ver)
+                                inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + span_text).strip()
+                        else:
+                            cue_text = f"{meta_prefix} {c.get('text', '')}".strip()
+                            key = (result["document_id"], str(c["location"]), ver)
+                            inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + cue_text).strip()
                 messages.append({"role": "tool", "tool_call_id": call.call_id, "name": call.name, "content": json.dumps(result, ensure_ascii=False)})
         else:
             budget_exhausted = True

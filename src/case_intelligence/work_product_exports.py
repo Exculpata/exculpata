@@ -737,6 +737,30 @@ def _answer_blocks(message: MessageRecord) -> list[ExportBlock]:
             blocks.append(ExportBlock(f"Related source passage: {citation}", "citation"))
     else:
         blocks.append(ExportBlock(message.content, "note"))
+    case_assistant = payload.get("case_assistant")
+    if isinstance(case_assistant, Mapping):
+        for gap in case_assistant.get("gaps") or ():
+            text = _plain(gap)
+            if text:
+                blocks.append(ExportBlock(f"Investigation gap: {text}", "note"))
+        for account in case_assistant.get("competing_accounts") or ():
+            text = _plain(account)
+            if text:
+                blocks.append(ExportBlock(f"Competing account: {text}", "note"))
+        for receipt in case_assistant.get("receipts") or ():
+            if not isinstance(receipt, Mapping):
+                continue
+            rid = _plain(receipt.get("receipt_id"))
+            expr = _plain(receipt.get("expression"))
+            res = _plain(receipt.get("result"))
+            unit = _plain(receipt.get("unit"))
+            if expr or res:
+                prefix = f"Calculation [{rid}]: " if rid else "Calculation: "
+                suffix = f" {unit}" if unit else ""
+                rendered = expr if (not res or expr.endswith(f"= {res}")) else f"{expr} = {res}"
+                blocks.append(ExportBlock(f"{prefix}{rendered}{suffix}".strip(), "note"))
+                for citation in _citations(receipt.get("citations")):
+                    blocks.append(ExportBlock(f"Source: {citation}", "citation"))
     if not blocks:
         blocks.append(ExportBlock(message.content))
     return blocks

@@ -21,6 +21,8 @@ from .exact_search import QuerySyntaxError, match_positionals, parse_query, toke
 from .stock_case_gold import build_case
 from .stock_case_render import documents as render_stock_documents
 
+_UNREADABLE_SCAN_NAME = Path("damaged-scan.pdf").name
+
 
 @dataclass(frozen=True)
 class EvalCase:
@@ -135,8 +137,7 @@ def build_stock_eval_suite(seed: int = 7) -> tuple[tuple[EvalCase, ...], InMemor
         )
         for i, (kind, ext, body) in enumerate(render_stock_documents(case), 1)
     ]
-    unreadable_name = Path("damaged-scan.pdf").name
-    docs.append(_EvalDoc(SourceSummary("stock-damaged", unreadable_name, "pdf", "failed", 0, status_detail="Unreadable image stream"), ()))
+    docs.append(_EvalDoc(SourceSummary("stock-damaged", _UNREADABLE_SCAN_NAME, "pdf", "failed", 0, status_detail="Unreadable image stream"), ()))
     buyback_shares = next(r["shares"] for r in case["share_history"] if r["event"] == "buyback")
     controlled_sep = sum(
         s["shares"] for s in case["statements"]
@@ -247,8 +248,7 @@ def score_eval_case(case: EvalCase, result: AssistantInvestigationResult) -> dic
     if result.omitted_findings > 0:
         honesty_pts = max(0.0, honesty_pts - 5.0 * result.omitted_findings)
         penalties.append("omitted_unverified_findings")
-    unreadable_name = Path("damaged-scan.pdf").name
-    if case.require_gap_notice and not any(unreadable_name in g or "unavailable" in g.casefold() for g in result.gaps):
+    if case.require_gap_notice and not any(_UNREADABLE_SCAN_NAME in g or "unavailable" in g.casefold() for g in result.gaps):
         honesty_pts = max(0.0, honesty_pts - 7.5)
         penalties.append("missed_unreadable_gap")
     if case.require_competing_accounts and not result.competing_accounts:

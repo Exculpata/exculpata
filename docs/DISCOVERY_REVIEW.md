@@ -63,11 +63,38 @@ record count. Open a sample record to see its source line and fields. The
 sample covers the first 20 records and marks any shortened fields or omitted
 references.
 
-The path findings compare the displayed native, text or image references with
-the names in this selection. Check missing or ambiguous paths before deciding
-whether to confirm. Admission and byte checks for the companion files run
-during upload. Canceling inspection or changing the selection discards the
+The reference counts cover the entire index, including DII filenames beyond
+the sample. Each supplied path occurrence is counted. Look for missing,
+ambiguous, ineligible or unsafe references under **Reference findings**. Each
+example cites its record and starting line. A DII line identifies the document
+block containing that filename. A filename-only result means the name exists
+in the selection but its directory path was not established. Choose the
+enclosing production folder to retain its directory structure.
+
+The check and the source links treat composed and decomposed Unicode accents
+as equivalent in filenames. The index record preserves the producer's spelling.
+
+The check compares selected names. Original bytes, file types and admissibility
+are checked at upload. If the inventory is too large or a selected path cannot
+be validated, the workbench shows an index-only preview and explains why the
+selection-wide check was unavailable. Changing the selection discards the
 preview. Confirming the selection creates the receipt.
+
+If a producer uses different DAT headings, open **Producer field mapping**
+in the inspection result. The initial check uses standard DAT path headings. Enter the producer name. Choose the exact headings
+for the fields you want to map, or select **Load saved mapping** to reuse that
+producer's mapping from this matter. Suggested headings appear beside the
+corresponding fields. Leave a field empty to use standard recognition.
+**Clear mapping** restores standard recognition for this file. Select **Inspect production** again to
+check every path using the headings you chose or loaded. The results identify
+the mapping used for that check.
+
+Confirming the upload saves the mapping and the SHA-256 of the inspected DAT
+on its receipt entry. A saved mapping applies to that upload. Changing a
+producer's choices on a later upload preserves earlier receipts and records.
+The production importer checks the digest and selected headings before using
+the mapping. Review the original load file and its receipt if it reports a
+different digest or missing heading.
 
 Use **Choose files** or **Choose a folder** on the workbench's Add sources
 surface to add supported `.dat`, `.opt`, `.lfp`, and `.dii` files, including
@@ -228,13 +255,26 @@ production boundary. LFP boundaries and DII parent tokens cannot create families
 only accepted DAT attachment declarations have that authority. Conflicting or
 unsupported relationship assertions remain QC rather than guessed ancestry.
 
-Document shows explicit LFP page metadata and supported admitted JPEG/PNG images;
-DII document values appear through document metadata inspection. Page labels do
-not enter Text or become document Bates through arithmetic. TIFF references show
-metadata and an unavailable-preview explanation until the separate rendering
-slice supplies containment and integrity checks. Parsing neither decodes an
-image nor establishes visual correspondence, applies a rotation, changes source
-page counts or creates searchable text.
+### Opening an image named in an index
+
+Select an OPT or LFP source in **Production documents** and open **Document**.
+Use **Open indexed image** beside a page record to open the image's source
+page, including for a standalone index with no matched document. JPEG and PNG
+can have inline previews. A TIFF link opens its source page, where its stored
+file remains available.
+
+For a DII source, open **Fields**, find the document record and choose **Browse
+listed image files**. **Next files** and **Previous files** move through the
+supplied names in order. Each entry number identifies a position in the DII
+block. Only explicit OPT or LFP page records provide page labels. To inspect a
+different DII block, use **Next records** or **Previous records**.
+
+A file link requires a unique admitted image at the supplied path in the
+same production folder and selection receipt. The source page opens that
+specific file version even when another production uses the same filename.
+Missing and ambiguous references show the supplied name and its status.
+A document's association status and the availability of an individual image
+are reported separately.
 
 ## DAT metadata, explicit page records and families
 
@@ -284,8 +324,8 @@ Only explicit, valid OPT or LFP document groups can associate through an unambig
 accepted document metadata record (DAT or supported DII, for example). Rejected records break group continuity. Without OPT or LFP there are no
 per-page Bates labels; labels are never expanded from a range or page count.
 A uniquely admitted JPEG or PNG can appear beside its explicit record. Missing
-images, TIFF images without rendering support, and ambiguous references show
-metadata with an explanation. A separately available PDF does not establish
+images and ambiguous references show metadata with an explanation. An admitted
+TIFF can be opened from its source link. A separately available PDF does not establish
 correspondence between its pages and OPT records. OPT page labels do not enter
 Text, ordinary Fields values or list columns.
 
