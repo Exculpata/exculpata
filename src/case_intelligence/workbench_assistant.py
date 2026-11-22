@@ -501,6 +501,7 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
                 for inp in receipt.inputs
             ],
         })
+    import re
     from .case_assistant import _extract_nums
 
     allowed_nums: set[str] = set()
@@ -508,6 +509,9 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
         allowed_nums.update(_extract_nums(str(getattr(wc, "excerpt", "") or "")))
     for r in receipt_rows:
         allowed_nums.update(_extract_nums(str(r.get("result", ""))))
+    gap_allowed_nums = set(allowed_nums)
+    for wc in backend.citations_by_identity.values():
+        gap_allowed_nums.update(_extract_nums(str(getattr(wc, "excerpt", "") or "")))
     verified_competing: list[str] = []
     if used_citations:
         for account in result.competing_accounts:
@@ -518,6 +522,22 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
             if nums and not nums.issubset(allowed_nums):
                 continue
             verified_competing.append(text)
+    _system_gap_re = re.compile(
+        r"^(?:\d+\s+unavailable\b|Turn budget\b|Model returned\b|Investigation\b)",
+        re.IGNORECASE,
+    )
+    verified_gaps: list[str] = []
+    for gap in result.gaps:
+        text = str(gap or "").strip()
+        if not text:
+            continue
+        if _system_gap_re.match(text):
+            verified_gaps.append(text)
+            continue
+        nums = _extract_nums(text)
+        if nums and not nums.issubset(gap_allowed_nums):
+            continue
+        verified_gaps.append(text)
     supported = bool(result.answerable and claims_payload)
     intro = _VERIFIED_INTRO if supported else _ABSTENTION_INTRO
     payload: dict[str, object] = {
@@ -529,7 +549,7 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
         "limitation": None,
         "missing_information": "" if supported else _ABSTENTION_INTRO,
         "case_assistant": {
-            "receipts": receipt_rows, "gaps": list(result.gaps),
+            "receipts": receipt_rows, "gaps": verified_gaps,
             "competing_accounts": verified_competing,
             "trace": trace_rows, "turns_used": result.turns_used,
             "omitted_findings": result.omitted_findings + extra_omitted,
