@@ -411,6 +411,7 @@ def query_table_rows(
     source_version_id: str = "", location: str = "Line 1", receipt_id: str = "calc-1",
     sections: Sequence[tuple[str, str, str]] | None = None, sheet: str = "",
     preparsed: tuple[Sequence[str], Sequence[tuple[dict[str, str], str, str]]] | None = None,
+    header_location: str = "", header_source_version_id: str = "",
 ) -> tuple[dict[str, object], CalculationReceipt | None]:
     """Filter CSV/TSV/extracted spreadsheet rows and compute exact Decimal aggregates with per-section provenance."""
     if aggregate_op and aggregate_op not in ALLOWED_TABLE_AGG_OPS:
@@ -419,6 +420,8 @@ def query_table_rows(
         columns = _ensure_unique_headers(preparsed[0])
         all_rows = [(dict(r), str(loc), str(ver)) for r, loc, ver in preparsed[1]]
         section_list = [(location, source_version_id, "")]
+        hdr_loc = header_location or location
+        hdr_ver = header_source_version_id or source_version_id
     else:
         section_list = list(sections) if sections is not None else [(location, source_version_id, text)]
         detected_sheets = list(dict.fromkeys(
@@ -439,6 +442,12 @@ def query_table_rows(
                 f"Workbook contains multiple worksheets ({', '.join(detected_sheets)}); specify 'sheet' to query one worksheet."
             )
         columns, all_rows = _parse_table_sections(section_list)
+        first_nonempty = next(
+            ((loc, ver) for loc, ver, txt in section_list if txt.strip()),
+            (section_list[0][0], section_list[0][1]),
+        )
+        hdr_loc = header_location or first_nonempty[0]
+        hdr_ver = header_source_version_id or first_nonempty[1]
     if not columns:
         raise AssistantToolError("Source does not contain a tabular header row.")
     matched: list[tuple[dict[str, str], str, str]] = []
@@ -524,7 +533,8 @@ def query_table_rows(
     out_rows = [{**row, "_location": rloc, "_source_version_id": rver} for row, rloc, rver in matched[:limit]]
     payload: dict[str, object] = {
         "document_id": document_id, "source_name": source_name, "location": primary_loc,
-        "source_version_id": primary_ver, "locations": matched_locations,
+        "source_version_id": primary_ver, "header_location": hdr_loc,
+        "header_source_version_id": hdr_ver, "locations": matched_locations,
         "columns": columns, "total_rows": len(all_rows), "matched_rows": len(matched),
         "rows": out_rows, "truncated": len(matched) > limit,
     }
@@ -775,7 +785,11 @@ class MatterToolRuntime:
                 if callable(structured_handler) else None
             )
             if structured is not None:
-                source_name, columns, tagged_rows, refs = structured
+                if len(structured) == 5:
+                    source_name, columns, tagged_rows, refs, header_loc = structured
+                else:
+                    source_name, columns, tagged_rows, refs = structured
+                    header_loc = refs[0].location if refs else "Page 1"
                 first_loc = refs[0].location if refs else "Page 1"
                 first_ver = refs[0].source_version_id if refs else ""
                 payload, receipt = query_table_rows(
@@ -784,6 +798,7 @@ class MatterToolRuntime:
                     aggregate_column=str(args.get("aggregate_column", "")).strip(),
                     aggregate_op=str(args.get("aggregate_op", "")).strip(), limit=limit,
                     source_version_id=first_ver, location=first_loc,
+                    header_location=header_loc, header_source_version_id=first_ver,
                     receipt_id=receipt_id, preparsed=(columns, tagged_rows),
                 )
             else:

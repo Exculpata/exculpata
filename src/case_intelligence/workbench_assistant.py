@@ -356,6 +356,7 @@ class WorkbenchToolBackend:
                     text = raw.decode("utf-8-sig", errors="strict")
                     rows_iter = csv.reader(io.StringIO(text), delimiter="\t" if is_tsv else ",", strict=True)
                     header_vals: list[str] | None = None
+                    header_row_num = 1
                     tagged: list[tuple[dict[str, str], str, str]] = []
                     for row_num, row in enumerate(rows_iter, 1):
                         if row_num > MAX_ROWS:
@@ -369,20 +370,21 @@ class WorkbenchToolBackend:
                             from .case_assistant_tools import _ensure_unique_headers
                             _ensure_unique_headers(vals)
                             header_vals = vals
+                            header_row_num = row_num
                             continue
                         row_dict = {col: (vals[idx] if idx < len(vals) else "") for idx, col in enumerate(header_vals) if col}
                         tagged.append((row_dict, loc_for(row_num), doc.version_id))
                 except (UnicodeDecodeError, csv.Error) as exc:
                     raise AssistantToolError(f"Malformed delimited table {doc.display_name}: {exc}") from exc
                 columns = [h for h in (header_vals or []) if h]
-                return doc.display_name, columns, tagged, refs
+                return doc.display_name, columns, tagged, refs, loc_for(header_row_num)
 
             try:
-                chosen_name, columns, sheet_rows = extract_xlsx_structured(verified_path, sheet=sheet)
+                chosen_name, columns, sheet_rows, header_row = extract_xlsx_structured(verified_path, sheet=sheet)
             except ValueError as exc:
                 raise AssistantToolError(str(exc)) from exc
             tagged = [(row_dict, loc_for(sheet_row, chosen_name), doc.version_id) for row_dict, sheet_row in sheet_rows]
-            return doc.display_name, columns, tagged, refs
+            return doc.display_name, columns, tagged, refs, loc_for(header_row, chosen_name)
 
     def read_email_thread(
         self, matter_id: str, document_id: str, *, limit: int = 25, offset: int | None = None,

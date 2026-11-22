@@ -538,8 +538,8 @@ def extract_xlsx(path: Path) -> tuple[ExtractedSection, ...]:
     return tuple(all_sections)
 
 
-def extract_xlsx_structured(path: Path, *, sheet: str = "") -> tuple[str, list[str], list[tuple[dict[str, str], int]]]:
-    """Return (sheet_name, headers, [(row_dict, sheet_row), ...]) directly from XLSX XML without delimiter re-parsing."""
+def extract_xlsx_structured(path: Path, *, sheet: str = "") -> tuple[str, list[str], list[tuple[dict[str, str], int]], int]:
+    """Return (sheet_name, headers, [(row_dict, sheet_row), ...], header_row) directly from XLSX XML without delimiter re-parsing."""
     parsed_sheets = _open_xlsx_sheets(path)
     names = [label for label, _ in parsed_sheets]
     requested = sheet.strip()
@@ -554,6 +554,7 @@ def extract_xlsx_structured(path: Path, *, sheet: str = "") -> tuple[str, list[s
         chosen_name, sheet_rows = parsed_sheets[0]
     col_re = re.compile(r"^([A-Za-z]+)\d+$")
     coord_headers: list[tuple[str, str]] | None = None
+    header_row = 1
     rows: list[tuple[dict[str, str], int]] = []
     for cells, sheet_row in sheet_rows:
         if not cells:
@@ -564,6 +565,7 @@ def extract_xlsx_structured(path: Path, *, sheet: str = "") -> tuple[str, list[s
             coord = cm.group(1).upper() if cm else raw_coord
             row_cells[coord] = val
         if coord_headers is None:
+            header_row = sheet_row
             coord_headers = [(c, h) for c, h in row_cells.items() if h]
             seen_h: set[str] = set()
             dupes = [h for _, h in coord_headers if h.casefold() in seen_h or seen_h.add(h.casefold())]
@@ -573,5 +575,5 @@ def extract_xlsx_structured(path: Path, *, sheet: str = "") -> tuple[str, list[s
                 )
             continue
         rows.append(({col: row_cells.get(c, "") for c, col in coord_headers}, sheet_row))
-    return chosen_name, [h for _, h in (coord_headers or [])], rows
+    return chosen_name, [h for _, h in (coord_headers or [])], rows, header_row
 

@@ -547,14 +547,20 @@ def test_pr589_round5_duplicate_coord_rejection_and_per_span_transcript_groundin
         cnt_fab_res = CaseAssistant(_CountPremiseLeakModel(src_map["padded.csv"])).investigate("What was the amount?", cnt_fab_rt)
         assert cnt_fab_res.answerable is False and cnt_fab_res.omitted_findings == 1
 
-        # Numeric column headers (e.g. '2024') ground findings citing the header's originating span.
+        # Numeric column headers (e.g. '2024') ground findings citing the header's originating span,
+        # but NEVER ground findings citing only a later matched-row section where the header does not appear.
+        padded_years = "2024,amount\n" + ("\n" * 100) + "cash,100\n"
         assert client.post(f"/matters/{slug}/uploads", files=[
             ("files", ("years.csv", b"category,2024,2025\ncash,100,200\n", "text/csv")),
+            ("files", ("padded_years.csv", padded_years.encode("utf-8"), "text/csv")),
         ]).status_code == 200
         src_map = {s["source_name"]: s["document_id"] for s in rt_init.invoke("list_sources", {"limit": 30})["sources"]}
         yr_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
         yr_res = CaseAssistant(_YearHeaderModel(src_map["years.csv"])).investigate("What is the 2024 total?", yr_rt)
         assert yr_res.answerable is True and yr_res.omitted_findings == 0 and len(yr_res.findings) == 1
+        cross_hdr_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        cross_hdr_res = CaseAssistant(_HeaderSectionLeakModel(src_map["padded_years.csv"])).investigate("What was the amount?", cross_hdr_rt)
+        assert cross_hdr_res.answerable is False and cross_hdr_res.omitted_findings == 1
 
         # Malformed base64 inline attachment causing read_eml error surfaces incomplete_threading/error instead of truncated=False.
         bad_eml = (
@@ -577,6 +583,39 @@ def test_pr589_round5_duplicate_coord_rejection_and_per_span_transcript_groundin
         rep_thread = rt_init.invoke("read_email_thread", {"document_id": src_map["reply_bad.eml"], "limit": 10})
         assert rep_thread["incomplete_threading"] is True and rep_thread["truncated"] is True
         assert any(e["source_name"] == "bad_attach.eml" for e in rep_thread["unthreaded_email_errors"])
+
+
+class _HeaderSectionLeakModel:
+    def __init__(self, doc_id: str) -> None:
+        self._doc_id = doc_id
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if not tool_msgs:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("q1", "query_table", {"document_id": self._doc_id}),
+            ))
+        row = tool_msgs[0]["rows"][0]
+        assert tool_msgs[0]["header_location"] != row["_location"]
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "The amount is 2024.",
+            "findings": [{
+                "text": "The amount is 2024.",
+                "citations": [{
+                    "document_id": tool_msgs[0]["document_id"],
+                    "source_name": tool_msgs[0]["source_name"],
+                    "location": row["_location"],
+                    "source_version_id": row["_source_version_id"],
+                }],
+                "calculation_ids": [],
+            }],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
 
 
 class _CountPremiseLeakModel:

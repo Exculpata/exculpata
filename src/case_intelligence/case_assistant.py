@@ -455,7 +455,9 @@ class CaseAssistant:
                     default_ver = str(result.get("source_version_id") or "")
                     cols_text = " ".join(str(c) for c in (result.get("columns") or ()) if str(c).strip())
                     if cols_text:
-                        hdr_key = (doc_id, default_loc, default_ver)
+                        hdr_loc = str(result.get("header_location") or default_loc)
+                        hdr_ver = str(result.get("header_source_version_id") or default_ver)
+                        hdr_key = (doc_id, hdr_loc, hdr_ver)
                         inspected_texts[hdr_key] = (inspected_texts.get(hdr_key, "") + "\n" + cols_text).strip()
                     for row in result.get("rows") or ():
                         if isinstance(row, Mapping):
