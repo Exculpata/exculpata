@@ -8,7 +8,7 @@ import pytest
 
 from case_intelligence.case_assistant_tools import (
     AssistantAccessError, AssistantToolError, MatterToolRuntime, SearchHit,
-    SourcePage, SourceReadResult, SourceSummary, ollama_tool_schemas,
+    SearchResponse, SourcePage, SourceReadResult, SourceSummary, ollama_tool_schemas,
     openai_tool_schemas, run_calculation,
 )
 from case_intelligence.stock_case_gold import build_case
@@ -23,21 +23,34 @@ class _SyntheticMatterBackend:
     def __init__(self, docs: list[_SyntheticDoc], *, authorized: set[tuple[str, str]], knowledge: dict[str, dict[str, object]]) -> None:
         self.docs, self.authorized, self.knowledge, self.calls = {d.summary.document_id: d for d in docs}, authorized, knowledge, []
     def authorize(self, matter_id: str, actor_id: str) -> bool: return (matter_id, actor_id) in self.authorized
-    def list_sources(self, matter_id: str, *, query: str = "", kind: str = "", status: str = "", offset: int = 0, limit: int = 50):
+    def list_sources(self, matter_id: str, *, query: str = "", kind: str = "", status: str = "", offset: int = 0, limit: int = 50,
+                     document_ids: frozenset[str] | None = None):
         self.calls.append("list_sources")
-        rows = [d.summary for d in self.docs.values() if d.matter_id == matter_id and (not kind or d.summary.kind == kind)
-                and (not status or d.summary.status == status) and (not query or query.casefold() in (d.summary.source_name + d.summary.bates).casefold())]
+        rows = [d.summary for d in self.docs.values() if d.matter_id == matter_id
+                and (document_ids is None or d.summary.document_id in document_ids)
+                and (not kind or d.summary.kind == kind)
+                and (not status or d.summary.status == status)
+                and (not query or query.casefold() in (d.summary.source_name + d.summary.bates).casefold())]
         return rows[offset:offset + limit], len(rows)
-    def search_discovery(self, matter_id: str, query: str, *, mode: str = "hybrid", limit: int = 20, document_ids: frozenset[str] | None = None):
+    def search_discovery(self, matter_id: str, query: str, *, mode: str = "hybrid", limit: int = 20, offset: int = 0,
+                         document_ids: frozenset[str] | None = None):
         self.calls.append(f"search_discovery:{mode}")
         terms = [t for t in re.findall(r"[a-z0-9_-]+", query.casefold()) if len(t) > 1]
+        excluded_unavail = sum(
+            1 for d in self.docs.values()
+            if d.matter_id == matter_id and d.summary.status != "ready"
+            and (document_ids is None or d.summary.document_id in document_ids)
+        )
         hits = [SearchHit(d.summary.document_id, d.summary.source_name, p.location, p.text,
                           float(sum(1 for t in terms if t in p.text.casefold())), p.source_version_id)
                 for d in self.docs.values() if d.matter_id == matter_id and d.summary.status == "ready"
                 and (document_ids is None or d.summary.document_id in document_ids)
                 for p in d.pages if any(t in p.text.casefold() for t in terms)]
         hits.sort(key=lambda item: (-item.score, item.document_id, item.location))
-        return hits[:limit]
+        page = tuple(hits[offset:offset + limit])
+        return SearchResponse(hits=page, total_matches=len(hits), offset=offset,
+                              has_more=(offset + len(page) < len(hits)),
+                              excluded_unavailable_count=excluded_unavail)
     def read_source(self, matter_id: str, document_id: str, *, start_page: int = 1, end_page: int | None = None):
         self.calls.append(f"read_source:{document_id}")
         doc = self.docs.get(document_id)
@@ -45,7 +58,8 @@ class _SyntheticMatterBackend:
         stop = len(doc.pages) if end_page is None else min(end_page, len(doc.pages))
         return SourceReadResult(doc.summary.document_id, doc.summary.source_name, len(doc.pages),
                                 tuple(p for p in doc.pages if start_page <= p.page_number <= stop))
-    def get_case_knowledge(self, matter_id: str, *, section: str = "all", limit: int = 50):
+    def get_case_knowledge(self, matter_id: str, *, section: str = "all", limit: int = 50,
+                           document_ids: frozenset[str] | None = None):
         self.calls.append(f"get_case_knowledge:{section}")
         data = self.knowledge.get(matter_id, {})
         return data if section == "all" else {section: data.get(section, [])}
@@ -123,3 +137,79 @@ def test_tool_schemas_are_strictly_read_only_and_allowlisted():
     }
     assert {entry["function"]["name"] for entry in openai_tool_schemas()} == expected
     assert {entry["function"]["name"] for entry in ollama_tool_schemas()} == expected
+
+
+def test_scoped_inventory_knowledge_filters_pagination_continuation_decimal_and_immutable_trace():
+    """Regressions for all PR #585 review findings."""
+    big_text = ("A" * 1_200) + "MATERIAL_TAIL_FACT"
+    docs = [
+        _SyntheticDoc("m1", SourceSummary("d-1", "doc1.txt", "txt", "ready", 1), (SourcePage(1, "Page 1", "alpha common", "v1"),)),
+        _SyntheticDoc("m1", SourceSummary("d-2", "doc2.txt", "txt", "ready", 1), (SourcePage(1, "Page 1", "beta common", "v1"),)),
+        _SyntheticDoc("m1", SourceSummary("d-3", "doc3.txt", "txt", "ready", 1), (SourcePage(1, "Page 1", big_text, "v1"),)),
+        _SyntheticDoc("m1", SourceSummary("d-fail", "bad.pdf", "pdf", "failed", 0, status_detail="corrupt"), ()),
+    ]
+    backend = _SyntheticMatterBackend(
+        docs, authorized={("m1", "def")},
+        knowledge={"m1": {"case_theory": [{"claim": "Unscoped theory"}]}},
+    )
+
+    # 1. Scoped list_sources excludes out-of-scope failed sources and respects empty scope.
+    scoped = MatterToolRuntime("m1", "def", backend, allowed_document_ids=frozenset({"d-2"}))
+    inv = scoped.invoke("list_sources", {"limit": 10})
+    assert inv["total"] == 1 and [s["document_id"] for s in inv["sources"]] == ["d-2"]
+    assert inv["unavailable_count"] == 0 and inv["unavailable_sources"] == []
+    empty_inv = MatterToolRuntime("m1", "def", backend, allowed_document_ids=frozenset()).invoke("list_sources", {})
+    assert empty_inv["total"] == 0 and empty_inv["unavailable_count"] == 0
+
+    # 2. Scoped get_case_knowledge fails closed when items lack complete in-scope support,
+    #    and succeeds when all referenced document_ids belong to allowed_document_ids.
+    with pytest.raises(AssistantAccessError):
+        scoped.invoke("get_case_knowledge", {"section": "case_theory"})
+    backend.knowledge["m1"]["case_theory"] = [{"claim": "Scoped theory", "source_document_ids": ["d-2"]}]
+    assert scoped.invoke("get_case_knowledge", {"section": "case_theory"})["case_theory"][0]["claim"] == "Scoped theory"
+
+    # 3. Malformed document_ids must fail closed instead of widening search.
+    rt = MatterToolRuntime("m1", "def", backend, max_read_chars=1_000)
+    with pytest.raises(AssistantToolError):
+        rt.invoke("search_discovery", {"query": "common", "document_ids": "d-1"})
+    with pytest.raises(AssistantToolError):
+        rt.invoke("search_discovery", {"query": "common", "document_ids": [123]})
+    assert rt.invoke("search_discovery", {"query": "common", "document_ids": []})["count"] == 0
+
+    # 4. Exact search exposes pagination + total + excluded unavailable coverage metadata.
+    p1 = rt.invoke("search_discovery", {"query": "common", "mode": "exact", "limit": 1, "offset": 0})
+    assert p1["total_matches"] == 2 and p1["has_more"] is True and p1["next_offset"] == 1
+    assert p1["excluded_unavailable_count"] == 1
+    p2 = rt.invoke("search_discovery", {"query": "common", "mode": "exact", "limit": 1, "offset": p1["next_offset"]})
+    assert p2["count"] == 1 and p2["has_more"] is False and p2["next_offset"] is None
+    assert p1["hits"][0]["document_id"] != p2["hits"][0]["document_id"]
+
+    # 5. Oversized page continuation via char_offset reaches the tail.
+    head = rt.invoke("read_source", {"document_id": "d-3", "start_page": 1, "end_page": 1})
+    assert head["truncated"] is True and head["next_char_offset"] == 1_000
+    tail = rt.invoke("read_source", {"document_id": "d-3", "start_page": 1, "end_page": 1, "char_offset": head["next_char_offset"]})
+    assert tail["truncated"] is False and "MATERIAL_TAIL_FACT" in tail["pages"][0]["text"]
+
+    # 6. Isolated Decimal precision + comma grouping validation + malformed source_refs rejection.
+    huge_sum = run_calculation("sum", inputs=[
+        {"label": "a", "value": "10000000000000000000000000000"},
+        {"label": "b", "value": "1"},
+        {"label": "c", "value": "-10000000000000000000000000000"},
+    ])
+    assert huge_sum.result == "1"
+    assert run_calculation("sum", inputs=[{"label": "big", "value": "10000000000000000000000"}]).result == "10000000000000000000000"
+    assert run_calculation("sum", inputs=[{"label": "grouped", "value": "1,234,567.50"}]).result == "1234567.5"
+    for bad_comma in ("1,2", ",5", "1,,000", "1,000,00"):
+        with pytest.raises(AssistantToolError):
+            run_calculation("sum", inputs=[{"label": "bad", "value": bad_comma}])
+    with pytest.raises(AssistantToolError):
+        run_calculation("sum", inputs=[{"label": "badref", "value": "10", "source_refs": [42]}])
+
+    # 7. Audit trace stores immutable deep snapshot of arguments.
+    calc_args = {"operation": "sum", "inputs": [{"label": "x", "value": "10"}]}
+    rt.invoke("calculate", calc_args)
+    calc_args["inputs"][0]["value"] = "999"
+    assert rt.trace[-1].arguments["inputs"][0]["value"] == "10"
+    with pytest.raises(TypeError):
+        rt.trace[-1].arguments["operation"] = "divide"  # type: ignore[index]
+

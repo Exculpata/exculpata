@@ -417,6 +417,8 @@ class NotebookStoreMixin:
         include_dismissed: bool = True,
         limit: int = 10_000,
         administrator_override: bool = False,
+        item_types: Sequence[str] | None = None,
+        include_dated: bool = False,
     ) -> tuple[NotebookItemRecord, ...]:
         self._authorize_export_read(
             matter_id,
@@ -424,6 +426,21 @@ class NotebookStoreMixin:
             administrator_override=administrator_override,
         )
         limit_value = min(max(int(limit), 1), 10_000)
+        clauses = ["item.matter_id=?"]
+        params: list[object] = [matter_id]
+        if not include_dismissed:
+            clauses.append("item.status<>'dismissed'")
+        if item_types:
+            valid_types = tuple(self._notebook_choice(t, NOTEBOOK_TYPES, "type") for t in item_types)
+            placeholders = ",".join("?" for _ in valid_types)
+            if include_dated:
+                clauses.append(f"(item.item_type IN ({placeholders}) OR TRIM(item.date_label)<>'')")
+            else:
+                clauses.append(f"item.item_type IN ({placeholders})")
+            params.extend(valid_types)
+        elif include_dated:
+            clauses.append("TRIM(item.date_label)<>''")
+        params.append(limit_value)
         with self._lock:
             rows = self.connection.execute(
                 "SELECT item.*,created.display_name AS created_by_name,"
@@ -433,9 +450,9 @@ class NotebookStoreMixin:
                 "FROM workbench_notebook_item item "
                 "JOIN workbench_principal created ON created.principal_id=item.created_by "
                 "JOIN workbench_principal updated ON updated.principal_id=item.updated_by "
-                "WHERE item.matter_id=?" + ("" if include_dismissed else " AND item.status<>'dismissed'")
+                "WHERE " + " AND ".join(clauses)
                 + " ORDER BY item.is_pinned DESC,item.updated_at DESC,item.item_id DESC LIMIT ?",
-                (matter_id, limit_value),
+                tuple(params),
             ).fetchall()
         return tuple(self._notebook_item(row) for row in rows)
 
