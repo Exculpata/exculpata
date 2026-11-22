@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 import json
 import re
 import time
@@ -17,7 +17,9 @@ from .generation_errors import GenerationUnavailable
 from .generator_schema import ToolRequestRefused
 
 _LEGACY_TOOL_KEYS = frozenset({"functions", "function_call", "parallel_tool_calls"})
-_NUMBER_RE = re.compile(r"(?<![A-Za-z0-9_])(?:-\s*\$?\d[\d,.]*|\d[\d,./:-]*)\b")
+_NUMBER_RE = re.compile(
+    r"(?<![A-Za-z0-9_.])(?:-\s*\$?(?:\d[\d,.]*|\.\d+)(?:[eE][+-]?\d+)?|(?:\d[\d,./:-]*|\.\d+)(?:[eE][+-]?\d+)?)\b"
+)
 _ABSTENTION_SUMMARY = "The inspected sources did not support a verified finding for that question."
 _SYSTEM_PROMPT = (
     "You are the Case Assistant inside a local-first criminal-defense discovery workspace. "
@@ -194,11 +196,13 @@ def _norm_num(token: str) -> str:
         if value.is_finite():
             if value == 0:
                 return "0"
+            if abs(value.adjusted()) > 24:
+                return clean.casefold()
             text = format(value.normalize(), "f")
             return text.rstrip("0").rstrip(".") if "." in text else text
     except InvalidOperation:
         pass
-    return clean
+    return clean.casefold()
 
 def _extract_nums(text: str) -> set[str]:
     return {_norm_num(m.group()) for m in _NUMBER_RE.finditer(text)}
@@ -259,6 +263,17 @@ def _grounded_receipts(
             continue
         ok = True
         for inp in receipt.inputs:
+            if receipt.operation == "count":
+                if not inp.source_refs:
+                    ok = False
+                    break
+                for ref in inp.source_refs:
+                    if _resolve_inspected_ref(by_vkey, by_doc_loc, ref.document_id, ref.location, ref.source_version_id) is None:
+                        ok = False
+                        break
+                if not ok:
+                    break
+                continue
             norm_val = _norm_num(inp.value)
             from_prior = norm_val in derived_values
             if inp.source_refs:
@@ -269,7 +284,6 @@ def _grounded_receipts(
                         ok = False
                         break
                     ref_nums.update(_extract_nums(_inspected_text_for(inspected_texts, resolved)))
-                    ref_nums.update(_extract_nums(f"{resolved.source_name} {resolved.location}"))
                 if not ok:
                     break
                 if norm_val not in ref_nums and not from_prior:
@@ -317,13 +331,22 @@ def verify_assistant_answer(
         if valid:
             for ref in cites:
                 allowed_nums.update(_extract_nums(_inspected_text_for(inspected_texts, ref)))
-                allowed_nums.update(_extract_nums(f"{ref.source_name} {ref.location}"))
             for cid in raw_calcs:
                 receipt = receipts.get(str(cid))
                 if receipt is None: valid = False; break
                 calc_ids.append(receipt.receipt_id); allowed_nums.add(_norm_num(receipt.result))
                 for inp in receipt.inputs:
                     allowed_nums.add(_norm_num(inp.value))
+                if receipt.operation == "running_balance":
+                    try:
+                        with localcontext() as ctx:
+                            ctx.prec = 64
+                            running = Decimal(0)
+                            for inp in receipt.inputs:
+                                running += Decimal(_norm_num(inp.value))
+                                allowed_nums.add(_norm_num(format(running, "f")))
+                    except InvalidOperation:
+                        pass
             if not _extract_nums(item["text"]).issubset(allowed_nums):
                 valid = False
         if valid: verified.append(AssistantFinding(item["text"].strip(), tuple(cites), tuple(calc_ids)))
@@ -429,6 +452,7 @@ class CaseAssistant:
                     unavailable = list(result.get("unavailable_sources") or ())
                     unavailable_count = max(unavailable_count, int(result.get("unavailable_count") or len(unavailable)))
                 elif call.name == "search_discovery":
+                    unavailable_count = max(unavailable_count, int(result.get("excluded_unavailable_count") or 0))
                     for h in result.get("hits") or ():
                         key = (h["document_id"], h["location"], str(h.get("source_version_id") or ""))
                         inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(h.get("excerpt", ""))).strip()
@@ -437,8 +461,29 @@ class CaseAssistant:
                         key = (result["document_id"], p["location"], str(p.get("source_version_id") or ""))
                         inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(p.get("text", ""))).strip()
                 elif call.name == "query_table" and "document_id" in result:
-                    key = (result["document_id"], str(result.get("location", "Line 1")), str(result.get("source_version_id") or ""))
-                    inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + json.dumps(result.get("rows") or ())).strip()
+                    doc_id = result["document_id"]
+                    default_loc = str(result.get("location", "Line 1"))
+                    default_ver = str(result.get("source_version_id") or "")
+                    for row in result.get("rows") or ():
+                        if isinstance(row, Mapping):
+                            rloc = str(row.get("_location") or default_loc)
+                            rver = str(row.get("_source_version_id") or default_ver)
+                            key = (doc_id, rloc, rver)
+                            inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + json.dumps(row)).strip()
+                    calc_payload = result.get("calculation")
+                    if isinstance(calc_payload, Mapping):
+                        for inp in calc_payload.get("inputs") or ():
+                            if not isinstance(inp, Mapping):
+                                continue
+                            val_text = str(inp.get("value") or "")
+                            for sref in inp.get("source_refs") or ():
+                                if isinstance(sref, Mapping):
+                                    key = (
+                                        str(sref.get("document_id") or doc_id),
+                                        str(sref.get("location") or default_loc),
+                                        str(sref.get("source_version_id") or default_ver),
+                                    )
+                                    inspected_texts[key] = (inspected_texts.get(key, "") + " " + val_text).strip()
                 elif call.name == "read_email_thread":
                     for m in result.get("messages") or ():
                         spans = m.get("body_spans")
