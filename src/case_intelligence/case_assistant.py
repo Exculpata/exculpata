@@ -457,7 +457,10 @@ class CaseAssistant:
                             rloc = str(row.get("_location") or default_loc)
                             rver = str(row.get("_source_version_id") or default_ver)
                             key = (doc_id, rloc, rver)
-                            inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + json.dumps(row)).strip()
+                            cell_text = " ".join(
+                                str(v) for k, v in row.items() if k not in {"_location", "_source_version_id"}
+                            )
+                            inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + cell_text).strip()
                     calc_payload = result.get("calculation")
                     if isinstance(calc_payload, Mapping):
                         for inp in calc_payload.get("inputs") or ():

@@ -532,6 +532,49 @@ def test_pr589_round5_duplicate_coord_rejection_and_per_span_transcript_groundin
         right_res = CaseAssistant(_SpanCitationModel(doc_id, cite_continuation=True)).investigate("How much was paid?", right_rt)
         assert right_res.answerable is True and right_res.omitted_findings == 0 and len(right_res.findings) == 1
 
+        # Locator metadata ('Page 2') in query_table rows cannot authorize fabricated numeric claims ('2').
+        padded_csv = "amount\n" + ("\n" * 100) + "100\n200\n"
+        assert client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("padded.csv", padded_csv.encode("utf-8"), "text/csv")),
+        ]).status_code == 200
+        src_map = {s["source_name"]: s["document_id"] for s in rt_init.invoke("list_sources", {"limit": 20})["sources"]}
+        fab_rt = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        fab_res = CaseAssistant(_LocatorDigitModel(src_map["padded.csv"])).investigate("What was the amount?", fab_rt)
+        assert fab_res.answerable is False and fab_res.omitted_findings == 1
+
+
+class _LocatorDigitModel:
+    def __init__(self, doc_id: str) -> None:
+        self._doc_id = doc_id
+
+    def complete_turn(self, messages, *, tools):
+        import json
+        from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn
+
+        tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if not tool_msgs:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("q1", "query_table", {"document_id": self._doc_id}),
+            ))
+        row = tool_msgs[0]["rows"][0]
+        return AssistantTurn(content=json.dumps({
+            "answerable": True,
+            "summary": "The amount is 2.",
+            "findings": [{
+                "text": "The amount is 2.",
+                "citations": [{
+                    "document_id": tool_msgs[0]["document_id"],
+                    "source_name": tool_msgs[0]["source_name"],
+                    "location": row["_location"],
+                    "source_version_id": row["_source_version_id"],
+                }],
+                "calculation_ids": [],
+            }],
+            "gaps": [],
+            "competing_accounts": [],
+        }))
+
+
 
 
 
