@@ -472,5 +472,10 @@ class MatterToolRuntime:
         precision = _int_arg(args, "precision", 6, minimum=0, maximum=12)
         receipt = run_calculation(str(args.get("operation", "")), inputs=args.get("inputs", ()),
                                   unit=str(args.get("unit", "")), precision=precision, receipt_id=receipt_id)
+        calc_refs = [ref for item in receipt.inputs for ref in item.source_refs]
+        if self.allowed_document_ids is not None:
+            for ref in calc_refs:
+                if ref.document_id not in self.allowed_document_ids:
+                    raise AssistantAccessError("Calculation references a source outside the authorized document scope.")
         self._receipts[receipt_id] = receipt
-        return asdict(receipt), [ref for item in receipt.inputs for ref in item.source_refs], receipt
+        return asdict(receipt), calc_refs, receipt
