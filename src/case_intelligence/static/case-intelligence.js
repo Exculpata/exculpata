@@ -4957,3 +4957,32 @@ document.querySelectorAll('[data-source-browser] nav').forEach((nav) => {
     links[target].focus();
   });
 });
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target instanceof HTMLFormElement && event.target.matches("[data-assistant-proposal-form]") ? event.target : null;
+  if (!form || typeof window.fetch !== "function") return;
+  event.preventDefault();
+  const button = form.querySelector('button[type="submit"]');
+  const status = form.querySelector("[data-assistant-proposal-status]");
+  if (button) button.disabled = true;
+  if (status) { status.dataset.state = "saving"; status.textContent = "Saving to case memory..."; }
+  try {
+    const response = await window.fetch(form.action, {
+      method: "POST", body: new FormData(form), headers: { Accept: "application/json" },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (button) button.disabled = false;
+      if (status) { status.dataset.state = "error"; status.textContent = data.detail || "Could not save this proposal."; }
+      return;
+    }
+    if (button) button.textContent = data.created ? "Saved to case memory" : "Already saved";
+    if (status) {
+      status.dataset.state = "saved";
+      status.textContent = data.created ? "Saved to case memory." : "Already saved in case memory.";
+    }
+  } catch {
+    if (button) button.disabled = false;
+    if (status) { status.dataset.state = "error"; status.textContent = "Network error while saving proposal."; }
+  }
+});

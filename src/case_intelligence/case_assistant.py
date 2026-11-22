@@ -398,6 +398,18 @@ def verify_assistant_answer(
     )
 
 
+_TOOL_STAGE_LABELS: Mapping[str, str] = {
+    "list_sources": "Reviewing discovery inventory and checking for unreadable files...",
+    "search_discovery": "Searching discovery records...",
+    "read_source": "Reading full source pages...",
+    "query_table": "Filtering and aggregating tabular records...",
+    "read_email_thread": "Reading linked email thread...",
+    "read_transcript_window": "Inspecting media transcript window...",
+    "get_case_knowledge": "Checking saved case memory...",
+    "calculate": "Running exact calculation over cited values...",
+}
+
+
 class CaseAssistant:
     """Single investigative assistant driving matter-scoped discovery tools."""
 
@@ -430,7 +442,7 @@ class CaseAssistant:
                 for c in turn.tool_calls]})
             for call in turn.tool_calls:
                 if cancelled and cancelled(): raise RuntimeError("Assistant investigation cancelled.")
-                if stage_callback: stage_callback("investigating", f"Running {call.name}...")
+                if stage_callback: stage_callback("investigating", _TOOL_STAGE_LABELS.get(call.name, f"Inspecting discovery ({call.name})..."))
                 try:
                     result = runtime.invoke(call.name, call.arguments, call_id=call.call_id)
                 except AssistantAccessError:
