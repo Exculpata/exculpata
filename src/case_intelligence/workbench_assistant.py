@@ -292,7 +292,7 @@ class WorkbenchToolBackend:
         return output
 
     def read_email_thread(
-        self, matter_id: str, document_id: str, *, limit: int = 25,
+        self, matter_id: str, document_id: str, *, limit: int = 25, offset: int | None = None,
         allowed_document_ids: frozenset[str] | None = None,
     ) -> Mapping[str, object] | None:
         from .case_assistant_tools import AssistantToolError
@@ -322,11 +322,22 @@ class WorkbenchToolBackend:
                         records.append(rec)
                         by_source[rec.source] = doc
             target_path = str(target_verified)
-            matched_nodes = ()
+            full_thread = ()
+            target_index = 0
             for thread in group_threads(records):
-                if any(node.message.source == target_path for node in thread.messages):
-                    matched_nodes = thread.messages[:limit]
+                for idx, node in enumerate(thread.messages):
+                    if node.message.source == target_path:
+                        full_thread = thread.messages
+                        target_index = idx
+                        break
+                if full_thread:
                     break
+            total_messages = len(full_thread)
+            if offset is None:
+                effective_offset = max(0, target_index - limit + 1) if target_index >= limit else 0
+            else:
+                effective_offset = offset
+            matched_nodes = full_thread[effective_offset:effective_offset + limit]
             messages = []
             for node in matched_nodes:
                 doc = by_source.get(node.message.source)
@@ -352,7 +363,20 @@ class WorkbenchToolBackend:
                     "source_version_id": doc.version_id, "subject": node.message.subject,
                     "body": primary["text"], "body_spans": body_spans, "weak_link": node.weak_link,
                 })
-            return {"document_id": target.document_id, "count": len(messages), "messages": messages}
+            has_more = (effective_offset + len(messages)) < total_messages
+            truncated = len(messages) < total_messages
+            return {
+                "document_id": target.document_id,
+                "count": len(messages),
+                "total_messages": total_messages,
+                "offset": effective_offset,
+                "limit": limit,
+                "has_more": has_more,
+                "next_offset": (effective_offset + len(messages)) if has_more else None,
+                "previous_offset": max(0, effective_offset - limit) if effective_offset > 0 else None,
+                "truncated": truncated,
+                "messages": messages,
+            }
 
     def read_transcript_window(
         self, matter_id: str, document_id: str, *, start_seconds: float = 0.0,

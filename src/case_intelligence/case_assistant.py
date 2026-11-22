@@ -263,6 +263,17 @@ def _grounded_receipts(
             continue
         ok = True
         for inp in receipt.inputs:
+            if receipt.operation == "count":
+                if not inp.source_refs:
+                    ok = False
+                    break
+                for ref in inp.source_refs:
+                    if _resolve_inspected_ref(by_vkey, by_doc_loc, ref.document_id, ref.location, ref.source_version_id) is None:
+                        ok = False
+                        break
+                if not ok:
+                    break
+                continue
             norm_val = _norm_num(inp.value)
             from_prior = norm_val in derived_values
             if inp.source_refs:
@@ -438,8 +449,29 @@ class CaseAssistant:
                         key = (result["document_id"], p["location"], str(p.get("source_version_id") or ""))
                         inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + str(p.get("text", ""))).strip()
                 elif call.name == "query_table" and "document_id" in result:
-                    key = (result["document_id"], str(result.get("location", "Line 1")), str(result.get("source_version_id") or ""))
-                    inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + json.dumps(result.get("rows") or ())).strip()
+                    doc_id = result["document_id"]
+                    default_loc = str(result.get("location", "Line 1"))
+                    default_ver = str(result.get("source_version_id") or "")
+                    for row in result.get("rows") or ():
+                        if isinstance(row, Mapping):
+                            rloc = str(row.get("_location") or default_loc)
+                            rver = str(row.get("_source_version_id") or default_ver)
+                            key = (doc_id, rloc, rver)
+                            inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + json.dumps(row)).strip()
+                    calc_payload = result.get("calculation")
+                    if isinstance(calc_payload, Mapping):
+                        for inp in calc_payload.get("inputs") or ():
+                            if not isinstance(inp, Mapping):
+                                continue
+                            val_text = str(inp.get("value") or "")
+                            for sref in inp.get("source_refs") or ():
+                                if isinstance(sref, Mapping):
+                                    key = (
+                                        str(sref.get("document_id") or doc_id),
+                                        str(sref.get("location") or default_loc),
+                                        str(sref.get("source_version_id") or default_ver),
+                                    )
+                                    inspected_texts[key] = (inspected_texts.get(key, "") + " " + val_text).strip()
                 elif call.name == "read_email_thread":
                     for m in result.get("messages") or ():
                         spans = m.get("body_spans")
