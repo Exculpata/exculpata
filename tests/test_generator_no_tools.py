@@ -19,7 +19,8 @@ MESSAGE_CASES = [{"role": "tool"}, {"role": "function"},
                  {"role": "assistant", "function_call": None}]
 CHAT_PATHS = ["/v1/chat/completions", "/api/chat"]
 GENERATOR_MODULES = ["generation", "question_generation", "recorded_generation",
-                     "generator_schema", "generator_transport"]
+                     "generator_schema", "generator_transport",
+                     "case_assistant", "case_assistant_tools"]
 
 
 class RecordingOpener:
@@ -186,21 +187,40 @@ def test_t5_existing_builders_send_valid_requests(builder):
         assert not {"tool_calls", "function_call"}.intersection(message)
 
 
+def _uses_allowlisted_assistant_transport(tree: ast.AST) -> bool:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            callee = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
+            if callee == "_bounded_assistant_request" and any(
+                kw.arg == "payload_validator" and isinstance(kw.value, ast.Name)
+                and kw.value.id == "validate_assistant_tool_payload"
+                for kw in node.keywords
+            ):
+                return True
+    return False
+
+
 def test_t6_chat_request_construction_has_no_tool_keys():
+    legacy_forbidden = {"functions", "function_call", "parallel_tool_calls"}
     checked, violations = [], []
     for directory in (ROOT / "src", ROOT / "scripts"):
         for path in sorted(directory.rglob("*.py")):
             source = path.read_text()
             if not any(endpoint in source for endpoint in CHAT_PATHS):
                 continue
-            checked.append(path.relative_to(ROOT).as_posix())
-            for node in ast.walk(ast.parse(source)):
+            rel = path.relative_to(ROOT).as_posix()
+            checked.append(rel)
+            tree = ast.parse(source)
+            validated_assistant = _uses_allowlisted_assistant_transport(tree)
+            disallowed = legacy_forbidden if validated_assistant else FORBIDDEN_KEYS
+            for node in ast.walk(tree):
                 keys = ([key.value for key in node.keys if isinstance(key, ast.Constant)]
                         if isinstance(node, ast.Dict) else [node.arg] if isinstance(node, ast.keyword) else [])
-                if any(key in FORBIDDEN_KEYS for key in keys):
-                    violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+                if any(key in disallowed for key in keys):
+                    violations.append(f"{rel}:{node.lineno}")
     assert "src/case_intelligence/generation.py" in checked
     assert "src/case_intelligence/generator_schema.py" in checked
+    assert "src/case_intelligence/case_assistant.py" in checked
     assert violations == []
 
 

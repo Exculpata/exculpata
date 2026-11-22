@@ -274,8 +274,9 @@ def _bounded_json_request(
     headers: Mapping[str, str] | None = None,
     evaluation_client=None,
     opener: urllib.request.OpenerDirector | None = None,
+    _payload_validator: Callable[[Mapping[str, object]], None] = refuse_tool_request,
 ) -> Mapping[str, object]:
-    refuse_tool_request(payload)
+    _payload_validator(payload)
     body = _serialize_json(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     request_headers = {"Content-Type": "application/json", "Accept": "application/json"}
     request_headers.update(dict(headers or {}))
@@ -301,6 +302,18 @@ def _bounded_json_request(
     if not isinstance(value, dict):
         raise GenerationUnavailable("The answer service returned an invalid response.")
     return value
+
+
+def _bounded_assistant_request(
+    url: str, payload: Mapping[str, object], *, timeout: float,
+    payload_validator: Callable[[Mapping[str, object]], None],
+    headers: Mapping[str, str] | None = None, evaluation_client=None, opener=None,
+) -> Mapping[str, object]:
+    return _bounded_json_request(
+        url, payload, timeout=timeout, headers=headers,
+        evaluation_client=evaluation_client, opener=opener,
+        _payload_validator=payload_validator,
+    )
 
 
 def _bounded_json_get(

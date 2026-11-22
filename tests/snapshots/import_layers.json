@@ -22,6 +22,7 @@
   "case_intelligence.briefing_home": "app_shell",
   "case_intelligence.case_archive_delivery": "modules.deliverables",
   "case_intelligence.case_archive_response": "modules.deliverables",
+  "case_intelligence.case_assistant": "modules.answers",
   "case_intelligence.case_assistant_tools": "modules.answers",
   "case_intelligence.case_downloads": "modules.deliverables",
   "case_intelligence.case_lifecycle": "core.lifecycle",
