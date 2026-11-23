@@ -275,15 +275,23 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
         if application.get("CASE_INTELLIGENCE_AUTH_MODE", "").strip().lower() == "oidc" else ""
     ))
     from case_intelligence.retrieval_endpoints import relay_environment
+    maintenance = _compose_action(command) in {"ps", "logs", "stop", "down"}
     try:
         retrieval = relay_environment(application)
     except ValueError as exc:
-        if _compose_action(command) not in {"ps", "logs", "stop", "down"}:
+        if not maintenance:
             raise RuntimeError(f"Invalid saved retrieval egress configuration: {exc}") from None
         retrieval = relay_environment({})
     result = dict(result, **retrieval)
-    media = _media_relay_environment(application, maintenance=_compose_action(command) in {"ps", "logs", "stop", "down"})
+    media = _media_relay_environment(application, maintenance=maintenance)
     result = dict(result, **media)
+    allowed_generator_hosts = application.get("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", "").strip()
+    if allowed_generator_hosts:
+        if "$" in allowed_generator_hosts or any(ord(c) < 32 for c in allowed_generator_hosts):
+            if not maintenance:
+                raise RuntimeError("Invalid saved generator allowed hosts configuration")
+        else:
+            result = dict(result, **{name_value("environment", suffix="GENERATOR_ALLOWED_HOSTS"): allowed_generator_hosts})
     generator = application.get("CASE_INTELLIGENCE_GENERATOR_URL", "")
     pins = application.get("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", "")
     try:
@@ -291,15 +299,17 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
             generator = validate_generator_url(generator.strip())
         if generator and not bundled_generator(generator):
             generator_pins(pins, generator)
-            result["GENERATOR_EGRESS_URL"] = generator
-            result["GENERATOR_EGRESS_PINS"] = pins
+            result = dict(result, GENERATOR_EGRESS_URL=generator, GENERATOR_EGRESS_PINS=pins)
         else:
             if pins:
                 raise RuntimeError("Generator pins require an external HTTPS URL")
-            result["GENERATOR_EGRESS_URL"] = ""
-            result["GENERATOR_EGRESS_PINS"] = ""
-    except ValueError as exc:
-        raise RuntimeError(f"Invalid saved generator egress configuration: {exc}") from exc
+            result = dict(result, GENERATOR_EGRESS_URL="", GENERATOR_EGRESS_PINS="")
+    except (ValueError, RuntimeError) as exc:
+        if not maintenance:
+            if isinstance(exc, RuntimeError):
+                raise
+            raise RuntimeError(f"Invalid saved generator egress configuration: {exc}") from exc
+        result = dict(result, GENERATOR_EGRESS_URL="", GENERATOR_EGRESS_PINS="")
     return result
 
 
@@ -491,9 +501,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--kerberos-keytab", type=Path)
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument("--password-stdin", action="store_true")
-    parser.add_argument("--hf-token-stdin", action="store_true")
-    parser.add_argument("--accept-model-terms", action="store_true",
-                        help="acknowledge selected model and tokenizer resource terms")
+    parser.add_argument("--hf-token-stdin", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--accept-model-terms", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
         "--transcription-languages",
         default="en",
@@ -689,7 +698,24 @@ IDENTITY_FIELDS = {
 }
 
 
+EXCULPATA_IDENTITY_FIELDS = {
+    "oidc": (
+        ("oidc_issuer", "OIDC issuer URL", "https://identity.example.test/realms/case-team"),
+        ("oidc_client_id", "OIDC client ID", "exculpata"),
+        ("oidc_allowed_groups", "OIDC allowed groups", f"{CURRENT_PRODUCT}_Users"),
+        ("oidc_admin_groups", "OIDC administrator groups", f"{CURRENT_PRODUCT}_Administrators"),
+    ),
+    "kerberos": (
+        ("kerberos_realm", "Kerberos realm", "EXAMPLE.TEST"),
+        ("kerberos_allowed_groups", "Allowed Kerberos group", "exculpata_users@example.test"),
+        ("kerberos_admin_groups", "Administrator Kerberos group", "exculpata_administrators@example.test"),
+    ),
+}
+
+
 def _identity_fields(args: argparse.Namespace):
+    if args.names != f"{LEGACY_STEM}" and args.auth in EXCULPATA_IDENTITY_FIELDS:
+        return EXCULPATA_IDENTITY_FIELDS[args.auth]
     fields = IDENTITY_FIELDS[args.auth]
     if args.auth == "local" and args.names == f"{LEGACY_STEM}":
         return tuple([(name, prompt, f"{LEGACY_STEM}.admin" if name == "admin_username"
@@ -711,7 +737,9 @@ def _collect_identity_choices(args: argparse.Namespace) -> None:
     if args.auth == "kerberos":
         args.kerberos_realm = args.kerberos_realm.upper()
         if args.kerberos_keytab is None and not args.non_interactive and not args.dry_run:
-            args.kerberos_keytab = Path(_ask("Path to the exported HTTP service keytab", "", non_interactive=False))
+            keytab = _ask("Path to the exported HTTP service keytab", "", non_interactive=False).strip()
+            if keytab:
+                args.kerberos_keytab = Path(keytab)
 
 
 def _compose_action(command: Sequence[str]) -> str | None:
@@ -1847,6 +1875,22 @@ def _docker_engine_meets_floor() -> bool:
         return False
 
 
+def _compose_version_meets_floor(raw: str) -> bool:
+    """Require Docker Compose v2.20.2+ for optional depends_on.required: false."""
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:[+-][0-9A-Za-z.-]+)?", raw.strip())
+    if not match:
+        return False
+    return tuple(map(int, match.groups())) >= (2, 20, 2)
+
+
+def _compose_meets_floor() -> bool:
+    try:
+        result = _probe(["docker", "compose", "version", "--short"])
+        return result.returncode == 0 and _compose_version_meets_floor(result.stdout)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def _verify_installed_dns(root: Path) -> None:
     """Inspect only network fields, then probe synthetic DNS as the normal app UID."""
     if not _docker_engine_meets_floor():
@@ -2571,7 +2615,7 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
         ("docker-access", ["docker", "info", "--format", "{{.ServerVersion}}"], "Access the container engine",
          "Start Docker and arrange approved engine access for the service account. Without systemd PID 1, have the host administrator manage dockerd directly; see docs/INSTALL.md#atypical-docker-hosts. Do not make the Docker socket world-writable; engine access is privileged."),
         ("compose", ["docker", "compose", "version", "--short"], "Run the application service definition",
-         "Install the Docker Compose v2 plugin, then rerun this command as the service account."),
+         "Install Docker Compose v2.20.2 or newer (required for optional depends_on.required), then rerun this command as the service account."),
     ):
         if not docker:
             checks.append(PreflightCheck(name, "unknown", "Docker CLI is required to check this", capability, True, remedy))
@@ -2581,6 +2625,11 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
         except (OSError, subprocess.TimeoutExpired):
             passed = False
         add(name, passed, "Available" if passed else "Unavailable or diagnostic timed out", capability, remedy)
+    compose_floor = docker and _compose_meets_floor()
+    add("compose-version", compose_floor,
+        "Docker Compose 2.20.2 or newer" if compose_floor else "Docker Compose version is below 2.20.2, unknown, or unavailable",
+        "Support optional depends_on.required service definitions",
+        "Install Docker Compose v2.20.2 or newer, then rerun this command as the service account.")
     dns_engine = docker and _docker_engine_meets_floor()
     add("docker-dns-version", dns_engine,
         "Docker Engine 26.0.0 or newer; live DNS acceptance still required" if dns_engine else "Docker Engine version is below 26.0.0, prerelease, unknown or unavailable",
@@ -2621,6 +2670,32 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
             "Selected model options are compatible" if model_options_ok else "Selected model options conflict or use an unsupported language",
             "Stage the selected AI capabilities",
             "Choose --transcription-languages en, es, or en,es. Enable diarization only with --models transcription or all.")
+        if any((
+            getattr(options, "external_generator", None),
+            getattr(options, "external_generator_url", None),
+            getattr(options, "external_generator_model", None),
+            (getattr(options, "generator_egress_pins", "") or "").strip(),
+        )):
+            try:
+                endpoint = _external_from_args(options)
+                if endpoint is None:
+                    raise RuntimeError(
+                        "Generator egress pins require --external-generator, "
+                        "--external-generator-url, and --external-generator-model."
+                    )
+                external_ok = True
+                external_observed = "External answer server options are valid"
+                external_remedy = ""
+            except RuntimeError as exc:
+                external_ok = False
+                external_observed = str(exc)
+                external_remedy = (
+                    "Supply --external-generator, an HTTPS --external-generator-url (no path or loopback), "
+                    "--external-generator-model, and either reviewed --generator-egress-pins (for private hosts) "
+                    "or --confirm-remote-generator (for remote hosts). See docs/MODEL_CONFIGURATION.md."
+                )
+            add("external-generator", external_ok, external_observed,
+                "Connect answer generation to an operator-managed HTTPS API server", external_remedy)
         if (needs_model_staging and options.non_interactive
                 and models in {"transcription", "all"}
                 and not (options.enable_diarization and options.diarization_backend == "community-1")):
@@ -3768,7 +3843,12 @@ def _provision(
         profiles.append("transcription-history")
     compose = _compose(root, profiles, auth=auth, local_accounts=args.enable_account_management)
 
-    console.phase(5, "PREPARE RUNTIME", "Building isolated OCR, review, retrieval, and transcription images")
+    build_detail = (
+        "Building isolated application, gateway, database, and malware-scan images"
+        if models == "none" and not profiles
+        else "Building isolated application, gateway, and selected service images"
+    )
+    console.phase(5, "PREPARE RUNTIME", build_detail)
     if not args.dry_run:
         _install_phase(root, "runtime", "checking")
     targets = _build_targets(auth, models, profiles)
@@ -3927,7 +4007,8 @@ def _provision(
     if not args.dry_run:
         _verify_installed_package(root)
         _wait_health(console, root)
-    console.ok(f"{LEGACY_PRODUCT} node is online")
+    product_name = LEGACY_PRODUCT if args.names == f"{LEGACY_STEM}" else CURRENT_PRODUCT
+    console.ok(f"{product_name} node is online")
 
 
 def _selected_capabilities_ready(payload: Mapping[str, object], models: str) -> bool:
@@ -4735,14 +4816,14 @@ def _restore(console: Console, args: argparse.Namespace, root: Path) -> None:
 
 
 def _build_targets(auth: str, models: str, profiles: Sequence[str] = ()) -> list[str]:
-    targets = ["app", "account-admin", "gateway", "clamav", "postgres", "egress-proxy"]
+    targets = ["app", "gateway", "clamav", "postgres", "egress-proxy"]
     if auth == "kerberos":
         targets.append("kerberos-proxy")
     if models in {"all", "review"}:
         targets.append("retrieval")
     if models in {"all", "transcription"}:
         targets.extend(("transcription-api", "transcription-worker"))
-    if "transcription-history" in profiles:
+    if "transcription-history" in profiles and "transcription-api" not in targets:
         targets.append("transcription-api")
     return targets
 
@@ -5247,11 +5328,20 @@ def main() -> int:
         try:
             result = _cli_preflight(args)
         except (OSError, RuntimeError, ValueError) as exc:
-            result = PreflightResult((PreflightCheck(
-                "saved-node", "fail", str(exc) if isinstance(exc, NamingError) else "Saved node configuration or storage coordinates are unavailable or unsafe",
-                "Inspect the existing node using its canonical account, storage and model configuration", True,
-                "Restore a valid installation record, saved configuration and accessible protected mounts before resuming. Preflight does not change the saved account mode or paths.",
-            ),))
+            resuming = bool(args.resume and (args.root / "installation.json").is_file())
+            if resuming:
+                result = PreflightResult((PreflightCheck(
+                    "saved-node", "fail",
+                    str(exc) if isinstance(exc, NamingError) else "Saved node configuration or storage coordinates are unavailable or unsafe",
+                    "Inspect the existing node using its canonical account, storage and model configuration", True,
+                    "Restore a valid installation record, saved configuration and accessible protected mounts before resuming. Preflight does not change the saved account mode or paths.",
+                ),))
+            else:
+                result = PreflightResult((PreflightCheck(
+                    "preflight", "fail", str(exc) or "Preflight options or paths are invalid",
+                    "Validate fresh installation options before creating node state", True,
+                    "Correct the reported installation option or path and rerun preflight.",
+                ),))
         if args.json:
             print(json.dumps(result.payload(), indent=2))
         else:
@@ -5324,6 +5414,23 @@ def main() -> int:
             )
         if args.bind_address is None and not args.non_interactive:
             args.bind_address = _ask("HTTPS bind address", "127.0.0.1", non_interactive=False)
+        if (
+            not args.non_interactive
+            and args.bind_address not in {None, "127.0.0.1", "::1"}
+        ):
+            if args.tls_cert is None:
+                cert = _ask("Path to TLS certificate PEM file", "", non_interactive=False).strip()
+                if cert:
+                    args.tls_cert = Path(cert)
+            if args.tls_key is None:
+                key = _ask("Path to TLS private key PEM file", "", non_interactive=False).strip()
+                if key:
+                    args.tls_key = Path(key)
+            port_text = _ask("HTTPS port", str(args.https_port), non_interactive=False).strip()
+            try:
+                args.https_port = int(port_text)
+            except ValueError as exc:
+                raise RuntimeError("HTTPS port must be an integer between 1 and 65535") from exc
         if not args.server_name:
             args.server_name = _ask(
                 _server_name_prompt(args.names), _default_server_name(args.names), non_interactive=args.non_interactive

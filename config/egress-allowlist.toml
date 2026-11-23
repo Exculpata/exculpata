@@ -5232,7 +5232,7 @@ detail = "127.0.0.1"
 [[source]]
 path = "scripts/exculpata_backup.py"
 kind = "host"
-digest = "ba8ff6755d75e404138c8769fb42f792fbd64c6701f741ea5f5837c221b01b2b"
+digest = "622159eebc75508575963021ab0aa42f52576c60844d0d645ad8dace072afda3"
 detail = "127.0.0.1:8786"
 
 [[source]]
@@ -8095,6 +8095,42 @@ detail = "compose.env"
 
 [[source]]
 path = "scripts/model_bundle_migration.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/exculpata_backup.py"
+kind = "host"
+digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
+detail = "compose.env"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "4216dc00fed51951645154006e11d8063d832522be5b2b07c93b1a4966956905"
+detail = "identity.example.test"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "56075d9c7252be5397bae8d60064ebecb0b9ad9f910d446d14b00d7a85887192"
+detail = "example.test"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "scripts/exculpata_install.py"
 kind = "host"
 digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
 detail = "installation.json"

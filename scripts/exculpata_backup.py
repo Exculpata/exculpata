@@ -23,7 +23,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / "src"))
-from case_intelligence.compat_env import required_env as _required_env
+from case_intelligence.compat_env import env as _env, required_env as _required_env
 from case_intelligence.legacy_names import (
     CURRENT_PRODUCT,
     LEGACY_ENV_PREFIX,
@@ -362,7 +362,8 @@ def initialize(args: argparse.Namespace) -> int:
 def _health(compose: Sequence[str]) -> Mapping[str, Any]:
     probe = (
         "import json,urllib.request;"
-        "print(json.dumps(json.load(urllib.request.urlopen("
+        "opener=urllib.request.build_opener(urllib.request.ProxyHandler({}));"
+        "print(json.dumps(json.load(opener.open("
         "'http://127.0.0.1:8786/health',timeout=10))))"
     )
     result = _run((*compose, "exec", "-T", "app", "python", "-c", probe))
@@ -404,6 +405,19 @@ def _same_filesystem(paths: Iterable[Path]) -> None:
 
 def _copy_linked(source: Path, destination: Path) -> None:
     _run(("cp", "-al", "--", str(source), str(destination)), capture=True)
+
+
+def _copy_linked_storage(
+    source: Path, destination: Path, *, exclude: Path | None = None, exclude_prefix: str = ""
+) -> None:
+    if exclude is None:
+        _copy_linked(source, destination)
+        return
+    destination.mkdir(mode=0o700)
+    for entry in sorted(source.iterdir()):
+        if entry == exclude or (exclude_prefix and entry.name.startswith(exclude_prefix)):
+            continue
+        _copy_linked(entry, destination / entry.name)
 
 
 def _snapshot_files(*roots: Path) -> list[Path]:
@@ -583,11 +597,20 @@ def backup(args: argparse.Namespace) -> int:
     payload.mkdir(mode=0o700)
     if managed_storage.parent.is_symlink():
         raise BackupError("matter storage parent cannot be a symbolic link")
-    storage_snapshot_parent = Path(
-        tempfile.mkdtemp(
-            prefix=f".{names}-storage-snapshot-", dir=managed_storage.parent
+    storage_snapshot_in_storage = False
+    try:
+        storage_snapshot_parent = Path(
+            tempfile.mkdtemp(
+                prefix=f".{names}-storage-snapshot-", dir=managed_storage.parent
+            )
         )
-    )
+    except PermissionError:
+        storage_snapshot_in_storage = True
+        storage_snapshot_parent = Path(
+            tempfile.mkdtemp(
+                prefix=f".{names}-storage-snapshot-", dir=managed_storage
+            )
+        )
     os.chmod(storage_snapshot_parent, 0o700)
     storage_snapshot = storage_snapshot_parent / "managed-storage"
     app_stopped = False
@@ -615,7 +638,12 @@ def backup(args: argparse.Namespace) -> int:
                 shutil.copytree(source, payload / name, symlinks=True)
             else:
                 _copy_linked(source, payload / name)
-        _copy_linked(managed_storage, storage_snapshot)
+        _copy_linked_storage(
+            managed_storage,
+            storage_snapshot,
+            exclude=storage_snapshot_parent if storage_snapshot_in_storage else None,
+            exclude_prefix=f".{names}-storage-snapshot-",
+        )
         control = payload / "control"
         control.mkdir()
         shutil.copy2(node / "compose.env", control / "compose.env")
@@ -714,8 +742,9 @@ def backup(args: argparse.Namespace) -> int:
             pass
         try:
             resolved_storage = storage_snapshot_parent.resolve(strict=True)
+            expected_parent = managed_storage if storage_snapshot_in_storage else managed_storage.parent
             if (
-                resolved_storage.parent == managed_storage.parent
+                resolved_storage.parent == expected_parent
                 and resolved_storage.name.startswith(f".{names}-storage-snapshot-")
             ):
                 shutil.rmtree(resolved_storage)
@@ -754,6 +783,21 @@ def _verify_checksum_line(payload: Path, line: str) -> None:
     actual = hashlib.sha256(candidate.read_bytes()).hexdigest()
     if not secrets.compare_digest(actual, digest):
         raise BackupError(f"restored control checksum failed for {relative}")
+
+
+def _restore_postgres_image(node: Path) -> str:
+    compose_env = node / "compose.env"
+    if not compose_env.is_file():
+        return POSTGRES_IMAGE
+    environment = _dotenv(compose_env)
+    namespace = _env(f"{LEGACY_ENV_PREFIX}IMAGE_NAMESPACE", environ=environment) or ""
+    release_id = _env(f"{LEGACY_ENV_PREFIX}RELEASE_ID", environ=environment) or ""
+    if (
+        re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", namespace)
+        and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", release_id)
+    ):
+        return f"{namespace}/postgres:{release_id}"
+    return POSTGRES_IMAGE
 
 
 def restore(args: argparse.Namespace) -> int:
@@ -820,7 +864,8 @@ def restore(args: argparse.Namespace) -> int:
         if len(dumps) != 1:
             raise BackupError("restored PostgreSQL projection dump is unavailable")
         dump = dumps[0]
-        _run(("docker", "run", "--rm", "-i", POSTGRES_IMAGE, "pg_restore", "--list"), input_bytes=dump.read_bytes())
+        postgres_image = _restore_postgres_image(node)
+        _run(("docker", "run", "--rm", "-i", postgres_image, "pg_restore", "--list"), input_bytes=dump.read_bytes())
         receipt = {
             "format_version": 1,
             "state": "verified",

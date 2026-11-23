@@ -833,3 +833,84 @@ def test_source_role_round_trip_through_normal_backup_restore(node_factory, name
     databases = backup._sqlite_files(backup._snapshot_files(node.root / 'restored'))
     restored_control, = [path for path in databases if path.name == 'workbench.sqlite']
     _assert_source_role_restore(restored_control, matter_id, expected)
+
+
+def test_backup_health_probe_bypasses_ambient_http_proxy(monkeypatch):
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import threading
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps({"product": "Exculpata", "status": "ok"}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    captured_probe = []
+
+    def fake_run(command, **kwargs):
+        captured_probe.append(command[-1])
+        adjusted = command[-1].replace("127.0.0.1:8786", f"127.0.0.1:{port}")
+        env = dict(os.environ, HTTP_PROXY="http://127.0.0.1:1", http_proxy="http://127.0.0.1:1", NO_PROXY="", no_proxy="")
+        return subprocess.run([sys.executable, "-c", adjusted], env=env, capture_output=True, check=True, timeout=10)
+
+    monkeypatch.setattr(backup, "_run", fake_run)
+    try:
+        payload = backup._health(["docker", "compose"])
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert payload["product"] == "Exculpata"
+    assert "ProxyHandler({})" in captured_probe[0]
+
+
+def test_backup_stages_snapshot_inside_storage_when_parent_is_read_only(tmp_path, node_factory):
+    mount_parent = tmp_path / "nas-mount"
+    mount_parent.mkdir(mode=0o755)
+    storage = mount_parent / "exculpata-matters"
+    storage.mkdir(mode=0o700)
+    node = node_factory(wal=True, storage_path=storage, names="exculpata")
+    mount_parent.chmod(0o555)
+    try:
+        assert node.backup() == 0
+        assert not list(storage.glob(".exculpata-storage-snapshot-*"))
+        assert not list(mount_parent.glob(".exculpata-storage-snapshot-*"))
+        assert node.restore() == 0
+    finally:
+        mount_parent.chmod(0o755)
+
+
+def test_restore_uses_pinned_local_postgres_image_from_compose_env(node_factory, monkeypatch):
+    node = node_factory(wal=True, names="exculpata")
+    compose_env = node.node / "compose.env"
+    compose_env.write_text(
+        compose_env.read_text(encoding="utf-8")
+        + 'EXCULPATA_IMAGE_NAMESPACE="exculpata-test"\n'
+        + 'EXCULPATA_RELEASE_ID="rel-20261123"\n',
+        encoding="utf-8",
+    )
+    compose_env.chmod(0o600)
+    assert node.backup() == 0
+    restore_commands = []
+    original = node.run
+
+    def capture(command, **kwargs):
+        if "pg_restore" in command:
+            restore_commands.append(tuple(command))
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(backup, "_run", capture)
+    assert node.restore() == 0
+    assert restore_commands == [
+        ("docker", "run", "--rm", "-i", "exculpata-test/postgres:rel-20261123", "pg_restore", "--list"),
+    ]
+
