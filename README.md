@@ -267,11 +267,14 @@ and model.
 The installer can configure an answer server directly via
 `--external-generator ollama|llamacpp|lmstudio|vllm` with its HTTPS origin
 (for example `https://answers.example.test:8443`) and model name, or operators
-can configure any of the seven API prefixes in `config/exculpata.env`:
+can configure `CASE_INTELLIGENCE_GENERATOR_BACKEND` (`ollama` or `openai`) and
+any of the seven API prefixes in `config/exculpata.env`:
 
 - `ollama` uses native `/api/tags` and `/api/chat` (answer schema in `format`).
 - `openai` (`vllm`, `llamacpp`, `lmstudio`, or OpenAI-compatible APIs) uses
   `/v1/models` and `/v1/chat/completions` with `response_format.json_schema.schema`.
+  There is no Open WebUI adapter or test; pointing the `openai` backend at
+  another product works only when that product implements this exact contract.
 - All seven external model slots route through the constrained CONNECT egress
   relay; private RFC1918/ULA destinations require explicit reviewed `*_EGRESS_PINS`,
   and hosts outside the local network require `--confirm-remote-generator` (or
