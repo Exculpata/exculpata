@@ -34,14 +34,52 @@ def no_host_account(monkeypatch):
 @pytest.mark.parametrize("auth", ["local", "oidc", "kerberos"])
 @pytest.mark.parametrize("models", ["none", "review", "transcription", "all"])
 def test_install_and_update_build_proxy_without_changing_model_selection(auth, models):
-    expected = {"app", "account-admin", "gateway", "clamav", "postgres", "egress-proxy"}
+    expected = {"app", "gateway", "clamav", "postgres", "egress-proxy"}
     if auth == "kerberos":
         expected.add("kerberos-proxy")
     if models in {"review", "all"}:
         expected.add("retrieval")
     if models in {"transcription", "all"}:
         expected.update({"transcription-api", "transcription-worker"})
-    assert set(installer._build_targets(auth, models)) == expected
+    targets = installer._build_targets(auth, models)
+    assert set(targets) == expected
+    assert "account-admin" not in targets
+    assert len(targets) == len(set(targets))
+
+
+def test_compose_environment_propagates_post_install_generator_hosts_and_exempts_maintenance(tmp_path):
+    root, _, _ = configured_node(tmp_path)
+    selected = installer._app_env(root)
+    origin = "https://vllm.example.test:8443"
+    address = ipaddress.IPv4Address(bytes((10, 0, 0, 12)))
+    pins = json.dumps({"issuer": origin, "addresses": [str(address)]})
+    settings = {
+        "CASE_INTELLIGENCE_GENERATOR_BACKEND": "openai",
+        "CASE_INTELLIGENCE_GENERATOR_URL": origin,
+        "CASE_INTELLIGENCE_GENERATOR_MODEL": "synthetic-model",
+        "CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS": "vllm.example.test",
+        "CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS": pins,
+    }
+    # fixture-write: Simulate operator editing config/exculpata.env after a --models none install.
+    selected.write_text(installer._env_text(settings, "Synthetic"))
+    command = installer._compose(root, (), release=ROOT, auth="local")
+    ambient = {"PATH": os.environ["PATH"]}
+    environment = installer._compose_environment(command, ambient)
+    assert environment["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] == "vllm.example.test"
+    resolved = subprocess.run([*command, "config", "--format", "json"], env=environment,
+                              capture_output=True, text=True, check=True)
+    services = json.loads(resolved.stdout)["services"]
+    assert services["app"]["environment"]["CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS"] == "vllm.example.test"
+    assert services["egress-proxy"]["environment"]["GENERATOR_EGRESS_URL"] == origin
+    assert services["egress-proxy"]["environment"]["GENERATOR_EGRESS_PINS"] == pins
+    # fixture-write: Keep stop/down/logs/ps usable while repairing an invalid saved generator URL.
+    selected.write_text(installer._env_text(settings | {"CASE_INTELLIGENCE_GENERATOR_URL": "http://invalid.example.test"}, "Synthetic"))
+    with pytest.raises(RuntimeError, match="Invalid saved generator egress configuration"):
+        installer._compose_environment([*command, "up"], ambient)
+    for action in ("ps", "logs", "stop", "down"):
+        maintenance = installer._compose_environment([*command, action], ambient)
+        assert maintenance["GENERATOR_EGRESS_URL"] == ""
+        assert maintenance["GENERATOR_EGRESS_PINS"] == ""
 
 
 def _proxy_destinations(oidc=("", ""), generator=("", "")):

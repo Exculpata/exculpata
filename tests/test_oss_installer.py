@@ -707,9 +707,10 @@ def ready_host(monkeypatch, tmp_path):
     monkeypatch.setattr(installer.os, "geteuid", lambda: 1000)
     monkeypatch.setattr(installer.os, "getegid", lambda: 1000)
     monkeypatch.setattr(installer, "_docker_engine_meets_floor", lambda: True)
+    monkeypatch.setattr(installer, "_compose_meets_floor", lambda: True)
     monkeypatch.setattr(installer.shutil, "which", lambda name: "/usr/bin/" + name)
     monkeypatch.setattr(installer.shutil, "disk_usage", lambda path: type("Disk", (), {"free": 400 * 1024**3})())
-    monkeypatch.setattr(installer, "_probe", lambda command: subprocess.CompletedProcess(command, 0, '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "1.0", ""))
+    monkeypatch.setattr(installer, "_probe", lambda command: subprocess.CompletedProcess(command, 0, '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "2.29.0", ""))
 
 
 def preflight_args(tmp_path, *extra):
@@ -798,7 +799,7 @@ def test_preflight_tls_missing_prerequisites_block(tmp_path, ready_host, options
 
 def test_preflight_selected_gpu_profile_checks_real_plan(tmp_path, ready_host, monkeypatch):
     def probe(command):
-        output = '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "0, Synthetic GPU, 24576, 24000, 8.0" if command[0] == "nvidia-smi" else "1.0"
+        output = '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "0, Synthetic GPU, 24576, 24000, 8.0" if command[0] == "nvidia-smi" else "2.29.0"
         return subprocess.CompletedProcess(command, 0, output, "")
     monkeypatch.setattr(installer, "_probe", probe)
     args = preflight_args(tmp_path, "--models", "review")
@@ -814,7 +815,7 @@ def test_gpu_inventory_with_unreadable_row_fails_preflight(tmp_path, ready_host,
     def probe(command):
         output = ('0, Synthetic GPU, 24576, 24000, 8.0\nsynthetic-unreadable-row'
                   if command[0] == "nvidia-smi" else
-                  '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "1.0")
+                  '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "2.29.0")
         return subprocess.CompletedProcess(command, 0, output, "")
 
     monkeypatch.setattr(installer, "_probe", probe)
@@ -1411,7 +1412,7 @@ def test_unattended_diarization_blocks_missing_staging_options_before_writes(
     node = tmp_path.resolve() / "uncreated node"
     def probe(command):
         output = ("0, Synthetic GPU, 49152, 47000, 8.9" if command[0] == "nvidia-smi"
-                  else '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "1.0")
+                  else '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "2.29.0")
         return subprocess.CompletedProcess(command, 0, output, "")
     monkeypatch.setattr(installer, "_probe", probe)
     monkeypatch.setattr(installer, "_hf_token", lambda *a: pytest.fail("preflight read a token"))
@@ -3331,7 +3332,8 @@ def test_initial_build_includes_managed_companion_security_images(tmp_path, monk
             password_input=["synthetic-unused-password"])
     build = next(command for command in commands if "build" in command)
     targets = set(build[build.index("build") + 1:])
-    assert {"gateway", "clamav", "postgres", "app", "account-admin"} <= targets
+    assert {"gateway", "clamav", "postgres", "app"} <= targets
+    assert "account-admin" not in targets
     assert ("retrieval" in targets) is (models in {"review", "all"})
     assert ("transcription-worker" in targets) is (models in {"transcription", "all"})
 
@@ -3787,3 +3789,61 @@ def test_saved_oidc_preflight_uses_the_reference_adapter_literal_rules(tmp_path,
     result = installer._collect_preflight("none", args, needs_model_staging=False)
     assert checks_by_name(result)["saved-provider-options"].state == "fail"
     assert {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+
+
+_REAL_COMPOSE_MEETS_FLOOR = installer._compose_meets_floor
+
+
+@pytest.mark.parametrize(("version", "expected"), [
+    ("2.20.1", "fail"),
+    ("v2.19.0", "fail"),
+    ("1.29.2", "fail"),
+    ("unrecognized", "fail"),
+    ("2.20.2", "pass"),
+    ("v2.29.7-desktop.1", "pass"),
+    ("5.8.0", "pass"),
+])
+def test_preflight_enforces_compose_version_floor(tmp_path, ready_host, monkeypatch, version, expected):
+    monkeypatch.setattr(installer, "_compose_meets_floor", _REAL_COMPOSE_MEETS_FLOOR)
+    monkeypatch.setattr(
+        installer,
+        "_probe",
+        lambda command: subprocess.CompletedProcess(command, 0, version if "compose" in command else "26.0.0", ""),
+    )
+    result = installer._collect_preflight("none", preflight_args(tmp_path))
+    assert checks_by_name(result)["compose-version"].state == expected
+    assert result.ready is (expected == "pass")
+
+
+@pytest.mark.parametrize("flags", [
+    ["--external-generator", "vllm", "--external-generator-url", "http://127.0.0.1:8000", "--external-generator-model", "synthetic-model"],
+    ["--external-generator", "vllm", "--external-generator-url", "https://vllm.example.test:8443"],
+    ["--generator-egress-pins", '{"issuer":"https://vllm.example.test:8443","addresses":["192.0.2.10"]}'],
+])
+def test_preflight_validates_external_generator_flags(tmp_path, ready_host, flags):
+    result = installer._collect_preflight("none", preflight_args(tmp_path, *flags))
+    check = checks_by_name(result)["external-generator"]
+    assert check.state == "fail"
+    assert check.blocking
+    assert not result.ready
+
+
+def test_fresh_preflight_exception_is_not_labeled_saved_node(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(installer, "_cli_preflight", lambda args: (_ for _ in ()).throw(ValueError("synthetic fresh option error")))
+    monkeypatch.setattr(sys, "argv", ["install", "preflight", "--root", str(tmp_path / "fresh"), "--json"])
+    assert installer.main() == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["checks"][0]["name"] == "preflight"
+    assert "synthetic fresh option error" in payload["checks"][0]["observed"]
+
+
+def test_interactive_kerberos_empty_keytab_stays_none_and_uses_exculpata_defaults(monkeypatch):
+    args = installer._parser().parse_args(["install", "--auth", "kerberos"])
+    args.names = "exculpata"
+    responses = iter(["", "", "", ""])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(responses))
+    installer._collect_identity_choices(args)
+    assert args.kerberos_allowed_groups == "exculpata_users@example.test"
+    assert args.kerberos_admin_groups == "exculpata_administrators@example.test"
+    assert args.kerberos_keytab is None
+

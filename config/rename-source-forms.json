@@ -620,38 +620,6 @@
           "source_line_sha256": "1030d0556e0cdf235244af8c5b692a7f68340b354e592bfaab9d9ecb9d776535"
         },
         {
-          "line": 262,
-          "identifier": "unsupported legacy syntax (mutable attribute or container state); use immutable contract-based construction",
-          "function": "_compose_environment",
-          "reason": "Assign the validated saved generator URL to the fixed relay setting without constructing an operational identifier.",
-          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
-          "source_line_sha256": "106d693d78c22af84f335e1d3b836a51724088e6795fca5fe9acf5020c85b0d3"
-        },
-        {
-          "line": 263,
-          "identifier": "unsupported legacy syntax (mutable attribute or container state); use immutable contract-based construction",
-          "function": "_compose_environment",
-          "reason": "Assign the validated saved generator pins to the fixed relay setting without changing pin validation.",
-          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
-          "source_line_sha256": "e77aa3c08ccff8c077408411aae7d232e0dde191d78b379d0f780665fb3a7456"
-        },
-        {
-          "line": 267,
-          "identifier": "unsupported legacy syntax (mutable attribute or container state); use immutable contract-based construction",
-          "function": "_compose_environment",
-          "reason": "Clear the relay URL for an absent or bundled generator after rejecting orphaned pins; preserve shell-authority removal.",
-          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
-          "source_line_sha256": "d34911d89b48f505c9c4a2cdcd8a006ff5bcb6cb8aaa9f74719bef269f4385aa"
-        },
-        {
-          "line": 268,
-          "identifier": "unsupported legacy syntax (mutable attribute or container state); use immutable contract-based construction",
-          "function": "_compose_environment",
-          "reason": "Clear the relay pins for an absent or bundled generator without changing the selected application file.",
-          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
-          "source_line_sha256": "c6c48b0cc7408f601aebd86331097f10c47c9483bd6ecbb710c56e874321b2ae"
-        },
-        {
           "line": 623,
           "identifier": "unsupported legacy syntax (legacy-bearing mutator call); use immutable contract-based construction",
           "function": "_apply_external_generator",
@@ -684,7 +652,7 @@
           "source_line_sha256": "a14bd07aac9b5a7c51848ad4163d278f2dd777256531ad38544b3cbf3101f9d9"
         },
         {
-          "line": 3446,
+          "line": 3521,
           "identifier": "unsupported legacy syntax (mapping unpacking); use immutable contract-based construction",
           "function": "_configure",
           "reason": "Serialize the installed identity and endpoint settings. Only legacy bundled profiles include their saved GPU and model selections. This receipt covers the complete installation mapping, including its auth and destination fields.",
