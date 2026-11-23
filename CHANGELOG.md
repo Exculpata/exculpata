@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Case Assistant (`#585`–`#591`):** One matter-scoped, multi-turn tool-calling assistant searches discovery, reads sources, queries spreadsheets/tables (`query_table`), reads email threads (`read_email_thread`) and transcript windows (`read_transcript_window`), performs exact `Decimal`/date arithmetic with verifiable `CalculationReceipt`s (`calculate`), checks premises and derivations, displays an expandable work trace with plain-language live stage labels, and surfaces reviewer-gated case-memory proposals (`case_theory`, `contradiction`, `timeline_event`, `disclosure_review`) alongside a 405-document synthetic stock-case synthesis evaluation runner (`case_assistant_eval`).
+- **Endpoint-first installations & 7 operator model APIs (`#569`–`#578`):** Fresh installations no longer stage bundled model containers or GPU bundles (`--models review|transcription|all` are retired for new nodes). Operators configure up to seven independent HTTPS model APIs (`GENERATOR`, `EMBEDDING`, `RERANK`, `ASR`, `ALIGNMENT`, `TRANSLATION`, `DIARIZATION`) behind the constrained CONNECT relay with per-matter owner/admin grants and matter-approved embedding rebuilds. Existing bundled nodes keep resuming as before and can migrate in place via `./install update --root <path> --retire-bundled-models` while preserving private transcript history. See [Model configuration](docs/MODEL_CONFIGURATION.md).
+- **DAT, OPT, LFP, and DII load-file workflows (`#522`, `#526`, `#554`, `#580`–`#584`):** Intake previews DAT, OPT, LFP, and DII production records before upload, checks all production index references against the selected files, saves and verifies producer-specific DAT field mappings, opens native and produced text companions from DAT records, and opens original images named by OPT/LFP/DII records. See [Load files](docs/LOAD_FILES.md).
 - Matter members can define and retire review codes, apply or remove them with stable optional digit keys while keeping their review position, and preserve their append-only history in matter archives. Default Coding fields identify retired codes and show who applied them and when.
 - Publication scanning blocks the maintainer addresses (the
   `MAINTAINER_EMAIL_DIGESTS` set) in author, committer and commit-message trailer
@@ -14,13 +17,14 @@
   Body text, file content and all non-email checks remain unchanged.
 
 - Production documents (under Review) is now a review list: every item with its
-  Bates range, custodian and other load-file fields when a CSV or TSV load file
-  is stored in the matter, the selected item open beside the list (document,
-  extracted text or fields), keyboard movement, one filter box and sortable
-  columns. Reviewers choose their own columns and fields or set a starting view
-  for the matter; the standard set lives in one field definition. Email fields
-  show only on email items. Teams can number items that arrived without Bates
-  with their own identifiers, kept apart from produced Bates. See [Discovery review](docs/DISCOVERY_REVIEW.md).
+  Bates range, custodian and other load-file fields when a CSV, TSV, DAT, OPT,
+  LFP, or DII load file is stored in the matter, the selected item open beside
+  the list (document, extracted text, companion native/image, or fields),
+  keyboard movement, one filter box and sortable columns. Reviewers choose their
+  own columns and fields or set a starting view for the matter; the standard set
+  lives in one field definition. Email fields show only on email items. Teams can
+  number items that arrived without Bates with their own identifiers, kept apart
+  from produced Bates. See [Discovery review](docs/DISCOVERY_REVIEW.md).
 
 - Draft timeline exports use `exculpata-timeline-draft-v2`. CSV includes metadata
   and source-coverage rows plus coverage/schema columns. Importers must select

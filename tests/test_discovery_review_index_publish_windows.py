@@ -292,6 +292,6 @@ def test_single_path_project_steps_and_commits_match_base(tmp_path, monkeypatch,
             with case.workspace._lock:
                 case.workspace.connection.set_trace_callback(None)
         assert service.repository.state(case.matter.matter_id)['phase'] == 'complete'
-        # Measured on dafce68 with this fixture; see PR.md for the baseline run.
+        # Measured on dafce68 with this fixture (#528).
         assert 0 < counts['steps'] / population <= 1.0, counts
         assert 0 < counts['commits'] / population <= 1.0, counts

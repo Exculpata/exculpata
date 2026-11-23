@@ -21,14 +21,18 @@ The aim is practical: help attorneys, investigators, and support staff turn
 unorganized discovery into a clearer understanding of the case. The same
 tools can support other legal and investigation teams.
 
-Exculpata is designed to run on infrastructure you control. Its bundled AI
-workflows use local models for retrieval, answers, and media transcription.
+Exculpata is designed to run on infrastructure you control. Fresh installations
+on `main` start without bundled model downloads and connect to up to seven
+operator-managed HTTPS model APIs (such as local or LAN vLLM, Ollama, llama.cpp,
+and speech servers) with per-matter owner/admin approval.
 
-> **Community beta v0.1.0-beta.1.** Follow the [GPU reference installation](docs/BETA_REFERENCE_INSTALL.md)
-> with synthetic material. This prerelease is for evaluation and contribution.
-> It is not production certification for confidential casework. See the
-> [beta release notes](docs/BETA_RELEASE_NOTES.md). Checksummed source artifacts
-> and recorded image and model identities are follow-ups for a later beta.
+> **Community beta v0.1.0-beta.1.** Follow the [installation playbook](docs/INSTALL.md)
+> and [model configuration](docs/MODEL_CONFIGURATION.md) with synthetic material
+> on `main` (or the tag-specific [GPU reference installation](docs/BETA_REFERENCE_INSTALL.md)
+> when checking out `v0.1.0-beta.1`). This prerelease is for evaluation and
+> contribution. It is not production certification for confidential casework.
+> See the [beta release notes](docs/BETA_RELEASE_NOTES.md). Checksummed source
+> artifacts and recorded image and model identities are follow-ups for a later beta.
 
 The beta ethics kit provides an evidence-linked [data-handling statement](docs/ethics/DATA_HANDLING.md),
 [vendor-vetting checklist](docs/ethics/VENDOR_VETTING_CHECKLIST.md), and
@@ -108,11 +112,11 @@ for the component revisions and deferred contributions.
 
 | Workflow | Current capabilities |
 | --- | --- |
-| **Bring records together** | Review selected files and folders before transfer, retain every confirmed item and skipped reason in a durable selection receipt, then use resumable uploads, malware scanning, text extraction, and bounded OCR. |
-| **Review documents and media** | Source browsing, word and meaning-based search, recording checks before transcription, timestamped transcripts, playback, and clips. Videos without audio remain playable; uncertain checks offer listen/continue/retry. |
-| **Ask questions with sources in view** | Local AI answers and follow-up conversations with citations and coverage information. |
+| **Bring records together** | Review selected files, folders, and DAT/OPT/LFP/DII production load files before transfer, verify production index references and producer DAT field mappings, retain every confirmed item and skipped reason in a durable selection receipt, then use resumable uploads, malware scanning, text extraction, and bounded OCR. See [load files](docs/LOAD_FILES.md). |
+| **Review documents and media** | Source and [discovery review list](docs/DISCOVERY_REVIEW.md) browsing, companion native/text and indexed image opening, word and meaning-based search, recording checks before transcription, timestamped transcripts, playback, and clips. Videos without audio remain playable; uncertain checks offer listen/continue/retry. |
+| **Ask the Case Assistant** | One matter-scoped, tool-using assistant searches discovery, reads sources, queries spreadsheets/tables, reads email threads and transcript windows, runs exact `Decimal`/date calculations with receipts, shows its expandable work trace, cites every source, flags record gaps, and proposes reviewer-gated case-memory entries. |
 | **Screen a collection** | Apply a criterion to a frozen source population, then inspect coverage and human-review status. |
-| **Organize the work** | Shared matters with owner/admin renaming, attributed activity, notes, people, places, dates, and report drafting. |
+| **Organize the work** | Shared matters with owner/admin renaming, attributed activity, review codes, notes, people, places, dates, and report drafting. |
 | **Take work product with you** | Export conversations, transcripts, summaries, clips, notebooks, and reports. Complete matter bundles include every saved draft/final Report and every selected-file receipt. |
 
 Selected-file receipts identify selection reasons as browser-reported observations,
@@ -183,44 +187,45 @@ AI availability depends on the selected deployment profile. OCR, transcription,
 source screening, and generated answers require human review. A completed task
 does not establish that every page was read or every relevant fact was found.
 
-## Review without choosing a processing mode
+## Review with one assistant, without choosing a mode
 
 | Task | Use it when you need to… |
 | --- | --- |
-| **Review** | Ask a focused question, investigate through several searches, and continue with follow-ups in one cited conversation. The composer explains the time and coverage difference. |
-| **Check every source** | Apply the same criterion to every source in a frozen collection and validate the results. This is a specialized source-screening task, not another chat type. |
-| **Review Sources** | Browse up to 100 sources immediately, navigate exact folder subtrees, filter by type or collection, open filenames directly, upload separately, and review media with one-click Playback, Summary, Export, and Clips tabs beside an independently usable transcript. |
+| **Ask the Case Assistant** | Prompt in plain words. One matter-scoped assistant decides how to search discovery, read originals, query tables, inspect email threads and transcript windows, compute exact `Decimal`/date math with receipts, cite every source, flag record gaps, and propose reviewer-gated case-memory entries—all with an expandable work trace and live stage labels. |
+| **Check every source** | Apply the same criterion to every source in a frozen collection and validate the results. This is a specialized source-screening task, not another chat mode. |
+| **Review Sources** | Browse production review lists and folders, open DAT companion files and OPT/LFP/DII indexed images, filter by type or collection, apply review codes, upload separately, and review media with one-click Playback, Summary, Export, and Clips tabs beside an independently usable transcript. |
 
-Broader investigations now follow source-backed names, dates, phrases, and identifiers,
-show their search reasons, and support checkpoint continuation with explicit
-additional budgets. See [evidence-driven investigation](docs/EVIDENCE_DRIVEN_INVESTIGATION.md).
-
-Focused answers and broader investigations share conversational continuity;
-the processing strategy stays behind task language. Checking every source stays
-separate because it freezes a population and produces one decision per source.
+Checkpoint continuation with explicit budgets also remains available for
+[evidence-driven investigation](docs/EVIDENCE_DRIVEN_INVESTIGATION.md). Checking
+every source stays separate because it freezes a population and produces one
+decision per source.
 
 ## How it works
 
-1. **Intake:** Exculpata previews selected loose-file metadata without
-   copying bytes, records the complete selection on confirmation, then revalidates
-   the included subset as it enters a private staging area and applies any required malware scan.
+1. **Intake:** Exculpata previews selected loose-file and DAT/OPT/LFP/DII
+   production metadata without copying bytes, checks production index
+   references, records the complete selection on confirmation, then revalidates
+   the included subset as it enters a private staging area and applies any
+   required malware scan.
 2. **Processing:** It extracts usable text, applies bounded OCR where needed,
-   and checks audio/likely speech before sending media through the bundled
-   transcription queue. [Recording checks](docs/MEDIA_PREFLIGHT.md) preserve
-   original timestamps and keep uncertain results reviewable.
+   and checks audio/likely speech before sending media through an operator-configured
+   speech API (or a legacy bundled transcription queue).
+   [Recording checks](docs/MEDIA_PREFLIGHT.md) preserve original timestamps and
+   keep uncertain results reviewable.
 3. **Indexing:** It divides the resulting text into traceable passages and
    makes them available to word and meaning-based search.
-4. **Evidence selection:** A multi-stage retrieval pipeline finds candidate
-   passages, combines keyword and semantic results, and reranks the candidates
-   for the question being asked.
-5. **Answering:** A local generation model answers from the selected material.
-   Exculpata checks citation references and text consistency, shows citations
-   and collection coverage, and reports important limitations instead of hiding
-   them. These checks do not establish that generated claims are correct;
+4. **Evidence selection & Case Assistant reasoning:** A multi-stage retrieval
+   pipeline finds candidate passages, combines keyword and semantic results, and
+   reranks candidates. The Case Assistant uses matter-scoped read-only tools
+   (`list_sources`, `search_discovery`, `read_source`, `get_case_knowledge`,
+   `calculate`, `query_table`, `read_email_thread`, and `read_transcript_window`)
+   to connect evidence across documents, show exact math receipts, check premise
+   and derivation consistency, and state plainly where the record has gaps.
+   Automated checks do not establish that generated claims are correct;
    [review each claim against the originals](docs/GENERATED_ANSWER_REVIEW.md).
-6. **Human work product:** The reviewer can inspect the source, save useful
-   material, export it, or correct machine-generated transcript labels before
-   anything is treated as finished work.
+5. **Human work product:** The reviewer inspects originals, accepts or dismisses
+   proposed case-memory entries, edits Reports, exports bundles, or corrects
+   machine-generated transcript labels before anything is treated as finished work.
 
 A failed source remains visible and is excluded from searching until repaired;
 it does not prevent the rest of the matter from being used.
@@ -235,90 +240,97 @@ recovery, and policy acceptance work. These changes do not close
 
 ## What Exculpata uses
 
-These are the current bundled defaults. Exact model revisions and license
-information live in [`config/models.json`](config/models.json).
+Fresh installations on `main` run the application stack without downloading or
+bundling model containers. Operators connect up to seven independent HTTPS model
+APIs (such as self-hosted vLLM, Ollama, llama.cpp, LM Studio, or speech APIs).
+Legacy bundled reference model revisions and licenses live in
+[`config/models.json`](config/models.json).
 
 | Component | What it does in Exculpata |
 | --- | --- |
-| **Python, FastAPI, Jinja, and JavaScript** | Run the multi-user web application, background work, and review interface. |
+| **Python, FastAPI, Jinja, and JavaScript** | Run the multi-user web application, Case Assistant, background work, and review interface. |
 | **PostgreSQL, pgvector, and SQLite** | Store matter control data, full-text indexes, semantic vectors, queues, sessions, and audit history. |
 | **ClamAV** | Scans uploads before they can become reviewable matter sources. |
-| **Tesseract and Poppler** | Render and OCR scanned PDF pages and image evidence. |
-| **Granite Embedding English R2** | Converts passages and questions into vectors for meaning-based retrieval. |
-| **GTE ModernBERT reranker** | Reorders candidate passages so the strongest evidence reaches the answering model. |
-| **Qwen3.5 4B or 9B through vLLM** | Generates local answers, summaries, and review assistance from selected passages for source review. |
-| **WhisperX and faster-whisper large-v3** | Transcribe media and align transcript text to timestamps. |
-| **Optional speaker diarization** | Ungated Nemotron separates up to eight anonymous speakers; Community-1 remains an explicit gated alternative. |
+| **Tesseract and Poppler** | Render and OCR scanned PDF pages and image evidence locally on CPU. |
 | **FFmpeg** | Probes media, prepares browser-compatible playback, and creates requested clips. |
+| **Operator-managed HTTPS model APIs (up to 7)** | Optional endpoints for answer generation (`GENERATOR`), 768-dim embeddings (`EMBEDDING`), passage reranking (`RERANK`), speech transcription (`ASR`), word alignment (`ALIGNMENT`), translation (`TRANSLATION`), and speaker labeling (`DIARIZATION`). |
+| **Legacy bundled GPU services (`v0.1.0-beta.1` / existing nodes)** | Existing bundled nodes keep their offline Granite embedding, reranker, vLLM, and WhisperX / Nemotron workers on `--resume`/`update` until migrated in place with `--retire-bundled-models`. |
 | **nginx, local accounts, OIDC, or Kerberos** | Provide HTTPS and selectable identity options for different organizations. |
-| **Docker Compose and restic** | Package the services and provide encrypted backup and restore tooling. |
+| **Docker Compose, CONNECT egress relay, and restic** | Package isolated services, restrict outbound model/OIDC traffic to allowlisted pins, and provide encrypted backup and restore tooling. |
 
-Bundled models run locally after a one-time staging step. Runtime model containers
-are configured for offline operation. Diarization is optional because its
-upstream model terms require separate acceptance.
+On fresh installations, `--models` defaults to `none` (bundled `--models review`,
+`transcription`, and `all` are retired for new nodes). Each optional AI capability
+stays disabled until an operator configures its HTTPS endpoint and an owner or
+administrator approves a **per-matter grant** naming the capability, endpoint,
+and model.
 
-The application can also call an operator-configured answer service instead of
-the bundled vLLM container. Set `CASE_INTELLIGENCE_GENERATOR_BACKEND` to
-`ollama` or `openai`, `CASE_INTELLIGENCE_GENERATOR_URL` to that service's
-origin, and `CASE_INTELLIGENCE_GENERATOR_MODEL` to a model the service lists.
-`ollama` uses the native `/api/tags` and `/api/chat` contract, with the answer
-schema in `format`. `openai` uses `/v1/models` and `/v1/chat/completions`.
-llama.cpp and LM Studio use that OpenAI path with the nested
-`response_format.json_schema.schema` form. There is no Open WebUI adapter
-or test. Pointing the `openai` backend at another product works only when
-that product implements this exact contract; that compatibility is not
-established here. The installer can write those
-settings: `--external-generator ollama|llamacpp|lmstudio|vllm` with the server
-HTTPS origin (for example `https://answers.example.test:8443`) and model name. A host outside the local network requires
-`--confirm-remote-generator`, because matter text would leave the machine.
-`--models none` without an external server leaves answering unavailable.
-Existing nodes with a saved review bundle retain their private vLLM origin
-`http://generator:8000` on resume and update. Compose defaults
-`CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS` to `generator` unless the installer
-records the chosen host. External requests use the CONNECT egress relay; private
-RFC1918/ULA destinations require explicit reviewed `--generator-egress-pins`.
-Host loopback servers, including `127.0.0.1:11434`, are unreachable from the
-containerized app. No host-gateway alias is installed. External HTTP URLs and
-generator configuration values containing `$` are rejected.
-Embeddings and reranking use local processing by default; operators can configure
-external endpoints that receive extracted text, queries or candidate passages.
-`CASE_REVIEW_MODEL_DEVICE=cpu` runs the bundled retrieval worker on CPU.
-Startup and `doctor` send a small schema check and report
-whether the server enforced it. Answers from a model with no recorded
-claim-evaluation pass are labeled `unvalidated model`. Limits and the remaining
-keys are in
-[model configuration](docs/MODEL_CONFIGURATION.md#existing-answer-endpoints).
+The installer can configure an answer server directly via
+`--external-generator ollama|llamacpp|lmstudio|vllm` with its HTTPS origin
+(for example `https://answers.example.test:8443`) and model name, or operators
+can configure `CASE_INTELLIGENCE_GENERATOR_BACKEND` (`ollama` or `openai`) and
+any of the seven API prefixes in `config/exculpata.env`:
+
+- `ollama` uses native `/api/tags` and `/api/chat` (answer schema in `format`).
+- `openai` (`vllm`, `llamacpp`, `lmstudio`, or OpenAI-compatible APIs) uses
+  `/v1/models` and `/v1/chat/completions` with `response_format.json_schema.schema`.
+  There is no Open WebUI adapter or test; pointing the `openai` backend at
+  another product works only when that product implements this exact contract.
+- All seven external model slots route through the constrained CONNECT egress
+  relay; private RFC1918/ULA destinations require explicit reviewed `*_EGRESS_PINS`,
+  and hosts outside the local network require `--confirm-remote-generator` (or
+  `*_REMOTE_CONFIRMED=1`) because matter text leaves the local network.
+- Host loopback servers, including `127.0.0.1:11434`, are unreachable from the
+  containerized app (no host-gateway alias is installed). External HTTP URLs and
+  `$` characters in model configuration values are rejected.
+- Startup and `doctor` send a small schema check to configured answer servers
+  and report whether the server enforced it. Answers from a model with no
+  recorded claim-evaluation pass are labeled `unvalidated model`.
+- Existing bundled nodes can migrate in place to operator-managed model APIs
+  with `./install update --root <path> --retire-bundled-models` while preserving
+  private transcript history.
+
+Full settings, limits, per-matter grants, and speech/retrieval API contracts are
+in [model configuration](docs/MODEL_CONFIGURATION.md).
 
 ## Hardware planning targets
 
 These are evaluation configurations, not guaranteed minimums or collection-size
 and concurrency limits. Larger matters, longer recordings, and more simultaneous
-users need additional storage and capacity. Cited answers with the portable
-model are admitted from 16 GB of NVIDIA VRAM. The reference GPU journey
-(portable answers, English and Spanish transcription, and Nemotron speaker
-labels) ran on 24 GB. A separate 16 GB reference run is not recorded. Driver
-and CUDA versions for the 24 GB run were not recorded. File another result on
-the [hardware report](https://github.com/Exculpata/exculpata/issues/new?template=hardware_report.yml)
+users need additional storage and capacity.
+
+**Fresh endpoint-based nodes (current `main` default)** run the Exculpata
+application stack on CPU and connect to separate operator-managed model APIs
+(running on your own GPU host(s) or approved API provider):
+
+| Intended use | CPU | RAM | NVIDIA GPU on app host | Free SSD before matter data |
+| --- | ---: | ---: | --- | ---: |
+| **Fresh application node (endpoint-based or zero-endpoint CPU)** — intake, DAT/OPT/LFP/DII load files, OCR, exact search, source review, exports, and optional operator HTTPS model APIs | 8 cores | 16 GB | None (models run on operator API host) | 150 GB production, or 13 GB with `--storage-profile evaluation` |
+
+**Legacy bundled GPU reference targets (`v0.1.0-beta.1` tag / existing bundled nodes only):**
+Cited answers with the portable bundled model were admitted from 16 GB of NVIDIA
+VRAM, and the `v0.1.0-beta.1` reference GPU journey (portable answers, English
+and Spanish transcription, and Nemotron speaker labels) ran on 24 GB (driver and
+CUDA versions not recorded; no separate 16 GB reference run recorded).
+
+| Legacy `v0.1.0-beta.1` bundled profile | CPU | RAM | NVIDIA GPU | Free SSD before matter data |
+| --- | ---: | ---: | --- | ---: |
+| **Bundled document review and cited answers** | 12 cores | 32 GB | 1 GPU with 16 GB VRAM minimum | 200 GB |
+| **Bundled transcription and speaker labels** | 16 cores | 64 GB | 1 GPU with 24 GB VRAM, tested reference | 300 GB |
+
+File hardware results on the
+[hardware report](https://github.com/Exculpata/exculpata/issues/new?template=hardware_report.yml)
 form. Collected rows live in [compatibility](docs/COMPATIBILITY.md). Consult
 [release readiness](docs/RELEASE_READINESS.md) before treating a configuration
 as supported.
 
-| Intended use | CPU | RAM | NVIDIA GPU | Free SSD before matter data |
-| --- | ---: | ---: | --- | ---: |
-| **CPU evaluation** — intake, OCR, word search, source review, and exports | 8 cores | 16 GB | None | 150 GB production, or 13 GB with `--storage-profile evaluation` |
-| **Local document review and cited answers** — evaluation features plus semantic retrieval, reranking, and local answers with the portable model | 12 cores | 32 GB | 1 GPU with 16 GB VRAM minimum | 200 GB |
-| **Transcription and speaker labels** — document review plus transcription and optional diarization | 16 cores | 64 GB | 1 GPU with 24 GB VRAM, tested reference | 300 GB |
-
-Use a modern x86-64 Linux host with Docker Engine and Docker Compose v2. GPU
-profiles require an NVIDIA card with compute capability 7.5 or newer and the
-NVIDIA Container Toolkit. The intended deployment model supports one suitable
-GPU, with additional GPUs separating generation, transcription, and retrieval
-work. Each configuration still needs deployment validation.
+Use a modern x86-64 Linux host with Docker Engine (26.0.0+) and Docker Compose
+v2 (2.20.2+). Legacy bundled GPU profiles also require an NVIDIA card with
+compute capability 7.5 or newer and the NVIDIA Container Toolkit.
 
 Matter storage may be a dedicated local path or a host-mounted NAS path.
-Free-space targets cover application images, models, temporary processing,
-and the configured safety reserve; matter contents require additional local
-or NAS capacity.
+Free-space targets cover application images, temporary processing, and the
+configured safety reserve; matter contents require additional local or NAS
+capacity.
 
 ## What Exculpata is not
 
@@ -427,8 +439,8 @@ The [product north star](docs/PRODUCT_NORTH_STAR.md) describes that experience,
 including production-folder intake, background material separate from discovery,
 people and events with original support, and reviewer-controlled matter memory.
 The [current assessment and delivery plan](docs/PRODUCT_DIRECTION_2026-09-12.md)
-identifies what exists, the remaining gaps, and a staged path forward. The
-[exit-alpha cruise](docs/EXIT_ALPHA_CRUISE.md) selects the active build step.
+identifies earlier baselines and a staged path forward; active work is tracked
+in GitHub issues and milestones.
 
 These are development goals. They are not all available in the current prerelease.
 
@@ -457,13 +469,20 @@ evidence described in [release readiness](docs/RELEASE_READINESS.md) and the
 ## Documentation
 
 - [Installation](docs/INSTALL.md)
+- [First run and practice matter](docs/FIRST_RUN.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Configuration](docs/CONFIGURATION.md)
+- [Model configuration (operator HTTPS APIs and per-matter grants)](docs/MODEL_CONFIGURATION.md)
+- [Models and origin policy](docs/MODELS.md)
 - [Authentication: Local accounts, OIDC, and Kerberos](docs/AUTHENTICATION.md)
-- [Models](docs/MODELS.md)
+- [Network egress and CONNECT relay](docs/NETWORK_EGRESS.md)
+- [Discovery review list and viewer](docs/DISCOVERY_REVIEW.md)
+- [Load files (DAT, OPT, LFP, DII)](docs/LOAD_FILES.md)
 - [OCR and media](docs/OCR_AND_MEDIA.md)
+- [Matter lifecycle and recovery](docs/CASE_LIFECYCLE.md)
 - [Storage, backup, and restore](docs/STORAGE_AND_BACKUP.md)
 - [Security model](docs/SECURITY_MODEL.md)
+- [Pilot acceptance](docs/PILOT_ACCEPTANCE.md)
 - [Release readiness](docs/RELEASE_READINESS.md)
 - [Visual identity: logo, type, color, and positioning](docs/BRAND.md)
 - [Brand assets and project copy](docs/BRANDING.md)

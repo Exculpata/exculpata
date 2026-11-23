@@ -6,12 +6,13 @@ find source-supported information, preserve what they learn, and make informed
 human decisions. Public criminal defense and teams serving people who cannot
 afford counsel are central to that purpose.
 
-This is the product direction, not a claim that the alpha already delivers it.
-It guides choices without exhausting what Exculpata can become. The
-[assessment and delivery plan](PRODUCT_DIRECTION_2026-09-12.md) separates current
-behavior from gaps. The [exit-alpha cruise](EXIT_ALPHA_CRUISE.md) selects the
-active implementation step; [release readiness](RELEASE_READINESS.md) defines
-what must be proven before a supported release.
+This is the product direction, not a claim that the current community beta
+already delivers all of it. It guides choices without exhausting what Exculpata
+can become. The [assessment and delivery plan](PRODUCT_DIRECTION_2026-09-12.md)
+separates earlier behavior from gaps; GitHub issues and milestones track active
+work (replacing the retired [exit-alpha cruise](EXIT_ALPHA_CRUISE.md));
+[release readiness](RELEASE_READINESS.md) defines what must be proven before a
+supported release.
 
 ## The experience we are building
 

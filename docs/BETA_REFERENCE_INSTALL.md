@@ -1,6 +1,14 @@
 # GPU community beta reference journey
 
-Status: **v0.1.0-beta.1**, the current community beta prerelease.
+Status: **v0.1.0-beta.1**, the tagged community beta prerelease.
+
+> **Tag-specific guide (`v0.1.0-beta.1` only):** The `--models all` bundled GPU
+> commands below work only on the `v0.1.0-beta.1` tag checked out in the commands
+> below. On `main`, fresh installations retire bundled model downloads and GPU
+> bundles (`--models review|transcription|all` are rejected); follow
+> [docs/INSTALL.md](INSTALL.md) and [docs/MODEL_CONFIGURATION.md](MODEL_CONFIGURATION.md)
+> to install an endpoint-based node and connect operator-managed HTTPS model APIs.
+
 The intended beta promise is a reproducible installation for evaluation and
 contribution: local accounts, document review with cited answers, English and
 Spanish transcription/alignment, and ungated Nemotron diarization. It is not
