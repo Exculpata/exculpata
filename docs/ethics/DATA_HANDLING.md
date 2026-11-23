@@ -1,35 +1,44 @@
 Not legal advice. Verify the rules in your jurisdiction.
 
-# Data handling for the beta candidate
+# Data handling for the community beta
 
-This statement describes the reference source at `6ebc292` (reviewed October 15,
-2026), not a certification of an installed system. The beta is still an
-unreleased evaluation candidate; use synthetic material for qualification
-([release boundary](../BETA_RELEASE_NOTES.md)). Complete the
-[vendor checklist](VENDOR_VETTING_CHECKLIST.md) before adapting the
+This statement covers the published `v0.1.0-beta.1` community beta reference
+(`6ebc292`, reviewed October 15, 2026) and the subsequent endpoint-first updates
+on `main` (seven operator-managed HTTPS model APIs behind the CONNECT relay with
+per-matter grants). It is not a certification of an installed system; use
+synthetic material for qualification ([release boundary](../BETA_RELEASE_NOTES.md)).
+Complete the [vendor checklist](VENDOR_VETTING_CHECKLIST.md) before adapting the
 [client disclosure](CLIENT_DISCLOSURE_TEMPLATE.md).
 
 ## Where information goes
 
 In the reference Compose deployment, the operator's server stores managed source
 files and working state; SQLite holds control records and PostgreSQL holds a
-derived retrieval index. Transcription has a separate temporary queue. These
-may be different disks or host-mounted network storage, not necessarily the
-reviewer's computer. Browser uploads travel to the server; opening sources and
-exporting work sends data back to the authorized browser. Backups and downloaded
-exports create additional copies under the operator's control.
+derived retrieval index. Legacy bundled transcription nodes have a separate
+temporary queue. These may be different disks or host-mounted network storage,
+not necessarily the reviewer's computer. Browser uploads travel to the server;
+opening sources and exporting work sends data back to the authorized browser.
+Backups and downloaded exports create additional copies under the operator's
+control.
 ([Storage contract](../STORAGE_AND_BACKUP.md), [architecture](../ARCHITECTURE.md),
 [Compose mounts and service wiring, lines 186–380][compose])
 
-The reference local inference paths send prompts/selected evidence to the local
-generator, text to the retrieval worker, recording bytes to the transcription
-API, and uploaded bytes to ClamAV. They do not send those inputs to a hosted AI
-vendor for inference or model training. This is a bounded description of these
-paths and the unmodified reference topology, not a promise about arbitrary
-allowlisted endpoints, administrator access, exported files, dependency behavior
-outside isolation, or a compromised host. The endpoint validator checks an exact
-configured hostname; it does **not** establish who owns it, whether it is inside
-the building, or how it handles data.
+Fresh installations on `main` do not stage bundled model containers. Instead,
+operators can connect up to seven independent HTTPS model APIs (`GENERATOR`,
+`EMBEDDING`, `RERANK`, `ASR`, `ALIGNMENT`, `TRANSLATION`, and `DIARIZATION`)
+through the constrained `egress-proxy` CONNECT relay with exact host allowlists,
+reviewed RFC1918/ULA IP pins (or explicit remote consent), and **per-matter**
+owner/admin grants before matter content is sent ([model configuration](../MODEL_CONFIGURATION.md)).
+Existing `v0.1.0-beta.1` bundled nodes keep their local offline inference paths,
+which send prompts/selected evidence to the local generator, text to the
+retrieval worker, recording bytes to the transcription API, and uploaded bytes
+to ClamAV. Neither path sends inputs to an unconfigured hosted AI vendor. This
+is a bounded description of these paths and the unmodified reference topology,
+not a promise about arbitrary allowlisted endpoints, administrator access,
+exported files, dependency behavior outside isolation, or a compromised host.
+The endpoint validator checks an exact configured hostname and pinned addresses;
+it does **not** establish who owns the destination, whether it is inside the
+building, or how it handles data.
 ([Generation transport, lines 242–291][generation],
 [retrieval inference/transport, lines 218–336][retrieval],
 [transcription transport, lines 247–305][media],
@@ -37,7 +46,7 @@ the building, or how it handles data.
 [network contract test](../../tests/test_reference_network_boundary.py))
 
 The inspected model paths perform inference, not fine-tuning on matter data.
-Read-only model mounts and offline flags protect the reference workers; stored
+Read-only model mounts and offline flags protect legacy bundled workers; stored
 answers, embeddings, notes and context are still retained work, not evidence of
 weight training. This does not certify a separately supplied service's training
 or retention policy, nor the provenance of its original training data.
@@ -59,11 +68,11 @@ its replacement; blocking egress can prevent installation, sign-in or readiness.
 | Touchpoint and trigger | Information and boundary | How to avoid or restrict it; evidence |
 | --- | --- | --- |
 | Browser use, uploads, source viewing and exports | Case content travels between the staff browser and configured gateway. Only the gateway publishes a host port, loopback by default. | Keep the gateway private; control client devices and downloaded copies. These transfers are necessary for browser use. [Compose lines 382–415][compose]; [export contract](../EXPORT_READINESS.md). |
-| Retrieval, generation, transcription, ClamAV and database operations; health probes | Text, prompts, media, file bytes and derived records reach the configured companions. Reference `models` and `services` networks are internal; model workers publish no ports. App health also probes the configured transcription endpoint. | Keep exact allowlists on private operator-controlled services; disable unused optional model/transcription profiles and their settings. Do not disable mandatory malware scanning as a privacy shortcut. A remote allowlisted companion changes this statement. [Compose][compose]; [endpoint validation][endpoints]; [health probe, lines 1208–1229][workbench]. |
+| Operator HTTPS model APIs (up to 7 slots), ClamAV, database operations, and legacy bundled workers | Text, prompts, media, file bytes and derived records reach configured companions or operator-approved HTTPS endpoints through `egress-proxy`. Reference `models` and `services` networks are internal; legacy model workers publish no ports. Routine external model requests require an explicit per-matter owner/admin grant. | Keep exact host allowlists and reviewed RFC1918/ULA pins on operator-controlled endpoints; leave unused API slots unconfigured; approve per-matter grants only after vetting the endpoint. Do not disable mandatory malware scanning as a privacy shortcut. [Compose][compose]; [endpoint validation][endpoints]; [model configuration](../MODEL_CONFIGURATION.md). |
 | OIDC sign-in, if selected | Provider discovery, authorization redirect, token exchange and signing-key retrieval convey authentication information, scopes and sign-in metadata. These methods do not take matter text. | Use local accounts to avoid the configured OIDC provider; otherwise approve its HTTPS issuer and network access, including browser access. [OIDC client, lines 572–733][identity]; [authentication modes](../AUTHENTICATION.md). |
 | Optional Kerberos/domain sign-in | Proxy authentication and host identity/group resolution depend on operator domain services. Container isolation does not eliminate host SSSD/DNS/domain traffic. | Use local accounts if domain integration is not intended. Qualify the host's domain traffic separately. [Kerberos mounts/network][kerberos]; [authentication runbook](../AUTHENTICATION.md). |
 | ClamAV signature updater at startup and periodically (`--checks=6`) | `freshclam` receives the separate `updates` network and a signatures-only volume; uploaded evidence is not mounted in it. The scanner disables its own updater. Update/DNS requests and connection metadata leave this boundary. | Restrict update destinations at the operator network, or supply verified fresh signatures through a separately qualified offline process. There is no supported one-click offline replacement here: stopping updates can fail the freshness health gate and scanner startup. [Compose lines 25–92][compose]; [existing updater test](../../tests/test_oss_installer.py). |
-| Explicit model staging or missing/changed-artifact acquisition on install/resume | Hugging Face snapshots, PyTorch alignment files and the pinned NLTK tokenizer archive are downloaded; origins/CDNs receive artifact requests and connection metadata, and gated acquisition uses a token. Staging has a writable model mount and no matter-data mount. | Prestage and verify the exact inventory; avoid invoking acquisition on the confidential runtime. `plan` and `verify` are offline; do not treat `stage` as offline. [Stager download paths, lines 104–149 and 392–490][stager]; [catalog URLs, lines 99–128][catalog]; [acquisition guide](../MODEL_ACQUISITION.md). |
+| Legacy model staging on `v0.1.0-beta.1` / `--resume` (retired for fresh installs on `main`) | Hugging Face snapshots, PyTorch alignment files and the pinned NLTK tokenizer archive are downloaded; origins/CDNs receive artifact requests and connection metadata, and gated acquisition uses a token. Staging has a writable model mount and no matter-data mount. | Fresh installs on `main` skip staging entirely. On legacy bundled nodes, prestage and verify the exact inventory or migrate via `--retire-bundled-models`. [Stager download paths, lines 104–149 and 392–490][stager]; [catalog URLs, lines 99–128][catalog]; [acquisition guide](../MODEL_ACQUISITION.md). |
 | Installation, image build/pull and explicit update | Docker registries, distribution repositories and Python indexes supply images/packages; transcription's compatibility build also obtains its upstream source. Source checkout/download is a separate network step. | Use reviewed, preloaded artifacts or qualified internal mirrors and test the prepared node. The ordinary installer is **not** network-free. [Installer build/acquisition, lines 2590–2747 and 3288–3355][installer]; [application Dockerfile][dockerfile]; [transcription Dockerfile][transcription-docker]; [compatibility builder][compatibility]. |
 | Browser assets and application updates | The workbench base template serves its scripts/styles/icons locally; bundled font URLs are relative. Inspection found no external CDN/font loader or automatic release-check client in the checked workbench source. The explicit installer `update` stages the supplied source and builds replacement images. | Preserve local assets; reassess custom UI/dependencies and operator update tooling. This source inspection is not a capture of every browser or dependency request. [Base template, lines 1–22][template]; [font definitions, lines 1–5][fonts]; [installer update, lines 3288–3355][installer]. |
 | Optional standalone Transcript Studio | The separate Streamlit UI sends requests to its configured transcription API; it is not a service in the root Compose deployment. Its framework/browser behavior is outside the reference network proof. | Do not run the standalone UI under this statement without a separate dependency, telemetry and destination review. [Studio API client, lines 425–460][studio-client]; [Studio URL setting, lines 532–545][studio]; [studio image target][transcription-docker]. |

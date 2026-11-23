@@ -21,13 +21,13 @@ Workers and generated text never grant access or become source evidence.
 services use narrow repositories and model adapters. Repositories reuse the
 authorized store transaction; adapters do not import routes or own permissions.
 New modules must not open a second authority or split protected transactions.
-These are extension rules from [core evolution](CORE_EVOLUTION.md), not a claim
-that all existing routes have moved or that an import linter enforces them.
+Layer imports are checked against [core evolution](CORE_EVOLUTION.md);
+transaction boundaries across existing routes still require review.
 
 **A3 — Reuse the supported path for each task.** Intake uses the authorized
 [upload and receipt flow](INTAKE_RECEIPTS.md); exact enumeration uses the
-[shared exact-search service](EXACT_SEARCH_RESULTS.md); focused answers use
-[grounded generation](../src/case_intelligence/generation.py).
+[shared exact-search service](EXACT_SEARCH_RESULTS.md); case questions use the
+[Case Assistant](CASE_ASSISTANT.md) and [grounded generation](../src/case_intelligence/generation.py).
 Whole-text review uses the [durable range ledger](FULL_TEXT_REVIEW.md);
 synthesis uses the [shared engine and adapter](FULL_TEXT_SYNTHESIS.md).
 Reports use the [shared store and revision checks](REPORT_EDITING.md), and
@@ -36,18 +36,17 @@ New callers preserve these contracts rather than invent parallel state or parser
 
 ## Local first and explicit network authority
 
-**L1 — No implicit outbound runtime calls.** Models and evidence processing stay
-local by default. New outbound use requires explicit operator configuration and
-review of what leaves the installation; companion URLs require an exact allowlist.
-The app uses internal networks and a constrained relay for configured OIDC.
-The separate signature updater and explicit model staging retain outbound access.
-Internal bridges are not a host firewall; operator overlays still require review.
-See [the reference egress contract](NETWORK_EGRESS.md) and [boundary tests](../tests/test_reference_network_boundary.py).
+**L1 — No implicit outbound runtime calls.** Evidence processing stays local by default.
+Operator-configured HTTPS model APIs (up to seven roles) require exact host allowlists,
+reviewed private IP pins or remote consent, and per-matter owner/admin grants through
+the constrained CONNECT relay (shared with OIDC). The signature updater and legacy
+staging retain outbound access; operator overlays require review. See
+[the reference egress contract](NETWORK_EGRESS.md) and [boundary tests](../tests/test_reference_network_boundary.py).
 
-**L2 — Stage immutable inputs before runtime.** Models and assets come from
-pinned local revisions with license and manifest/hash records; workers use offline
-loading and read-only model mounts. Tokens belong to staging, never runtime.
-Model/runtime support needs the evidence required by [model policy](MODELS.md).
+**L2 — Pin and validate model boundaries.** Operator model APIs require validated
+HTTPS endpoints, model checks, and explicit matter grants; legacy bundled models use
+pinned local revisions with offline read-only mounts. Tokens belong to owner-only
+secret files, never Git or logs. Follow [model policy](MODELS.md).
 
 **L3 — Keep the trusted-proxy boundary.** Only the gateway publishes a port,
 bound to loopback by default. Clear client-supplied identity headers; authentication,
@@ -83,9 +82,9 @@ Review-only entries identify gaps, not permission to skip existing checks.
 | Rule | Enforced by |
 | --- | --- |
 | A1 | [Matter isolation](../tests/test_milestone_a_workbench.py), [hybrid retrieval isolation](../tests/test_review_bench_v2.py); ownership of new services is review only because no global authority checker exists. |
-| A2 | Review only: no repository-wide import/transaction boundary checker; compare new dependencies with [core evolution](CORE_EVOLUTION.md). |
-| A3 | [Exact search](../tests/test_exact_search_results.py), [full-text review](../tests/test_full_text_review.py), [export readiness](../tests/test_export_readiness.py); reuse by new callers is review only because no duplicate-path detector exists. |
-| L1 | [Network boundary and inventory](../tests/test_reference_network_boundary.py), [live synthetic egress](../tests/test_egress_proxy_live.py), [generator endpoint allowlist](../tests/test_generation.py); operator overlays and host services remain review only because repository tests cannot attest deployed configuration. |
+| A2 | [Import boundaries](../tests/test_import_boundaries.py); transaction boundaries across routes remain review only because static imports do not verify SQLite/Postgres transaction scopes. |
+| A3 | [Case Assistant tools](../tests/test_case_assistant_tools.py), [exact search](../tests/test_exact_search_results.py), [full-text review](../tests/test_full_text_review.py), [export readiness](../tests/test_export_readiness.py); reuse by new callers is review only because no duplicate-path detector exists. |
+| L1 | [Network boundary and inventory](../tests/test_reference_network_boundary.py), [live synthetic egress](../tests/test_egress_proxy_live.py), [matter model grants](../tests/test_generation_matter_grants.py); operator overlays and host services remain review only because repository tests cannot attest deployed configuration. |
 | L2 | [Model staging](../tests/test_operator_model_staging.py), [offline retrieval startup](../tests/test_review_bench_v2.py), [manifest integrity](../services/transcription/tests/test_model_manifest.py); license, asset completeness and representative model quality are review only because fixtures cannot attest deployment acceptance. |
 | L3 | [Real gateway header stripping](../tests/test_gateway_nginx.py), [authentication entry points](../tests/test_auth_entrypoints.py), [network topology](../tests/test_reference_network_boundary.py). |
 | E1 | [Source/version resolution](../tests/test_source_references.py), [changed-original archive rejection](../tests/test_matter_archive.py), [review content basis](../tests/test_review_content_basis_regressions.py). |

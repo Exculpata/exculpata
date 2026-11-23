@@ -53,8 +53,8 @@ for this node.
 ## Existing answer endpoints
 
 The answer client is selected in `generator_from_environment`
-([`src/case_intelligence/generation.py`](../src/case_intelligence/generation.py),
-lines 771–792). An empty `CASE_INTELLIGENCE_GENERATOR_BACKEND` selects the
+([`src/case_intelligence/generation.py`](../src/case_intelligence/generation.py)).
+An empty `CASE_INTELLIGENCE_GENERATOR_BACKEND` selects the
 unavailable generator: search and source review still work, and answering does
 not. The two configured backends are:
 
