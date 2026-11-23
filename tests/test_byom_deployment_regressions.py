@@ -292,7 +292,6 @@ def _synthetic_ca_and_server_certs(directory: Path, hostname: str) -> tuple[Path
 
 def test_external_model_transport_supports_custom_ca_file_through_connect_relay(tmp_path, monkeypatch):
     from http.server import BaseHTTPRequestHandler, HTTPServer
-    import select
     import socket
     import ssl
     import threading
