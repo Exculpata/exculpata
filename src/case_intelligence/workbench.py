@@ -1076,6 +1076,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
                 self.postgres_connection.commit()
                 self.postgres_ready = True
             except Exception:
+                logging.getLogger(__name__).warning("PostgreSQL schema migration failed; vector retrieval disabled")
                 self.postgres_connection.rollback()
                 self.learned_retrieval = False
         self.embedding_index_warning = self._embedding_index_warning() if self._embedding_selected else ""
@@ -1232,6 +1233,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
 
             return psycopg.connect(dsn, connect_timeout=2, autocommit=True)
         except Exception:
+            logging.getLogger(__name__).warning("PostgreSQL connection failed; vector retrieval unavailable")
             return None
 
     @staticmethod
@@ -6344,9 +6346,18 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
                 )
             ),
             "transcription": (
-                "local WhisperX v2"
-                if self.media is not None and self.media.available
-                else "temporarily unavailable"
+                "external speech API"
+                if self.media is not None and self.media.available and getattr(self.media, "external_asr_configured", False)
+                else (
+                    "local WhisperX v2"
+                    if self.media is not None and self.media.available
+                    else "temporarily unavailable"
+                )
+            ),
+            "postgres": (
+                "ready"
+                if self.postgres_ready
+                else ("unavailable" if self._postgres_projection_configured else "not configured")
             ),
             "storage": "ready" if storage["ready"] else "capacity attention required",
         }

@@ -7496,7 +7496,7 @@ detail = "urllib.request.HTTPSHandler"
 [[source]]
 path = "src/case_intelligence/generator_transport.py"
 kind = "client"
-digest = "e61c0109b85b5cd71874366fb64e323ec4a489d65b479263be12254943a85f6e"
+digest = "6881d7a9cfee41c676b23001b79da24a615d4c9efdad79f386dd8ca5fc110604"
 detail = "urllib.request.build_opener"
 
 # External HTTPS client: explicit relay connection and CONNECT, verified target TLS identity, exact host and consent/pin validation, no redirects or ambient proxy bypass.

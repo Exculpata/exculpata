@@ -44,10 +44,12 @@ printf 'RequestHeader set X-Exculpata-Proxy-Secret "%s"\n' "$proxy_secret" >> "$
 chmod 0600 "$runtime/proxy-secret.conf"
 sed "s/__SERVER_NAME__/$server_name/g" \
     /etc/apache2/sites-available/recordbench-auth.conf.template \
-    > /etc/apache2/sites-available/recordbench-auth.conf
-printf 'ServerName %s\n' "$server_name" > /etc/apache2/conf-available/recordbench-server-name.conf
-a2ensite recordbench-auth >/dev/null
-a2enconf recordbench-server-name >/dev/null
+    > "$runtime/auth.conf"
+chmod 0640 "$runtime/auth.conf"
+chown root:www-data "$runtime/auth.conf"
+printf 'ServerName %s\n' "$server_name" > "$runtime/server-name.conf"
+chmod 0640 "$runtime/server-name.conf"
+chown root:www-data "$runtime/server-name.conf"
 unset proxy_secret
 apachectl configtest >/dev/null
 exec "$@"
