@@ -8,6 +8,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY ports.conf /etc/apache2/ports.conf
 COPY recordbench-auth.conf.template /etc/apache2/sites-available/recordbench-auth.conf.template
+RUN printf 'Include /run/recordbench-auth/auth.conf\n' > /etc/apache2/sites-available/recordbench-auth.conf \
+    && printf 'Include /run/recordbench-auth/server-name.conf\n' > /etc/apache2/conf-available/recordbench-server-name.conf \
+    && a2ensite recordbench-auth \
+    && a2enconf recordbench-server-name
 COPY entrypoint /usr/local/sbin/recordbench-auth-entrypoint
 RUN chmod 0755 /usr/local/sbin/recordbench-auth-entrypoint
 EXPOSE 8080

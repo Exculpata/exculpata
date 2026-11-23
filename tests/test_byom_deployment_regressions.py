@@ -239,3 +239,195 @@ def test_unsupported_saved_answer_keeps_notices_after_model_change(tmp_path, vie
         assert "Synthetic missing support" in page.text
         assert "unvalidated model" in page.text
         assert "Schema enforcement: not enforced / validated locally." in page.text
+
+
+def _synthetic_ca_and_server_certs(directory: Path, hostname: str) -> tuple[Path, Path, Path]:
+    from datetime import datetime, timedelta, timezone
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    now = datetime.now(timezone.utc)
+    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    ca_subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Synthetic Internal Test CA")])
+    ca_cert = (
+        x509.CertificateBuilder()
+        .subject_name(ca_subject)
+        .issuer_name(ca_subject)
+        .public_key(ca_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=5))
+        .not_valid_after(now + timedelta(days=1))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(ca_key, hashes.SHA256())
+    )
+    server_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    server_cert = (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, hostname)]))
+        .issuer_name(ca_subject)
+        .public_key(server_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=5))
+        .not_valid_after(now + timedelta(days=1))
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName(hostname)]), critical=False)
+        .sign(ca_key, hashes.SHA256())
+    )
+    ca_path = directory / "internal-ca.pem"
+    cert_path = directory / "server.crt"
+    key_path = directory / "server.key"
+    ca_path.write_bytes(ca_cert.public_bytes(serialization.Encoding.PEM))
+    ca_path.chmod(0o644)
+    cert_path.write_bytes(server_cert.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(
+        server_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.TraditionalOpenSSL,
+            serialization.NoEncryption(),
+        )
+    )
+    return ca_path, cert_path, key_path
+
+
+def test_external_model_transport_supports_custom_ca_file_through_connect_relay(tmp_path, monkeypatch):
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import socket
+    import ssl
+    import threading
+    import urllib.error
+    import urllib.request
+    from case_intelligence.external_generator import DestinationRejected
+    from case_intelligence.generator_transport import open_generator_request
+
+    hostname = "models.example.test"
+    ca_path, cert_path, key_path = _synthetic_ca_and_server_certs(tmp_path, hostname)
+
+    class ModelHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = b'{"data":[{"id":"synthetic-vllm"}]}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            return
+
+    tls_server = HTTPServer(("127.0.0.1", 0), ModelHandler)
+    tls_port = tls_server.server_address[1]
+    server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server_ctx.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
+    tls_server.socket = server_ctx.wrap_socket(tls_server.socket, server_side=True)
+    threading.Thread(target=tls_server.serve_forever, daemon=True).start()
+
+    class ConnectRelay(BaseHTTPRequestHandler):
+        def do_CONNECT(self):
+            upstream = socket.create_connection(("127.0.0.1", tls_port), timeout=5)
+            self.wfile.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            self.wfile.flush()
+            client_sock = self.connection
+
+            def pump(src, dst):
+                try:
+                    while True:
+                        chunk = src.recv(4096)
+                        if not chunk:
+                            break
+                        dst.sendall(chunk)
+                except OSError:
+                    pass
+                finally:
+                    try:
+                        dst.shutdown(socket.SHUT_WR)
+                    except OSError:
+                        pass
+
+            forward = threading.Thread(target=pump, args=(client_sock, upstream), daemon=True)
+            forward.start()
+            try:
+                pump(upstream, client_sock)
+                forward.join(timeout=5)
+            finally:
+                upstream.close()
+
+        def log_message(self, format, *args):
+            return
+
+    relay_server = HTTPServer(("127.0.0.1", 0), ConnectRelay)
+    relay_port = relay_server.server_address[1]
+    threading.Thread(target=relay_server.serve_forever, daemon=True).start()
+
+    origin = f"https://{hostname}:{tls_port}"
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_URL", origin)
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", hostname)
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED", "1")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_PROXY", f"http://127.0.0.1:{relay_port}")
+    monkeypatch.delenv("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", raising=False)
+    monkeypatch.delenv("CASE_INTELLIGENCE_GENERATOR_CA_FILE", raising=False)
+    monkeypatch.delenv("CASE_INTELLIGENCE_MODEL_CA_FILE", raising=False)
+
+    try:
+        req = urllib.request.Request(f"{origin}/v1/models", method="GET")
+        with pytest.raises(urllib.error.URLError):
+            open_generator_request(req, timeout=5)
+
+        monkeypatch.setenv("CASE_INTELLIGENCE_MODEL_CA_FILE", str(ca_path))
+        with open_generator_request(req, timeout=5) as response:
+            assert response.status == 200
+            assert b"synthetic-vllm" in response.read()
+
+        # Per-role CA file takes precedence over shared CA file.
+        monkeypatch.setenv("CASE_INTELLIGENCE_MODEL_CA_FILE", str(tmp_path / "missing.pem"))
+        monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_CA_FILE", str(ca_path))
+        with open_generator_request(req, timeout=5) as response:
+            assert response.status == 200
+
+        # Unsafe or missing CA files fail closed.
+        monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_CA_FILE", "relative/ca.pem")
+        with pytest.raises(DestinationRejected, match="absolute"):
+            open_generator_request(req, timeout=5)
+
+        symlink_ca = tmp_path / "ca-link.pem"
+        symlink_ca.symlink_to(ca_path)
+        monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_CA_FILE", str(symlink_ca))
+        with pytest.raises(DestinationRejected, match="symbolic links"):
+            open_generator_request(req, timeout=5)
+
+        writable_ca = tmp_path / "writable-ca.pem"
+        writable_ca.write_bytes(ca_path.read_bytes())
+        writable_ca.chmod(0o666)
+        monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_CA_FILE", str(writable_ca))
+        with pytest.raises(DestinationRejected, match="writable"):
+            open_generator_request(req, timeout=5)
+    finally:
+        relay_server.shutdown()
+        relay_server.server_close()
+        tls_server.shutdown()
+        tls_server.server_close()
+
+
+def test_health_surfaces_postgres_failure_and_distinguishes_external_asr(tmp_path, monkeypatch, caplog):
+    from fastapi.testclient import TestClient
+    from case_intelligence.generation import UnavailableGenerator
+    from case_intelligence.workbench import create_workbench_app
+
+    secret_dsn = tmp_path / "postgres-dsn"
+    secret_dsn.write_text("postgresql://synthetic:synthetic_secret_pw@127.0.0.1:1/exculpata\n", encoding="utf-8")
+    secret_dsn.chmod(0o600)
+    monkeypatch.setenv("CASE_INTELLIGENCE_POSTGRES_DSN_FILE", str(secret_dsn))
+    monkeypatch.setenv("CASE_INTELLIGENCE_ASR_URL", "https://asr.example.test:8443")
+    monkeypatch.setenv("CASE_INTELLIGENCE_ASR_MODEL", "synthetic-whisper")
+    monkeypatch.setenv("CASE_INTELLIGENCE_ASR_ALLOWED_HOSTS", "asr.example.test")
+    monkeypatch.setenv("CASE_INTELLIGENCE_ASR_REMOTE_CONFIRMED", "1")
+    monkeypatch.setenv("CASE_INTELLIGENCE_ASR_PROXY", "http://127.0.0.1:3128")
+
+    with caplog.at_level("WARNING"):
+        with TestClient(create_workbench_app(tmp_path / "runtime", generator=UnavailableGenerator(), auth_mode="test")) as client:
+            health = client.get("/health").json()
+            assert health["capabilities"]["postgres"] == "unavailable"
+            assert health["capabilities"]["transcription"] == "external speech API"
+    assert "PostgreSQL connection failed" in caplog.text
+    assert "synthetic_secret_pw" not in caplog.text
+

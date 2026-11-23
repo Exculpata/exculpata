@@ -357,3 +357,20 @@ def test_each_identity_alias_still_requires_correct_proxy_proof(tmp_path, brand,
     with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get("/auth/login", headers=headers).status_code == 401
         assert client.cookies.get(SESSION_COOKIE) is None
+
+
+def test_kerberos_proxy_keeps_runtime_writes_inside_tmpfs_for_read_only_root():
+    root = Path(__file__).parents[1]
+    deploy = root / "deploy/kerberos-proxy"
+    entrypoint = (deploy / "entrypoint").read_text(encoding="utf-8")
+    dockerfile = (deploy / "Dockerfile").read_text(encoding="utf-8")
+    assert f"Include /run/{LEGACY_STEM}-auth/auth.conf" in dockerfile
+    assert f"Include /run/{LEGACY_STEM}-auth/server-name.conf" in dockerfile
+    assert f"a2ensite {LEGACY_STEM}-auth" in dockerfile
+    assert f"a2enconf {LEGACY_STEM}-server-name" in dockerfile
+    assert '> "$runtime/auth.conf"' in entrypoint
+    assert '> "$runtime/server-name.conf"' in entrypoint
+    assert "> /etc/apache2/" not in entrypoint
+    assert "a2ensite" not in entrypoint
+    assert "a2enconf" not in entrypoint
+

@@ -484,12 +484,18 @@ class MediaCoordinator:
         self._summary_thread.start()
 
     @property
+    def external_asr_configured(self) -> bool:
+        if not os.getenv("CASE_INTELLIGENCE_ASR_URL", "").strip():
+            return False
+        try:
+            return configured_endpoint("ASR") is not None
+        except ValueError:
+            return False
+
+    @property
     def available(self) -> bool:
         if os.getenv("CASE_INTELLIGENCE_ASR_URL", "").strip():
-            try:
-                return configured_endpoint("ASR") is not None
-            except ValueError:
-                return False
+            return self.external_asr_configured
         return bool(self.processor is not None and self.processor.available
                     and getattr(self.processor, "history_only", False) is not True)
 
