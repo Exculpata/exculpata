@@ -1,32 +1,42 @@
 # Configuration
 
-`compose.env` controls host paths, ports, GPU assignment, and the pinned model
-portfolio. `config/exculpata.env` controls application behavior on a fresh
-node. A legacy node keeps `config/recordbench.env`.
-`config/transcription.env` controls the bundled media queue and worker. The
-installer writes all three outside Git with mode `0600`.
+`compose.env` controls host paths, ports, release identifiers, and (on legacy
+bundled nodes) GPU assignment and bundled model revisions. `config/exculpata.env`
+controls application behavior and operator-managed model APIs on a fresh node.
+A legacy node keeps `config/recordbench.env`; legacy bundled transcription nodes
+also keep `config/transcription.env`. The installer writes these files outside
+Git with mode `0600`.
 
-Secrets are separate owner-only files: PostgreSQL password/DSN, local account
-hashes, transcription API token, OIDC client secret, or Kerberos keytab/proxy
-secret. A real secret must never appear in an environment example.
+Secrets are separate owner-only files under the node secrets directory
+(`/run/recordbench-secrets` inside containers): PostgreSQL password/DSN, local
+account hashes, model API keys, optional internal CA bundles, OIDC client
+secret, Kerberos keytab/proxy secret, or legacy transcription API token. A real
+secret must never appear in an environment example.
 
 Key operator decisions include:
 
 - `EXCULPATA_STORAGE_ROOT`: dedicated matter byte boundary;
-- `EXCULPATA_MODEL_ROOT`: offline model cache;
-- `EXCULPATA_*_GPU`: detected or explicitly selected physical GPU assignment;
-- `EXCULPATA_GPU_LAYOUT`, retrieval device, and generator tensor-parallel
-  width: portable shared, separated-role, or operator-overridden topology;
-- generator dtype, memory share, batch size, and application concurrency are
-  derived conservatively from compute capability and whether transcription is
-  co-resident;
-- `CASE_INTELLIGENCE_*_QUOTA_*`: per-matter, upload, file, and reserve limits;
+- `EXCULPATA_BIND_ADDRESS`, `EXCULPATA_HTTPS_PORT`, `EXCULPATA_SERVER_NAME`,
+  `EXCULPATA_TLS_CERT`, and `EXCULPATA_TLS_KEY`: HTTPS gateway identity and TLS;
+- **Operator-managed HTTPS model APIs** in `config/exculpata.env` (see
+  [model configuration](MODEL_CONFIGURATION.md)): up to seven independent role
+  prefixes (`CASE_INTELLIGENCE_GENERATOR_*`, `EMBEDDING_*`, `RERANK_*`, `ASR_*`,
+  `ALIGNMENT_*`, `TRANSLATION_*`, `DIARIZATION_*`) with `*_URL`, `*_MODEL`,
+  `*_ALLOWED_HOSTS`, `*_EGRESS_PINS` (required for private RFC1918/ULA hosts) or
+  `*_REMOTE_CONFIRMED=1` (for remote hosts), optional `*_API_KEY_FILE`, and
+  optional internal CA bundles (`CASE_INTELLIGENCE_MODEL_CA_FILE` or per-role
+  `CASE_INTELLIGENCE_<ROLE>_CA_FILE`);
+- `CASE_INTELLIGENCE_*_QUOTA_*` and `CASE_INTELLIGENCE_STORAGE_RESERVE_GIB`:
+  per-matter, upload, file, and storage-reserve limits;
 - OCR language/page cap and ingestion/answer concurrency;
-- generator backend/endpoint/model and exact allowed companion-service hosts;
-- transcription retention, capacity, diarization, and free-disk reserve.
+- **Legacy bundled-model nodes (`v0.1.0-beta.1` / `--resume` only):**
+  `EXCULPATA_MODEL_ROOT`, `EXCULPATA_*_GPU`, `EXCULPATA_GPU_LAYOUT`, and
+  `config/transcription.env` (retired for fresh installs; migrate in place via
+  `./install update --root <path> --retire-bundled-models`).
 
 Do not edit generated files while services run. Back up, validate changes with
-`docker compose config`, restart only affected services, and rerun the doctor.
+`docker compose config`, apply updates through `./install` (so `egress-proxy`
+receives updated relay destinations/pins), and rerun `./install doctor`.
 
 ## Compatible environment names
 

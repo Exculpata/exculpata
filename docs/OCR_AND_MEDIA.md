@@ -71,11 +71,19 @@ uncertain/no-speech results wait for an explicit decision and failed inspection
 can be retried. Language is not assessed. The complete original recording is
 submitted when transcription proceeds.
 
-The bundled transcription queue reports inspection, submission, queue, transcription,
-alignment, diarization, projection, summary, completion, degraded, and failed
-states. Exculpata indexes timestamped segments and automatically generates a
-source summary after projection. Users can export transcripts, summaries,
-clips, citations, and reports.
+On fresh installations, media transcription and enrichment use operator-managed
+HTTPS speech APIs (`CASE_INTELLIGENCE_ASR_*`, `ALIGNMENT_*`, `TRANSLATION_*`,
+and `DIARIZATION_*`) behind the CONNECT relay, each gated by per-matter
+owner/admin approval; see [model configuration](MODEL_CONFIGURATION.md),
+[local speech APIs](LOCAL_SPEECH_APIS.md), and
+[speech enrichment APIs](SPEECH_ENRICHMENT_APIS.md). Existing nodes that
+retain the legacy bundled transcription queue (or migrate via
+`--retire-bundled-models` while preserving private transcript history) report
+inspection, submission, queue, transcription, alignment, diarization,
+projection, summary, completion, degraded, and failed states. Exculpata indexes
+timestamped segments and automatically generates a source summary after
+projection when an answering model is granted for the matter. Users can export
+transcripts, summaries, clips, citations, and reports.
 
 If transcription stops after Exculpata has imported a transcript, choose
 **Try again** on the failed source. Recovery rebuilds the source from its saved

@@ -249,11 +249,11 @@ at least seven days.
 
 | Behavior | Code |
 |---|---|
-| Maintenance reports zero purged matters and does not claim deletion | [`src/case_intelligence/workbench.py`](../src/case_intelligence/workbench.py) lines 1898–1905 |
-| Due-date inventory is empty, and setting a deletion date is rejected | [`src/case_intelligence/workspace_store.py`](../src/case_intelligence/workspace_store.py) lines 1856–1861 and 2055–2059 |
-| A legacy review period is only a check-in interval | [`src/case_intelligence/workspace_store.py`](../src/case_intelligence/workspace_store.py) lines 1630–1635 |
-| The cancellation window is seven days | [`src/case_intelligence/case_lifecycle.py`](../src/case_intelligence/case_lifecycle.py) lines 25 and 252–253 |
-| Confirmation is refused until that window ends, and the claim requires a fresh token | [`src/case_intelligence/case_lifecycle.py`](../src/case_intelligence/case_lifecycle.py) lines 345–346 and 376–406 |
+| Maintenance reports zero purged matters and does not claim deletion | [`src/case_intelligence/workbench.py`](../src/case_intelligence/workbench.py) (`purge_due_matters`) |
+| Due-date inventory is empty, and setting a deletion date is rejected | [`src/case_intelligence/workspace_store.py`](../src/case_intelligence/workspace_store.py) (`due_matter_retentions`, `update_matter_retention`) |
+| A legacy review period is only a check-in interval | [`src/case_intelligence/workspace_store.py`](../src/case_intelligence/workspace_store.py) (`create_matter`) |
+| The cancellation window is seven days | [`src/case_intelligence/case_lifecycle.py`](../src/case_intelligence/case_lifecycle.py) (`DEFAULT_CANCELLATION_DAYS`, `begin_closure`) |
+| Confirmation is refused until that window ends, and the claim requires a fresh token | [`src/case_intelligence/case_lifecycle.py`](../src/case_intelligence/case_lifecycle.py) (`confirm_purge`) |
 
 [`docs/CASE_LIFECYCLE.md`](CASE_LIFECYCLE.md) is the operator description.
 [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md) states that maintenance never
@@ -338,9 +338,9 @@ works. An interrupted purge does not invent a new receipt.
 
 The Harbor Street demo in [the phased plan](#phased-pilot-plan) shows the
 unavailable-generator message while search and source review work. That
-message comes from the unavailable generator in
-[`src/case_intelligence/generation.py`](../src/case_intelligence/generation.py)
-lines 756–762, used when the backend setting is empty (lines 771–774).
+message comes from `UnavailableGenerator` in
+[`src/case_intelligence/generation.py`](../src/case_intelligence/generation.py),
+selected by `generator_from_environment` when the backend setting is empty.
 
 **Evidence.** The tests above, [`docs/CASE_LIFECYCLE.md`](CASE_LIFECYCLE.md)
 for restart, restore, and interrupted deletion, and the README demo section.

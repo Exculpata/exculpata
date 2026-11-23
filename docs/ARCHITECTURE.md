@@ -26,21 +26,28 @@ gateway ── optional Kerberos proxy
     ▼
 Exculpata app ── PostgreSQL + pgvector (derived retrieval index)
     │            ├─ ClamAV (stream scan)
-    │            ├─ embedding + reranker worker (offline GPU)
-    │            ├─ vLLM generator (offline GPU)
-    │            └─ transcription API → durable ephemeral queue
-    │                                      │
-    │                                      ▼
-    │                               WhisperX worker
+    │            ├─ egress-proxy (CONNECT relay, exact pins/allowlists)
+    │            │    ├─ OIDC issuer (if auth=oidc)
+    │            │    └─ up to 7 operator HTTPS model APIs:
+    │            │         GENERATOR, EMBEDDING, RERANK,
+    │            │         ASR, ALIGNMENT, TRANSLATION, DIARIZATION
+    │            └─ legacy bundled offline workers (existing v0.1.0-beta.1 nodes only;
+    │                 not published, retired for fresh installs):
+    │                 retrieval worker, vLLM generator, transcription API → WhisperX worker
     ▼
 managed matter storage + SQLite control record
 ```
 
-The app, not the model, owns authorization, matter isolation, audit attribution,
-citations, exports, and deletion. PostgreSQL is a rebuildable projection of
-matter source units. Candidate retrieval combines lexical and vector lanes,
-then a cross-encoder reranks a bounded set. The generator sees only the selected
-evidence; a separate deterministic verifier checks claims and citations.
+The app, not the model, owns authorization, matter isolation, per-matter model
+grants, audit attribution, citations, exports, and deletion. PostgreSQL is a
+rebuildable projection of matter source units. Candidate retrieval combines
+lexical and vector lanes, then reranks a bounded set. The
+[Case Assistant](CASE_ASSISTANT.md) runs a matter-scoped, multi-turn read-only
+tool loop (`list_sources`, `search_discovery`, `read_source`,
+`get_case_knowledge`, `calculate`, `query_table`, `read_email_thread`, and
+`read_transcript_window`), verifies factual premises against originals and
+computed figures against exact `Decimal` `CalculationReceipt`s, exposes an
+expandable work trace, and surfaces reviewer-gated case-memory proposals.
 
 The SQLite control store combines `NotebookStoreMixin` and `ReportsStoreMixin`
 in `WorkspaceStore`. These mixins add no state, connection, lock or transaction
@@ -98,7 +105,7 @@ retain explicitly browser-reported selection reasons separately from server
 filename checks, byte receipt and source availability,
 use idempotent metadata/session bindings and exact source versions, and provide
 coherent paginated views and complete exports. Their tables stay in the existing
-temporary-matter deletion and backup boundary. Atomic matter/creator/workspace
+explicit-close [matter lifecycle](CASE_LIFECYCLE.md) and backup boundary. Atomic matter/creator/workspace
 receipt, selected-row and metadata-byte limits admit writes before storage grows;
 only owners can cancel empty pending uploads and discard their receipts. Received
 source data and saved partial bytes prevent discard.

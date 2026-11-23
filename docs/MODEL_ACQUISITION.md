@@ -1,5 +1,12 @@
 # Preview and acquire reference models
 
+> **Scope note:** Fresh installations on `main` do not download or stage bundled
+> model containers (`--models review|transcription|all` are retired for new
+> nodes); configure operator-managed HTTPS model APIs per
+> [model configuration](MODEL_CONFIGURATION.md). The staging workflow below
+> applies to `v0.1.0-beta.1` checkouts and existing bundled nodes using
+> `--resume` prior to migrating with `--retire-bundled-models`.
+
 Exculpata supplies adapters and a pinned reference configuration. Operators
 choose and obtain compatible models under their upstream terms. The application
 license does not grant rights to separately acquired models or tokenizer data.

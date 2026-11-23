@@ -1,23 +1,25 @@
 # What the installer manages
 
-Exculpata provides one guided setup process. It builds and starts the
-application, PostgreSQL, the HTTPS gateway, ClamAV and its signature updater,
-and the selected review/transcription services as containers. Operators do not
-need a separate host ClamAV installation for this stack.
+Exculpata provides one guided setup process. On fresh installations it builds
+and starts the application, PostgreSQL + pgvector, the HTTPS gateway (plus the
+optional Kerberos proxy), ClamAV and its signature updater, and the `egress-proxy`
+CONNECT relay as containers. Operators do not need a separate host ClamAV
+installation for this stack.
 
 Prepare the host using [the installation playbook](INSTALL.md): service account,
-storage, Docker/Compose and, for GPU features, NVIDIA drivers and Container
-Toolkit. Backups also require restic. The installer checks prerequisites; it
-does not silently reconfigure the Docker daemon, replace drivers, open firewall
-ports or change other applications. Review TLS and exposure before remote use.
+storage, Docker Engine (`>= 26.0.0`) and Compose v2 (`>= 2.20.2`). Backups also
+require `restic`. The installer checks prerequisites; it does not silently
+reconfigure the Docker daemon, replace drivers, open firewall ports or change
+other applications. Review TLS and exposure before remote use.
 
-Model weights are acquired separately. The installer displays the pinned
-reference acquisition plan and terms, asks for acknowledgement, downloads the
-selected artifacts, verifies their bytes and prepares offline inference. The
-reference Nemotron diarizer does not require an access token. Operators can use
-compatible models they procure themselves through the documented adapters and
-[ASR import interface](ASR_MODEL_IMPORT.md). A different model architecture may
-need an adapter; arbitrary model compatibility is not promised.
+Fresh installations on `main` do not download or bundle model containers. Instead,
+operators run or procure their own HTTPS model APIs (generation, embeddings,
+reranking, and speech) and connect them per
+[model configuration](MODEL_CONFIGURATION.md). Existing `v0.1.0-beta.1` nodes
+that still use bundled GPU workers retain their staged model cache on `--resume`
+and `update` (and can migrate in place via `--retire-bundled-models`). For those
+legacy bundled nodes, see [model acquisition](MODEL_ACQUISITION.md) and the
+[ASR import interface](ASR_MODEL_IMPORT.md).
 
 ## Managed service security updates
 
