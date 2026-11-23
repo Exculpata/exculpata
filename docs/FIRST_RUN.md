@@ -93,11 +93,12 @@ Legacy nodes retain `/srv/recordbench`, the `recordbench` service account, and
    `exculpata` Linux service account. No preview identity or seeded account
    is needed. An administrator with no matter arrives at **Team setup**.
 
-4. **Create a practice matter.** Choose **Create matter**, name it
-   `Synthetic CPU practice`, and review its end date before submitting. The
-   default is 30 days of review plus seven days of export grace, after which
-   enabled maintenance can delete it without another confirmation; see
-   [temporary-matter retention](EXPIRED_MATTER_RECOVERY.md). You own the new matter.
+4. **Create a practice matter.** Choose **Create matter** and name it
+   `Synthetic CPU practice`. New matters remain ongoing until explicitly closed;
+   dates never authorize automatic deletion. Closing a matter freezes changes,
+   creates a verified preservation archive, and requires a separate confirmation
+   after a minimum seven-day cancellation window; see
+   [matter lifecycle and recovery](CASE_LIFECYCLE.md). You own the new matter.
    The other team-setup checklist items can remain incomplete for this one-user
    exercise.
 

@@ -1,20 +1,22 @@
 # Initial supported-release target
 
-This document defines the qualification target; it does not announce a release.
-Exculpata is currently alpha. A supported production release requires the
-evidence below and maintainer approval of the exact release artifacts.
+This document defines the qualification target; it does not announce a production
+release. Exculpata is currently in community beta (`v0.1.0-beta.1`). A supported
+production release requires the evidence below and maintainer approval of the
+exact release artifacts.
 
 The nearer community beta milestone is defined in
 [release readiness](RELEASE_READINESS.md#community-beta-exit-criteria). These
 full supported-deployment gates do not block reviewed source contributions or
 require certification of every operator-selected model. Reference models are
-test configurations, not the product architecture. Current configuration options
-and incomplete custom-model workflows are explicit in
+test configurations, not the product architecture. Fresh installations use
+operator-managed HTTPS model APIs rather than bundled model containers; current
+configuration options and incomplete custom-model workflows are explicit in
 [model choice and compatibility](MODEL_CONFIGURATION.md).
 
 | Capability | Initial support target | Evidence still required |
 |---|---|---|
-| Installation | Linux x86-64; fresh isolated root; documented NVIDIA runtime | Exact OS/card/driver/runtime receipt and independent operator completion |
+| Installation | Linux x86-64; fresh isolated root; operator-managed HTTPS model APIs (or documented legacy NVIDIA runtime on `v0.1.0-beta.1`) | Exact OS/runtime receipt and independent operator completion |
 | Sign-in | Local accounts and browser account management | TLS trust, first-admin setup, sessions, role changes and two-user separation |
 | Document review | Ingestion/OCR, learned retrieval/reranking, local generation and cited exports | Frozen document gold, empty-cache/offline execution, measured resource envelope |
 | Transcription | English and Spanish, large-v3 source transcription, word alignment, optional English translation | Frozen speech gold, native GPU execution, human transcript/timestamp review |

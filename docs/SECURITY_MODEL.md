@@ -29,24 +29,32 @@ OIDC, and Kerberos modes require secure cookies and trusted TLS. Real secrets
 are file-backed and excluded from Git. The installer never prints or retains a
 Hugging Face token.
 
-Operator-supplied answer servers are an explicit exception to local model
-processing. Their configured hostname must be on the exact generator allowlist;
-destinations outside RFC1918 and IPv6 ULA additionally require saved
-remote consent. Questions, matter text and cited passages can then leave the
-installation for that server. Consent is installation-wide, not a per-matter
-policy or a claim about the server's retention. Operators must account for that
-disclosure before enabling the option. The default private Compose services and
-offline workers keep their existing boundaries.
+Operator-configured model APIs (generation, embeddings, reranking, speech
+transcription, word alignment, translation, and speaker labeling) are explicit
+exceptions to local-only processing on the application host. Fresh installations
+do not stage bundled model containers; each capability stays disabled until an
+operator configures its HTTPS endpoint and exact host allowlist. Destinations
+outside RFC1918 and IPv6 ULA additionally require saved remote consent
+(`*_REMOTE_CONFIRMED=1`), while private RFC1918/ULA destinations require
+reviewed exact IP pins (`*_EGRESS_PINS`). Even after an operator configures and
+verifies an external model endpoint, routine matter requests require an explicit
+**per-matter** owner or administrator grant naming the capability, endpoint, and
+model; new matters start with no external grants. External embedding index
+rebuilds also require an explicit matter approval plan. Operators must account
+for any disclosure and server retention policy before approving a matter grant.
 
-External generator traffic uses HTTPS through the constrained CONNECT relay.
-The relay resolves and validates every DNS answer and dials only approved numeric
-addresses. RFC1918/ULA destinations need reviewed exact pins. Metadata, loopback,
-link-local, multicast, unspecified, reserved and transition addresses remain denied.
-The app retains consent, exact-host and destination checks; TLS hostname verification
-stays end to end and redirects are refused. Ambient proxies cannot bypass the relay.
-Only the bundled internal generator uses HTTP and the companion transport.
-The installer checks bundled and external generators from the running app container.
-For an external server, the synthetic schema request uses the app's credentials,
+All seven external model API slots route through the constrained CONNECT relay
+(`egress-proxy`) using explicit `CASE_INTELLIGENCE_<ROLE>_PROXY` settings that
+cannot be bypassed by ambient `NO_PROXY`. The relay resolves and validates every
+DNS answer and dials only approved numeric addresses. Metadata, loopback,
+link-local, multicast, unspecified, reserved, and transition addresses remain
+denied. The app retains consent, exact-host, per-matter grant, and destination
+checks; TLS hostname verification stays end to end (with optional validated
+internal CA bundles via `CASE_INTELLIGENCE_MODEL_CA_FILE` or per-role
+`CASE_INTELLIGENCE_<ROLE>_CA_FILE`) and redirects are refused. Existing legacy
+nodes retaining bundled internal workers keep their private companion routes
+until migrated with `--retire-bundled-models`. Startup and `doctor` check
+configured endpoints from the running app container using the app's credentials,
 saved consent, and configured relay.
 See [model configuration](MODEL_CONFIGURATION.md).
 

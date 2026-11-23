@@ -1194,4 +1194,8 @@ Confirm each id with `docker inspect` before deleting it. Do not run
 
 See [runtime dependency locks](DEPENDENCIES.md) for the pinned Python environments,
 verified tokenizer staging, and remaining whole-image qualification requirements.
-These preparations do not change the development-alpha support status.
+These preparations do not change the community-beta prerelease support status.
+
+When combining `--password-stdin` and `--external-generator-api-key-stdin` in
+non-interactive installs, supply the initial administrator password on line 1
+of standard input and the external generator API key on line 2.

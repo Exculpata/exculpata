@@ -85,16 +85,19 @@ exact host allowlists, disables ambient proxies and rejects redirects. Hardcoded
 loopback health probes also disable ambient proxies. The relay has no host ports,
 volumes, application environment file or secrets.
 
-The proxy permits CONNECT only to the configured issuer's exact host and port,
-and one separately configured external generator authority. The generator slot
-uses `GENERATOR_EGRESS_URL` and `GENERATOR_EGRESS_PINS`, derived from the selected
-app env file by the installer. Empty generator configuration denies that slot.
-Both authorities use the same parser, DNS validation, pin and address-denial rules.
-A shared authority with conflicting pin sets fails startup rather than broadening
-either slot. Generator pins use the existing `issuer` JSON field bound to the full
-generator URL. Only reviewed RFC1918/ULA pins allow private generator addresses;
-loopback and metadata destinations cannot be pinned. See
-[model configuration](MODEL_CONFIGURATION.md#existing-answer-endpoints).
+The proxy permits CONNECT only to the configured OIDC issuer's exact host and
+port and up to seven separately configured operator model API authorities
+(`GENERATOR`, `EMBEDDING`, `RERANK`, `ASR`, `ALIGNMENT`, `TRANSLATION`, and
+`DIARIZATION`). Each slot uses its `<ROLE>_EGRESS_URL` and `<ROLE>_EGRESS_PINS`
+pair derived from the selected app env file by the installer; any empty slot
+stays denied. All authorities use the same parser, DNS validation, pin, and
+address-denial rules. A shared authority between OIDC and any model slot, or
+with conflicting pin sets, fails startup rather than broadening either slot.
+Model pins use the existing `issuer` JSON field bound to the normalized origin
+URL. Only reviewed RFC1918/ULA pins allow private addresses; loopback and
+metadata destinations cannot be pinned. See
+[model configuration](MODEL_CONFIGURATION.md#existing-answer-endpoints) and the
+per-role slot details below.
 
 The app's `CASE_INTELLIGENCE_GENERATOR_PROXY` selects the CONNECT relay explicitly;
 its transport cannot be bypassed with `NO_PROXY`. The bundled generator continues
