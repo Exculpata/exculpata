@@ -93,10 +93,8 @@ native keyboard navigation, marks and clears a role, reloads it, and recovers a
 stale edit without overwriting another reviewer. Six checks include exact 1440,
 390 and 320 CSS pixel views. `source-role-*.png` captures contain synthetic
 charging-paper metadata only. This adds one required journey to the runner;
-missing, failed and truncated C2 receipts fail the aggregate result. The
-[native synthetic receipt](ui-usability-audit/2026-10-11/source-roles/receipt.json)
-and adjacent screenshots record the editor and conflict recovery; this does not
-replace the complete pinned Linux suite.
+missing, failed and truncated C2 receipts fail the aggregate result; standalone
+synthetic runs do not replace the complete pinned Linux suite.
 
 After reloading the reader, the source-role journey waits for the old document
 to detach and its replacement to finish loading before opening the editor.
@@ -149,9 +147,7 @@ Light token foreground through a theme round trip, checks heading visibility
 and horizontal overflow, and follows Home → Ask → Search → Ask using native
 Enter activation of the real navigation. The bounded `ask-heading-*.png`
 screenshots and receipt contain only synthetic demo content; this journey does
-not run inference or assess model quality. The [October 11 receipt](ui-usability-audit/2026-10-11/ask-heading/receipt.json)
-and adjacent screenshots record Dark heading contrast improving from 1.08:1 to
-16.19:1 at both widths, with Light unchanged at 16.47:1 and Dusk at 16.49:1.
+not run inference or assess model quality.
 
 The same journey also checks Review / Add sources and saved Ask conversations at
 a 1920 × 1080 CSS viewport. It creates two empty synthetic conversations without
@@ -160,10 +156,7 @@ title and metadata in Light → Dark → Light. Each measured text pair must mee
 4.5:1; the original Light selected-card fill and foregrounds must remain exact.
 The existing Ask-heading checks remain required. The expanded runner requires
 20 checks and allows four additional bounded `ask-heading-*-1920.png` stills.
-The [Review/conversation receipt](ui-usability-audit/2026-10-11/review-conversation/receipt.json)
-records the measurements; adjacent Dark and Light screenshots show the actual
-browser states. This extension does not validate Dusk conversation cards or
-model quality.
+This extension does not validate Dusk conversation cards or model quality.
 
 Install the normal contributor Python dependencies first. On Ubuntu 24.04 install
 the browser libraries listed in `scripts/install-ci-browser-deps.py`. Then run:

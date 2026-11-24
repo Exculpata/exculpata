@@ -12,7 +12,7 @@ Fonts remain self-hosted under `static/fonts`: Geist for interface text and JetB
 
 ## Validation and migration
 
-The synthetic backup/clean-restore/upgrade/rollback drill is in `tests/test_appearance_accents.py`; see [storage guidance](STORAGE_AND_BACKUP.md). Route tests cover authentication, CSRF, safe redirects, compatibility headers, repeated updates, principal isolation, and a fresh sign-in. The browser journeys exercise all six combinations and mobile controls. [Screenshot evidence](brand-accent-evidence/README.md) includes Home, Ask, and Case file for every combination plus the pre-change Dusk view.
+The synthetic backup/clean-restore/upgrade/rollback drill is in `tests/test_appearance_accents.py`; see [storage guidance](STORAGE_AND_BACKUP.md). Route tests cover authentication, CSRF, safe redirects, compatibility headers, repeated updates, principal isolation, and a fresh sign-in. The browser journeys exercise all six mode/accent combinations and mobile controls.
 
 ## Generated contrast checks
 

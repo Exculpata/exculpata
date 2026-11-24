@@ -150,3 +150,22 @@ def test_stale_emitter_count_map():
     for kind in WEEKLY_KINDS[1:]:
         _, body = load('hygiene_issue').decide(kind, report, [], RUN, lambda text: True)
         assert 'synthetic' not in body and 'retired.yml' not in body
+
+
+def test_stale_emitter_ignores_dynamic_and_disabled_workflows():
+    h = load('hygiene_stale')
+    data = {
+        'branches': [],
+        'issues': [],
+        'workflows': [
+            {'path': '.github/workflows/active-present.yml', 'state': 'active'},
+            {'path': '.github/workflows/active-missing.yml', 'state': 'active'},
+            {'path': '.github/workflows/disabled-missing.yml', 'state': 'disabled_manually'},
+            {'path': 'dynamic/dependabot/dependabot-updates', 'state': 'active'},
+        ],
+        'workflow_files': ['.github/workflows/active-present.yml'],
+    }
+    report = h.build_report(data, h.parse_time('2026-02-01T00:00:00Z'))
+    assert report['details']['ghost-workflows'] == ['active-missing.yml']
+    assert report['findings']['ghost-workflows'] == {'count': 1}
+

@@ -59,11 +59,10 @@ def test_compressed_launch_videos_need_no_disposition():
         "9x16": "e5d8ef83157756883bd92784d7afa5f44c2a6fd7585eec08a871363f788f4efc",
     }
     for cut, digest in expected.items():
-        rel = f"docs/assets/exculpata-launch-{cut}.mp4"
+        rel = f"site/assets/exculpata-launch-{cut}.mp4"
         data = (root / rel).read_bytes()
         assert hashlib.sha256(data).hexdigest() == digest
         assert 0 < len(data) < 10_000_000
-        assert data == (root / f"site/assets/exculpata-launch-{cut}.mp4").read_bytes()
         assert digest not in SCAN.REVIEWED_MEDIA_DIGESTS
         # Inspect real metadata and raw bytes, with no allowlisted digest.
         assert not inspect(data, name=rel, deny=())
