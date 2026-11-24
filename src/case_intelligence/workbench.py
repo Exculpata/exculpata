@@ -4960,7 +4960,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
                     "The selected source set is empty. Add sources to it or use all searchable sources."
                 )
             from .workbench_assistant import case_assistant_enabled, run_workbench_assistant_job
-            if selected_snapshot is None and case_assistant_enabled():
+            if selected_snapshot is None and case_assistant_enabled(getattr(self.generator, "client", None)):
                 return run_workbench_assistant_job(
                     self, job, matter, prior=prior, scoped_document_ids=scoped_document_ids,
                     retrieval_boundary=retrieval_boundary, notebook_items=notebook_items,
