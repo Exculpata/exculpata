@@ -1288,7 +1288,7 @@ class ProductionService:
                     self.require_current_image_record(matter_id, attempt, selected)
                     reference = image_reference(self.repository, store, matter_id, attempt, page["path"],
                                                 selected["line"], selected["ordinal"])
-                if reference["source"] and reference["source"]["media_type"] in {"image/jpeg", "image/png"}:
+                if reference["source"] and reference["source"]["media_type"] in {"image/jpeg", "image/png", "image/tiff"}:
                     image = reference["source"]
         selected = {**selected, "image": image, "image_reference": reference, "image_files": files}
         if category == "document":

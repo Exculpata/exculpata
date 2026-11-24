@@ -122,7 +122,10 @@ def test_standalone_page_index_opens_original_via_current_source_page(tmp_path, 
         assert source == f"/matters/{review.matter.slug}/sources/{review.token(image_path)}"
         assert review.client.get(source).status_code == 200
         if kind == "opt":
-            assert 'data-page-image-unavailable' in listing.text
+            preview_url = f"/matters/{review.matter.slug}/production/tiff-preview/{review.token(image_path)}?frame=1"
+            assert preview_url in listing.text and "data-page-image-unavailable" not in listing.text
+            preview = review.client.get(preview_url)
+            assert preview.status_code == 200 and preview.headers["content-type"] == "image/png"
         removed = review.client.post(source + "/remove", follow_redirects=False)
         assert removed.status_code == 303
         assert review.client.get(source, follow_redirects=False).status_code in {404, 410}

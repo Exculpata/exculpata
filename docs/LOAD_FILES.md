@@ -45,8 +45,9 @@ Production_B/
 
 The importer accepts the documented DAT, OPT, LFP and DII dialects. DAT and
 DII supply document metadata. OPT and LFP supply explicit page records. A
-uniquely associated JPEG or PNG can appear beside its page record. TIFF
-originals can be admitted, but inline TIFF page previews are unavailable.
+uniquely associated JPEG, PNG or TIFF can appear beside its page record; TIFF
+originals render bounded PNG previews in memory with explicit frame navigation
+for multi-frame files, without binding a page-record ordinal to a TIFF frame.
 DII supplies no per-page Bates. The original load files are stored without
 searchable text. Supported source types, grammar and preview behavior are
 described in [Discovery review](DISCOVERY_REVIEW.md).
