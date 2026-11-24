@@ -246,11 +246,15 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
                 raise HTTPException(415, "TIFF preview applies only to TIFF images.")
             try:
                 path = store.source_path(document.document_id, verify_digest=True)
-                png, total_frames = tiff_preview.render_tiff_frame(path, document.digest, frame=frame)
+                raw = tiff_preview.read_verified_tiff_bytes(path, document.digest)
             except (UploadProblem, tiff_preview.TiffPreviewStale) as exc:
                 raise HTTPException(409, "The stored TIFF original changed or is unavailable.") from exc
             except tiff_preview.TiffPreviewError as exc:
                 raise HTTPException(422, str(exc)) from exc
+        try:
+            png, total_frames = tiff_preview.render_tiff_frame_bytes(raw, frame=frame)
+        except tiff_preview.TiffPreviewError as exc:
+            raise HTTPException(422, str(exc)) from exc
         membership(matter, actor)
         response = Response(
             content=png,

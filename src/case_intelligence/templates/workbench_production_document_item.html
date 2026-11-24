@@ -113,6 +113,8 @@
     {% if panel.embed.kind == 'image' %}<img src="{{ panel.embed.url }}" alt="{{ panel.heading.title }}">
     {% else %}<iframe src="{{ panel.embed.url }}#view=FitH&amp;navpanes=0" title="{{ panel.heading.title }}"></iframe>{% endif %}
   </div>
+  {% elif not panel.records %}
+  <p class="dr-state" data-page-image-unavailable>TIFF preview unavailable. Open the source page to inspect or download the original file.</p>
   {% endif %}
   {% if panel.native_embed %}<details class="dr-native-document"><summary>Native document, separate from page records</summary><p class="dr-muted">Page-record ordinals do not establish correspondence with positions in the native document.</p><div class="dr-document">{% if panel.native_embed.kind == 'image' %}<img src="{{ panel.native_embed.url }}" alt="{{ panel.heading.title }}">{% else %}<iframe src="{{ panel.native_embed.url }}#view=FitH&amp;navpanes=0" title="{{ panel.heading.title }}"></iframe>{% endif %}</div></details>{% endif %}
   {% elif panel.active == 'text' %}

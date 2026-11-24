@@ -156,7 +156,9 @@ def read_unit(store, item: Item, number: int):
 
 def _tiff_embed(store, slug: str, document_id: str, version_id: str, frame: int, links, *,
                 from_page_record: bool = False, record_cursor: str = "") -> dict | None:
-    from case_intelligence.modules.discovery_review.tiff_preview import TiffPreviewError, TiffPreviewStale, inspect_tiff
+    from case_intelligence.modules.discovery_review.tiff_preview import (
+        TiffPreviewError, TiffPreviewStale, inspect_tiff_bytes, read_verified_tiff_bytes,
+    )
 
     try:
         with store.mutation_guard():
@@ -164,7 +166,8 @@ def _tiff_embed(store, slug: str, document_id: str, version_id: str, frame: int,
             if document.version_id != version_id or document.state != "ready" or document.origin != "upload":
                 return None
             path = store.source_path(document.document_id, verify_digest=True)
-            meta = inspect_tiff(path, document.digest)
+            raw = read_verified_tiff_bytes(path, document.digest)
+        meta = inspect_tiff_bytes(raw)
     except (KeyError, OSError, ValueError, TiffPreviewError, TiffPreviewStale):
         return None
     current_frame = min(max(int(frame), 1), meta.frame_count)
@@ -259,6 +262,8 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
         panel["fields"] = item_fields(definition, item, choice)
         if record_window is not None and record_window['category'] == 'document':
             panel['records'] = record_panel(definition, record_window, links, view='fields', sources_url=sources_url)
+    if panel.get('embed') and (panel['embed'].get('frame_count') or 0) > 1:
+        panel['state']['tiff_frame'] = str(panel['embed']['frame'])
     if panel.get('records') and panel['records']['current_cursor']:
         panel['state'].update(record=panel['records']['current_cursor'], record_dir='at')
         for record in panel['records']['rows']:
