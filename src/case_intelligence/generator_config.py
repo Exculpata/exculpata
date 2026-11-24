@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 from .oidc_network_policy import issuer_pins, validated_https_url
 
 
+OPENAI_SERVERS = ("llamacpp", "lmstudio", "vllm", "openai")
 HTTPS_REQUIRED = (
     "External answer servers require HTTPS. Only the bundled generator on port 8000 permits HTTP. "
     "Host loopback servers cannot be reached by the containerized app; use a reachable HTTPS server."
@@ -58,7 +59,7 @@ def generator_server(backend: str) -> str:
         if server and server != "ollama":
             raise ValueError("ollama backend only supports the ollama server")
         return "ollama"
-    if server and server not in {"vllm", "llamacpp", "lmstudio"}:
+    if server and server not in OPENAI_SERVERS:
         raise ValueError("unsupported local generator server")
     return server or "vllm"
 

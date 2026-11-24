@@ -59,7 +59,14 @@ def assistant_client_from_generator(client: object) -> tuple[object, str]:
     if isinstance(client, OpenAICompatibleGenerator):
         auth = client._headers.get("Authorization", "")
         key = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
-        return OpenAIAssistantClient(client.endpoint, client.model, timeout=client.timeout, api_key=key, opener=client._opener), "openai"
+        return OpenAIAssistantClient(
+            client.endpoint,
+            client.model,
+            timeout=client.timeout,
+            api_key=key,
+            opener=client._opener,
+            schema_server=client.schema_server,
+        ), "openai"
     if isinstance(client, OllamaGenerator):
         auth = client._headers.get("Authorization", "")
         key = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""

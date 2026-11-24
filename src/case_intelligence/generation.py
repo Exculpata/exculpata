@@ -44,7 +44,7 @@ from .generation_errors import (
     GenerationRejected, GenerationGroundingRejected,
 )
 from .generation_matter import _evaluation_request_options, require_generation_grant
-from .generator_schema import openai_response_format, refuse_tool_request
+from .generator_schema import openai_response_format, openai_wire_dialect, refuse_tool_request
 from .model_qualification import UNVALIDATED_MODEL_LABEL, qualification_label
 from .service_endpoints import validate_service_endpoint
 
@@ -705,7 +705,7 @@ class OpenAICompatibleGenerator:
         )
         self._opener = opener
         self.question_profile = question_profile or QuestionGenerationProfile()
-        self.schema_server = schema_server
+        self.schema_server = openai_wire_dialect(schema_server).server
         self.schema_mode = schema_mode
         self.schema_detail = ""
         self.schema_fix = ""
@@ -736,6 +736,8 @@ class OpenAICompatibleGenerator:
         recorded_dispatch=None,
     ) -> Mapping[str, object]:
         thinking = _request_thinking(self, thinking, default=True)
+        dialect = openai_wire_dialect(self.schema_server)
+        token_thinking = thinking or dialect.always_reserve_reasoning_tokens
         system, user = _prompt(
             question, evidence, history, working_context, grounding_repair=grounding_repair,
             recorded_context=recorded_dispatch is not None,
@@ -746,14 +748,16 @@ class OpenAICompatibleGenerator:
         ]
 
         def build(attempt: int) -> dict[str, object]:
-            request = {
+            request: dict[str, object] = {
                 "model": self.model,
-                "temperature": 0.1,
-                "max_tokens": _completion_token_limit(DEFAULT_REVIEW_BUDGET.output_tokens, thinking),
+                dialect.token_limit_field: _completion_token_limit(DEFAULT_REVIEW_BUDGET.output_tokens, token_thinking),
                 "messages": _repair_message(messages, attempt),
-                "response_format": openai_response_format("case_answer", ANSWER_SCHEMA),
+                "response_format": openai_response_format("case_answer", ANSWER_SCHEMA, server=self.schema_server),
             }
-            request["chat_template_kwargs"] = {"enable_thinking": thinking}
+            if dialect.send_temperature:
+                request["temperature"] = 0.1
+            if dialect.send_chat_template_kwargs:
+                request["chat_template_kwargs"] = {"enable_thinking": thinking}
             return _observe_request(request)
 
         if recorded_dispatch is not None:
@@ -785,6 +789,8 @@ class OpenAICompatibleGenerator:
         thinking: bool | None = None,
     ) -> Mapping[str, object]:
         thinking = False
+        dialect = openai_wire_dialect(self.schema_server)
+        token_thinking = thinking or dialect.always_reserve_reasoning_tokens
         system, user = _review_prompt(
             criterion, include_guidance, exclude_guidance, evidence
         )
@@ -796,12 +802,14 @@ class OpenAICompatibleGenerator:
         def send(attempt: int) -> Mapping[str, object]:
             request: dict[str, object] = {
                 "model": self.model,
-                "temperature": 0.0,
-                "max_tokens": _completion_token_limit(_classification_token_limit(output_tokens), thinking),
+                dialect.token_limit_field: _completion_token_limit(_classification_token_limit(output_tokens), token_thinking),
                 "messages": _repair_message(messages, attempt),
-                "response_format": openai_response_format("source_review_decision", REVIEW_SCHEMA),
+                "response_format": openai_response_format("source_review_decision", REVIEW_SCHEMA, server=self.schema_server),
             }
-            request["chat_template_kwargs"] = {"enable_thinking": thinking}
+            if dialect.send_temperature:
+                request["temperature"] = 0.0
+            if dialect.send_chat_template_kwargs:
+                request["chat_template_kwargs"] = {"enable_thinking": thinking}
             return _bounded_json_request(
                 f"{self.endpoint}/v1/chat/completions",
                 request,
@@ -998,7 +1006,10 @@ class GroundedGenerationService:
         question = " ".join((question or "").split()).strip()
         if not question or len(question) > MAX_QUESTION_CHARS:
             raise ValueError("Question must be between 1 and 2,000 characters.")
-        if recorded_dispatch is not None and not isinstance(self.client, OpenAICompatibleGenerator):
+        if recorded_dispatch is not None and (
+            not isinstance(self.client, OpenAICompatibleGenerator)
+            or getattr(self.client, "schema_server", "vllm") == "openai"
+        ):
             from .workspace_store import WorkspaceProblem
             raise WorkspaceProblem('Saved context requires a supported runtime chat tokenizer; this configured adapter cannot establish capacity.')
         intent = classify_question(question)

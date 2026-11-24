@@ -47,8 +47,12 @@ PROBE_CONFLICT = "exculpata-schema-refused"
 PROBE_ATTEMPTS = 3
 # Keep the probe allowance independent of workflow budgets for stdlib-only callers.
 PROBE_REASONING_TOKENS = 4_096
-SCHEMA_SERVERS = ("ollama", "llamacpp", "lmstudio", "vllm")
-OPENAI_SERVERS = ("llamacpp", "lmstudio", "vllm")
+from .generator_config import OPENAI_SERVERS
+
+SCHEMA_SERVERS = ("ollama", *OPENAI_SERVERS)
+_STRICT_SCHEMA_STRIPPED_KEYS = frozenset({
+    "minLength", "maxLength", "minItems", "maxItems", "pattern",
+})
 
 PROBE_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -71,6 +75,74 @@ class SchemaTransportError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class OpenAIWireDialect:
+    """Wire-level request contract for an OpenAI-compatible Chat Completions server."""
+
+    server: str
+    send_chat_template_kwargs: bool
+    token_limit_field: str
+    send_temperature: bool
+    strip_strict_schema_bounds: bool
+    always_reserve_reasoning_tokens: bool
+
+
+_STANDARD_OPENAI_DIALECT = OpenAIWireDialect(
+    server="openai",
+    send_chat_template_kwargs=False,
+    token_limit_field="max_completion_tokens",
+    send_temperature=False,
+    strip_strict_schema_bounds=True,
+    always_reserve_reasoning_tokens=True,
+)
+
+
+def openai_wire_dialect(server: str) -> OpenAIWireDialect:
+    """Return the immutable wire dialect for a supported OpenAI-compatible server."""
+
+    kind = _server(server)
+    if kind == "openai":
+        return _STANDARD_OPENAI_DIALECT
+    if kind in OPENAI_SERVERS:
+        return OpenAIWireDialect(
+            server=kind,
+            send_chat_template_kwargs=True,
+            token_limit_field="max_tokens",
+            send_temperature=True,
+            strip_strict_schema_bounds=False,
+            always_reserve_reasoning_tokens=False,
+        )
+    raise ValueError("unsupported OpenAI-compatible answer server")
+
+
+def _portable_strict_schema(node: object) -> object:
+    """Project a Draft 2020-12 schema to the strict subset accepted by hosted OpenAI APIs.
+
+    Full Draft 2020-12 validation (including length, array-size, pattern, and const checks)
+    remains enforced locally in complete_structured().
+    """
+
+    if isinstance(node, Mapping):
+        projected: dict[str, object] = {}
+        for key, value in node.items():
+            if key in _STRICT_SCHEMA_STRIPPED_KEYS:
+                continue
+            if key == "const":
+                projected["enum"] = [value]
+                continue
+            if key == "properties" and isinstance(value, Mapping):
+                projected[key] = {
+                    prop_name: _portable_strict_schema(prop_schema)
+                    for prop_name, prop_schema in value.items()
+                }
+                continue
+            projected[key] = _portable_strict_schema(value)
+        return projected
+    if isinstance(node, list):
+        return [_portable_strict_schema(item) for item in node]
+    return node
+
+
+@dataclass(frozen=True)
 class SchemaProbe:
     status: str
     attempts: int
@@ -87,15 +159,24 @@ class SchemaProbe:
         }.get(self.status, "not checked")
 
 
-def openai_response_format(name: str, schema: Mapping[str, object]) -> dict[str, object]:
+def openai_response_format(
+    name: str,
+    schema: Mapping[str, object],
+    *,
+    server: str = "vllm",
+) -> dict[str, object]:
     """Nested schema object used by llama.cpp and by OpenAI-compatible servers."""
 
+    dialect = openai_wire_dialect(server)
+    wire_schema = (
+        _portable_strict_schema(schema) if dialect.strip_strict_schema_bounds else dict(schema)
+    )
     return {
         "type": "json_schema",
         "json_schema": {
             "name": name,
             "strict": True,
-            "schema": dict(schema),
+            "schema": wire_schema,
         },
     }
 
@@ -122,14 +203,18 @@ def schema_chat_request(
             "messages": [{"role": "user", "content": prompt}],
             "options": {"temperature": 0, "num_predict": max_tokens},
         }
-    return "/v1/chat/completions", {
+    dialect = openai_wire_dialect(kind)
+    body: dict[str, object] = {
         "model": model,
-        "chat_template_kwargs": {"enable_thinking": thinking},
-        "temperature": 0,
-        "max_tokens": max_tokens,
+        dialect.token_limit_field: max_tokens,
         "messages": [{"role": "user", "content": prompt}],
-        "response_format": openai_response_format(name, schema),
+        "response_format": openai_response_format(name, schema, server=kind),
     }
+    if dialect.send_chat_template_kwargs:
+        body["chat_template_kwargs"] = {"enable_thinking": thinking}
+    if dialect.send_temperature:
+        body["temperature"] = 0
+    return "/v1/chat/completions", body
 
 
 def schema_error(instance: object, schema: Mapping[str, object]) -> str | None:
@@ -161,12 +246,15 @@ def probe_schema_enforcement(
     saw_invalid = False
     sent = 0
     prompt = _PROMPT
+    reserve_reasoning = thinking or (
+        kind in OPENAI_SERVERS and openai_wire_dialect(kind).always_reserve_reasoning_tokens
+    )
     for _attempt in range(max(1, attempts)):
         sent += 1
         path, body = schema_chat_request(
             kind, model=model, schema=PROBE_SCHEMA, prompt=prompt, name=PROBE_NAME,
             thinking=thinking,
-            max_tokens=64 + (PROBE_REASONING_TOKENS if thinking else 0),
+            max_tokens=64 + (PROBE_REASONING_TOKENS if reserve_reasoning else 0),
         )
         try:
             payload = sender(origin + path, body, header_map)

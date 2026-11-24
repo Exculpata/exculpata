@@ -149,8 +149,11 @@ def generator_available(client: object, *, thinking: bool, use_client_availabili
         ("/api/tags", "models", "name") if isinstance(client, OllamaGenerator)
         else ("/v1/models", "data", "id")
     )
+    availability_timeout = (
+        min(float(client.timeout), 10.0) if client.endpoint.startswith("https://") else 2.0
+    )
     payload = _bounded_json_get(
-        f"{client.endpoint}{path}", timeout=2.0, headers=client._headers,
+        f"{client.endpoint}{path}", timeout=availability_timeout, headers=client._headers,
         **({"opener": client._opener} if client._opener is not None else {}),
     )
     return any(isinstance(item, dict) and item.get(identifier) == client.model

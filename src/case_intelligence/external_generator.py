@@ -12,7 +12,13 @@ from .generator_config import generator_literal, validate_generator_url
 from .oidc_network_policy import Denied, ascii_hostname
 
 
-_BACKEND = {"ollama": "ollama", "llamacpp": "openai", "lmstudio": "openai", "vllm": "openai"}
+_BACKEND = {
+    "ollama": "ollama",
+    "llamacpp": "openai",
+    "lmstudio": "openai",
+    "vllm": "openai",
+    "openai": "openai",
+}
 SERVERS = tuple(_BACKEND)
 # Docker's host-gateway name. Kept split so the publication scan does not see
 # one internal hostname token.
