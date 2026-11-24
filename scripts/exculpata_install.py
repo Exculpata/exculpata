@@ -3364,7 +3364,6 @@ def _configure(
         "CASE_INTELLIGENCE_GENERATOR_URL": "http://generator:8000" if "ai" in profile_values else "",
         "CASE_INTELLIGENCE_GENERATOR_MODEL": review_model.served_name if "ai" in profile_values else "",
         "CASE_INTELLIGENCE_GENERATOR_TIMEOUT": 180,
-        "CASE_INTELLIGENCE_CASE_ASSISTANT": 1,
         "CASE_INTELLIGENCE_GENERATION_CONCURRENCY": (
             review_model.generation_concurrency
         ),

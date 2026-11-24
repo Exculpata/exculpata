@@ -201,7 +201,7 @@ services:
       - --enable-prefix-caching
       - --enable-auto-tool-choice
       - --tool-call-parser
-      - ${EXCULPATA_GENERATOR_TOOL_CALL_PARSER:-qwen3_coder}
+      - qwen3_coder
       - --generation-config
       - vllm
       - --no-enable-log-requests
