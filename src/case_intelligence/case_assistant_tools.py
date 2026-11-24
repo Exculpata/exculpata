@@ -927,15 +927,17 @@ class MatterToolRuntime:
             for fact in (data.get("bates_gaps") or {}).get("facts") or ():
                 if isinstance(fact, Mapping):
                     raw_refs.extend(fact.get("source_refs") or ())
+            def _to_sr(r: Mapping[str, object]) -> SourceRef:
+                return SourceRef(
+                    str(r["document_id"]), str(r.get("source_name") or ""),
+                    str(r.get("location") or "Production summary"),
+                    str(r.get("source_version_id") or ""), str(r.get("excerpt_digest") or ""),
+                )
             refs, seen_keys = [], set()
             for r in raw_refs:
                 if not isinstance(r, Mapping) or not r.get("document_id"):
                     continue
-                ref = SourceRef(
-                    str(r["document_id"]), str(r.get("source_name") or ""),
-                    str(r.get("location") or "Production summary"), str(r.get("source_version_id") or ""),
-                    str(r.get("excerpt_digest") or ""),
-                )
+                ref = _to_sr(r)
                 key = (ref.document_id, ref.location, ref.source_version_id, ref.excerpt_digest)
                 if key not in seen_keys:
                     seen_keys.add(key)
@@ -953,14 +955,14 @@ class MatterToolRuntime:
             load_file_ref = gaps_block.get("load_file_ref")
             bates_refs = ref_tuple
             if isinstance(load_file_ref, Mapping) and load_file_ref.get("document_id"):
-                lf_sr = SourceRef(
-                    str(load_file_ref["document_id"]), str(load_file_ref.get("source_name") or ""),
-                    str(load_file_ref.get("location") or "Production summary"),
-                    str(load_file_ref.get("source_version_id") or ""), str(load_file_ref.get("excerpt_digest") or ""),
-                )
+                lf_sr = _to_sr(load_file_ref)
                 bates_refs = (lf_sr, *(r for r in ref_tuple if r.document_id != lf_sr.document_id))[:10]
             for key, count in (gaps_block.get("counts") or {}).items():
                 calc_inputs.append(CalculationInput(f"bates_{key}", str(int(count)), bates_refs))
+            for idx, fact in enumerate(gaps_block.get("facts") or ()):
+                if isinstance(fact, Mapping) and fact.get("text"):
+                    f_srs = tuple(_to_sr(r) for r in (fact.get("source_refs") or ()) if isinstance(r, Mapping) and r.get("document_id"))
+                    calc_inputs.append(CalculationInput(f"bates_fact:{idx + 1}", str(fact["text"]), f_srs or bates_refs))
             receipt = CalculationReceipt(
                 receipt_id, "production_summary",
                 f"production_summary(sources={data.get('total_sources', 0)}, pdf_pages={data.get('recorded_pdf_pages', 0)})",

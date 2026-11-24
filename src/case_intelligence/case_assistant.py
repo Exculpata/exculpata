@@ -454,25 +454,6 @@ class CaseAssistant:
                     if result.get("unavailable_sources"):
                         unavailable = list(result.get("unavailable_sources") or ())
                     unavailable_count = max(unavailable_count, int(result.get("unavailable_count") or len(unavailable)))
-                    if call.name == "inspect_production":
-                        gaps_block = result.get("bates_gaps") or {}
-                        summary_parts = [
-                            f"total_sources {result.get('total_sources', 0)}",
-                            f"recorded_pdf_pages {result.get('recorded_pdf_pages', 0)}",
-                            f"unavailable_count {result.get('unavailable_count', 0)}",
-                            *(f"{k} {v}" for k, v in (result.get("counts_by_media_type") or {}).items()),
-                            *(f"{k} {v}" for k, v in (gaps_block.get("counts") or {}).items()),
-                            *(str(f.get("text") or "") for f in (gaps_block.get("facts") or ()) if isinstance(f, Mapping)),
-                        ]
-                        prod_text = " ".join(part for part in summary_parts if part)
-                        all_srefs = list(result.get("source_refs") or ())
-                        for fact in gaps_block.get("facts") or ():
-                            if isinstance(fact, Mapping):
-                                all_srefs.extend(fact.get("source_refs") or ())
-                        for sref in all_srefs:
-                            if isinstance(sref, Mapping) and sref.get("document_id"):
-                                key = (str(sref["document_id"]), str(sref.get("location") or "Production summary"), str(sref.get("source_version_id") or ""))
-                                inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + prod_text).strip()
                 elif call.name == "search_discovery":
                     unavailable_count = max(unavailable_count, int(result.get("excluded_unavailable_count") or 0))
                     for h in result.get("hits") or ():

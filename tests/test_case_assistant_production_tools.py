@@ -109,7 +109,7 @@ def test_list_sources_bates_and_inspect_production_end_to_end(tmp_path, monkeypa
         assert any(att["source_format"] == "csv" and att["status"] == "failed" and att["failure"] for att in bad_overview["load_file_attempts"])
 
         class _ProdAssistantClient:
-            def __init__(self): self.calls = 0
+            def __init__(self, *, cite_receipt: bool = True): self.calls, self.cite_receipt = 0, cite_receipt
             def complete_turn(self, messages, *, tools):
                 self.calls += 1
                 if self.calls == 1:
@@ -117,15 +117,18 @@ def test_list_sources_bates_and_inspect_production_end_to_end(tmp_path, monkeypa
                 payload = json.loads(messages[-1]["content"])
                 n_src, n_pages = payload["total_sources"], payload["recorded_pdf_pages"]
                 fact_cite = payload["bates_gaps"]["facts"][0]["source_refs"][0]
+                text = (f"The production has {n_src} sources, {n_pages} recorded PDF pages, and Missing Bates PROD0003."
+                        if self.cite_receipt else f"The witness held {n_src} shares.")
                 return AssistantTurn(content=json.dumps({
-                    "answerable": True,
-                    "summary": f"Production has {n_src} sources and {n_pages} PDF pages with Missing Bates PROD0003.",
-                    "findings": [{"text": f"The production has {n_src} sources, {n_pages} recorded PDF pages, and Missing Bates PROD0003.",
-                                  "citations": [fact_cite], "calculation_ids": [payload["calculation"]["receipt_id"]]}],
+                    "answerable": True, "summary": text,
+                    "findings": [{"text": text, "citations": [fact_cite],
+                                  "calculation_ids": [payload["calculation"]["receipt_id"]] if self.cite_receipt else []}],
                     "gaps": [], "competing_accounts": [],
                 }))
         inv = CaseAssistant(_ProdAssistantClient()).investigate("Counts and Bates gaps?", MatterToolRuntime(review.matter.matter_id, ACTOR, backend))
         assert inv.answerable is True and len(inv.findings) == 1 and inv.receipts
+        ungrounded = CaseAssistant(_ProdAssistantClient(cite_receipt=False)).investigate("Shares?", MatterToolRuntime(review.matter.matter_id, ACTOR, backend))
+        assert ungrounded.answerable is False and not ungrounded.findings
         converted = _result_to_answer(review.bench, inv, backend, "")
         assert converted.payload["answerable"] is True and len(converted.payload["claims"]) == 1 and converted.payload["case_assistant"]["receipts"]
         assert any(c["document_id"] == csv_doc.document_id for c in converted.payload["claims"][0]["citations"])
