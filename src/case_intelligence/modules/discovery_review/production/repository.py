@@ -1396,10 +1396,8 @@ class ProductionRepository:
         }
 
 
-def document_bates_label(workspace, matter_id: str, document_id: str) -> str:
+def document_bates_label(connection, lock, matter_id: str, document_id: str) -> str:
     """Resolve exact produced Bates range or Team ID read-only for one document."""
-    connection = getattr(workspace, "connection", None)
-    lock = getattr(workspace, "_lock", None)
     if connection is None or lock is None or not document_id:
         return ""
     from case_intelligence.modules import ModuleDatabase

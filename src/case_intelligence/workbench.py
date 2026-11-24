@@ -2590,7 +2590,8 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
         if evidence_kind == "transcript":
             href = f"/matters/{matter.slug}?support={token}&play=1#support-pane"
         from .modules.discovery_review.production.repository import document_bates_label
-        bates_label = document_bates_label(getattr(self, "workspace", None), matter.matter_id, candidate.document_id)
+        ws = getattr(self, "workspace", None)
+        bates_label = document_bates_label(getattr(ws, "connection", None), getattr(ws, "_lock", None), matter.matter_id, candidate.document_id)
         return WorkbenchCitation(
             candidate.source_name, candidate.citation, candidate.text, href, token,
             candidate.matter_id, candidate.document_id, candidate.source_version_id,
