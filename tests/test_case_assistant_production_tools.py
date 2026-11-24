@@ -14,16 +14,17 @@ from tests.test_discovery_review_dat_opt import ACTOR, complete_listing, dat_byt
 from tests.test_workflow_quality_handoff import pdf_bytes
 
 
-def _upload_volume(review, files):
+def _upload_volume(review, files, media_overrides=None):
     import time
     import uuid
     from pathlib import Path
     from tests.test_intake_receipt_http import put, selection, upload
 
     media = {".pdf": "application/pdf", ".csv": "text/csv", ".dat": "text/plain", ".txt": "text/plain"}
+    overrides = media_overrides or {}
     names = list(files)
     descriptors = [{"name": Path(n).name, "relative_path": n, "size": len(files[n]),
-                    "media_type": media.get(Path(n).suffix.lower(), "text/plain")} for n in names]
+                    "media_type": overrides.get(n, media.get(Path(n).suffix.lower(), "text/plain"))} for n in names]
     ordinals = list(range(len(names)))
     receipt = selection(review.client, review.matter.slug, descriptors, ordinals, key=uuid.uuid4().hex)
     session = upload(review.client, review.matter.slug, receipt, descriptors, ordinals)
@@ -106,15 +107,43 @@ def test_list_sources_bates_and_inspect_production_end_to_end(tmp_path, monkeypa
         assert overview["bates_gaps"]["notice"]
         assert any("PROD0003" in fact["text"] for fact in overview["bates_gaps"]["facts"])
 
-        # Source-set scope hides out-of-scope documents and blocks out-of-scope load_file_document_id.
+        # Source-set scope hides out-of-scope documents, suppresses aggregate attempt counts even if DAT is selected, and blocks out-of-scope load_file_document_id.
+        dat_doc = review.document("Vol1/DATA/records.dat")
         scoped = MatterToolRuntime(
-            review.matter.matter_id, ACTOR, backend, allowed_document_ids=frozenset({alpha.document_id}),
+            review.matter.matter_id, ACTOR, backend, allowed_document_ids=frozenset({alpha.document_id, dat_doc.document_id}),
         )
         scoped_overview = scoped.invoke("inspect_production", {})
-        assert scoped_overview["total_sources"] == 1
+        assert scoped_overview["total_sources"] == 2
+        assert scoped_overview["load_file_attempts"] == []
         assert scoped_overview["bates_gaps"]["computed"] is False
         with pytest.raises(AssistantAccessError):
             scoped.invoke("inspect_production", {"load_file_document_id": csv_doc.document_id})
+
+        # Malformed CSV quoting raises csv.Error in parse_load_file (caught cleanly), while an incompletely read CSV in the same root_key as a completed DAT puts gamma in conflicted status -> list_sources withholds Bates and file_failure is surfaced.
+        vol2_dat = dat_bytes(("BEGDOC", "ENDDOC", "NATIVEPATH"), [("SYN0001", "SYN0001", "NATIVES\\gamma.pdf")])
+        incomplete_csv = b"BEGDOC,,NATIVEPATH\nSYN0099,x,NATIVES\\gamma.pdf\n"
+        bad_csv = b'path,begin_bates,end_bates\n"Vol2/NATIVES/gamma.pdf,SYN0099,SYN0099\n'
+        _upload_volume(review, {
+            "Vol2/NATIVES/gamma.pdf": pdf_bytes(["Gamma page 1."]),
+            "Vol2/DATA/records.dat": vol2_dat,
+            "Vol2/DATA/incomplete.csv": incomplete_csv,
+            "Vol2/DATA/malformed.csv": bad_csv,
+        })
+        from tests.test_discovery_review_index import service_for
+        service = service_for(review.bench)
+        for _ in range(200):
+            assert review.client.get(review.base).status_code == 200
+            state = service.repository.state(review.matter.matter_id)
+            if state and state["phase"] == "complete" and not state["pending"] and state["errors"] >= 1:
+                break
+        gamma = review.document("Vol2/NATIVES/gamma.pdf")
+        malformed_doc = review.document("Vol2/DATA/malformed.csv")
+        bad_overview = runtime.invoke("inspect_production", {"load_file_document_id": malformed_doc.document_id})
+        assert bad_overview["bates_gaps"]["computed"] is False
+        assert "could not be computed" in bad_overview["bates_gaps"]["reason"]
+        conflicted_list = {row["document_id"]: row for row in runtime.invoke("list_sources", {"limit": 50})["sources"]}
+        assert conflicted_list[gamma.document_id]["bates"] == ""
+        assert any(att["source_format"] == "csv" and att["status"] == "failed" and att["failure"] for att in bad_overview["load_file_attempts"])
 
         # Unauthorized actor fails closed.
         unauth = MatterToolRuntime(review.matter.matter_id, "unauth-actor", WorkbenchToolBackend(review.bench, "unauth-actor"))

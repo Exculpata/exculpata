@@ -107,9 +107,16 @@ class WorkbenchToolBackend:
         assigned = IdentifierRepository(db, self.bench.workspace.membership).read(matter_id)
         labels: dict[str, str] = {}
         for doc_id in doc_ids:
+            if repo.document_status(matter_id, doc_id) != "complete":
+                continue
             found: set[str] = set()
             for record in repo.document_records(matter_id, doc_id, limit=4):
                 if record.get("association_status") != "matched":
+                    continue
+                attempt = repo.attempt(matter_id, record["attempt_id"])
+                if (attempt is None or attempt.get("status") != "complete"
+                        or record.get("generation") != attempt.get("generation")
+                        or (attempt.get("dependencies") or {}).get("paused")):
                     continue
                 sem = record.get("semantic") or ()
                 pairs = dict(sem) if isinstance(sem, list) else (sem if isinstance(sem, Mapping) else {})
@@ -159,10 +166,12 @@ class WorkbenchToolBackend:
         document_ids: frozenset[str] | None = None,
     ) -> Mapping[str, object]:
         from collections import Counter
+        import csv
         from pathlib import PurePosixPath
         from . import production_summary as summary
         from .modules import ModuleDatabase
         from .modules.discovery_review.production import ProductionRepository
+        from .pilot_uploads import UploadProblem
 
         matter = self.bench._matter_by_id(matter_id)
         store = self.bench.source_store(matter)
@@ -184,11 +193,9 @@ class WorkbenchToolBackend:
         attempts: list[dict[str, object]] = []
         connection = getattr(self.bench.workspace, "connection", None)
         lock = getattr(self.bench.workspace, "_lock", None)
-        if connection is not None and lock is not None:
+        if document_ids is None and connection is not None and lock is not None:
             repo = ProductionRepository(ModuleDatabase(connection, lock))
             for att in repo.attempts(matter_id, limit=50):
-                if document_ids is not None and att.get("document_id") not in document_ids:
-                    continue
                 attempts.append({
                     "attempt_id": att.get("attempt_id", ""),
                     "document_id": att.get("document_id", ""),
@@ -196,12 +203,12 @@ class WorkbenchToolBackend:
                     "source_format": att.get("source_format", ""),
                     "status": att.get("status", ""),
                     "counts": dict(att.get("counts") or {}),
-                    "failure": att.get("failure", ""),
+                    "failure": att.get("file_failure") or "",
                 })
         bates_gaps: dict[str, object] = {"computed": False, "notice": summary.NOTICE, "counts": {}, "facts": []}
         if include_gaps:
             if document_ids is not None:
-                bates_gaps["reason"] = "Source-set filter active; Bates gap computation requires full-matter scope."
+                bates_gaps["reason"] = "Source-set filter active; load-file attempt coverage and Bates gap computation require full-matter scope."
             else:
                 target_doc = None
                 if load_file_document_id:
@@ -226,7 +233,7 @@ class WorkbenchToolBackend:
                             "facts": [{"kind": f["kind"], "text": f["text"]} for f in built["facts"][:100]],
                             "truncated": len(built["facts"]) > 100,
                         }
-                    except (ValueError, WorkspaceProblem) as exc:
+                    except (ValueError, csv.Error, UnicodeDecodeError, WorkspaceProblem, UploadProblem) as exc:
                         bates_gaps["reason"] = f"Bates gaps could not be computed for {target_doc.display_name}: {exc}"
         return {
             "total_sources": len(docs),
