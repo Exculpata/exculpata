@@ -104,29 +104,10 @@ class WorkbenchToolBackend:
 
         db = ModuleDatabase(connection, lock)
         repo = ProductionRepository(db)
+        labels = repo.document_bates_ranges(matter_id, doc_ids)
         assigned = IdentifierRepository(db, self.bench.workspace.membership).read(matter_id)
-        labels: dict[str, str] = {}
         for doc_id in doc_ids:
-            if repo.document_status(matter_id, doc_id) != "complete":
-                continue
-            found: set[str] = set()
-            for record in repo.document_records(matter_id, doc_id, limit=4):
-                if record.get("association_status") != "matched":
-                    continue
-                attempt = repo.attempt(matter_id, record["attempt_id"])
-                if (attempt is None or attempt.get("status") != "complete"
-                        or record.get("generation") != attempt.get("generation")
-                        or (attempt.get("dependencies") or {}).get("paused")):
-                    continue
-                sem = record.get("semantic") or ()
-                pairs = dict(sem) if isinstance(sem, list) else (sem if isinstance(sem, Mapping) else {})
-                begin = str(pairs.get("begin_bates") or "").strip()
-                end = str(pairs.get("end_bates") or "").strip()
-                if begin:
-                    found.add(f"{begin}\u2013{end}" if end and end != begin else begin)
-            if len(found) == 1:
-                labels[doc_id] = next(iter(found))
-            elif not found and doc_id in assigned:
+            if doc_id not in labels and doc_id in assigned and repo.document_status(matter_id, doc_id) == "complete":
                 labels[doc_id] = f"Team ID: {assigned[doc_id]}"
         return labels
 
@@ -138,28 +119,45 @@ class WorkbenchToolBackend:
         store = self.bench.source_store(matter)
         with store._lock:
             docs = list(store.documents.values())
-        scoped_docs = [doc for doc in docs if document_ids is None or doc.document_id in document_ids]
-        bates_map = self._document_bates_map(matter_id, [doc.document_id for doc in scoped_docs])
-        rows: list[SourceSummary] = []
-        needle = query.strip().casefold()
-        for doc in scoped_docs:
+        filtered = []
+        for doc in docs:
+            if document_ids is not None and doc.document_id not in document_ids:
+                continue
             norm_status = "ready" if doc.state == "ready" else "failed"
             doc_kind = doc.media_type.split("/")[-1] if "/" in doc.media_type else (doc.media_type or "document")
             if status and norm_status != status:
                 continue
             if kind and kind.casefold() not in (doc_kind.casefold(), doc.media_type.casefold()):
                 continue
+            filtered.append((doc, norm_status, doc_kind))
+        filtered.sort(key=lambda item: (item[0].display_name.casefold(), item[0].document_id))
+        needle = query.strip().casefold()
+        if not needle:
+            window = filtered[offset:offset + limit]
+            bates_map = self._document_bates_map(matter_id, [doc.document_id for doc, _, _ in window])
+            rows = [
+                SourceSummary(
+                    document_id=doc.document_id, source_name=doc.display_name, kind=doc_kind,
+                    status=norm_status, page_count=doc.page_count or doc.total_units,
+                    path=doc.relative_path, bates=bates_map.get(doc.document_id, ""),
+                    status_detail="" if norm_status == "ready" else (doc.message or doc.state),
+                )
+                for doc, norm_status, doc_kind in window
+            ]
+            return rows, len(filtered)
+        bates_map = self._document_bates_map(matter_id, [doc.document_id for doc, _, _ in filtered])
+        matched: list[SourceSummary] = []
+        for doc, norm_status, doc_kind in filtered:
             bates = bates_map.get(doc.document_id, "")
-            if needle and needle not in (doc.display_name + " " + doc.relative_path + " " + bates).casefold():
+            if needle not in (doc.display_name + " " + doc.relative_path + " " + bates).casefold():
                 continue
-            rows.append(SourceSummary(
+            matched.append(SourceSummary(
                 document_id=doc.document_id, source_name=doc.display_name, kind=doc_kind,
                 status=norm_status, page_count=doc.page_count or doc.total_units,
                 path=doc.relative_path, bates=bates,
                 status_detail="" if norm_status == "ready" else (doc.message or doc.state),
             ))
-        rows.sort(key=lambda item: (item.source_name.casefold(), item.document_id))
-        return rows[offset:offset + limit], len(rows)
+        return matched[offset:offset + limit], len(matched)
 
     def inspect_production(
         self, matter_id: str, *, load_file_document_id: str = "", include_gaps: bool = True,
@@ -177,6 +175,7 @@ class WorkbenchToolBackend:
         store = self.bench.source_store(matter)
         with store._lock:
             docs = [d for d in store.documents.values() if document_ids is None or d.document_id in document_ids]
+        by_doc_id = {d.document_id: d for d in docs}
         media_counts = dict(sorted(Counter(d.media_type for d in docs).items()))
         pdf_pages = sum(int(d.page_count or 0) for d in docs if d.media_type == "application/pdf")
         unavail = [
@@ -206,11 +205,11 @@ class WorkbenchToolBackend:
                     "failure": att.get("file_failure") or "",
                 })
         bates_gaps: dict[str, object] = {"computed": False, "notice": summary.NOTICE, "counts": {}, "facts": []}
+        target_doc = None
         if include_gaps:
             if document_ids is not None:
                 bates_gaps["reason"] = "Source-set filter active; load-file attempt coverage and Bates gap computation require full-matter scope."
             else:
-                target_doc = None
                 if load_file_document_id:
                     target_doc = next((d for d in docs if d.document_id == load_file_document_id), None)
                     if target_doc is None:
@@ -224,17 +223,38 @@ class WorkbenchToolBackend:
                         built = summary.build_summary(
                             matter.display_name, matter.slug, store, store.action_token(target_doc),
                         )
+                        fact_rows = []
+                        for fact in built["facts"][:100]:
+                            f_refs = []
+                            for cid, ver in fact.get("cited_ids") or ():
+                                cdoc = by_doc_id.get(cid)
+                                if cdoc is not None:
+                                    f_refs.append({
+                                        "document_id": cid, "source_name": cdoc.display_name,
+                                        "location": "Production summary", "source_version_id": ver or cdoc.version_id,
+                                    })
+                            fact_rows.append({"kind": fact["kind"], "text": fact["text"], "source_refs": f_refs})
                         bates_gaps = {
                             "computed": True,
                             "load_file_document_id": target_doc.document_id,
                             "load_file_name": target_doc.display_name,
                             "notice": built["notice"],
                             "counts": dict(built["counts"]),
-                            "facts": [{"kind": f["kind"], "text": f["text"]} for f in built["facts"][:100]],
+                            "facts": fact_rows,
                             "truncated": len(built["facts"]) > 100,
                         }
                     except (ValueError, csv.Error, UnicodeDecodeError, WorkspaceProblem, UploadProblem) as exc:
                         bates_gaps["reason"] = f"Bates gaps could not be computed for {target_doc.display_name}: {exc}"
+        source_refs = [
+            {"document_id": d.document_id, "source_name": d.display_name,
+             "location": "Production summary", "source_version_id": d.version_id}
+            for d in sorted(docs, key=lambda item: (item.display_name.casefold(), item.document_id))[:50]
+        ]
+        if target_doc is not None and not any(r["document_id"] == target_doc.document_id for r in source_refs):
+            source_refs.append({
+                "document_id": target_doc.document_id, "source_name": target_doc.display_name,
+                "location": "Production summary", "source_version_id": target_doc.version_id,
+            })
         return {
             "total_sources": len(docs),
             "counts_by_media_type": media_counts,
@@ -244,6 +264,7 @@ class WorkbenchToolBackend:
             "load_files": load_files[:50],
             "load_file_attempts": attempts,
             "bates_gaps": bates_gaps,
+            "source_refs": source_refs,
         }
 
     def search_discovery(

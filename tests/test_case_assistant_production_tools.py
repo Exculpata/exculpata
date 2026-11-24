@@ -50,20 +50,16 @@ def test_inspect_production_schema_and_allowlist():
 
 
 def test_list_sources_bates_and_inspect_production_end_to_end(tmp_path, monkeypatch):
+    import json
+    from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn, CaseAssistant
+    from tests.test_discovery_review_index import service_for
+
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
     monkeypatch.setenv("CASE_INTELLIGENCE_OCR_MODE", "disabled")
-    dat = dat_bytes(
-        ("BEGDOC", "ENDDOC", "NATIVEPATH"),
-        [
-            ("PROD0001", "PROD0002", "NATIVES\\alpha.pdf"),
-            ("PROD0004", "PROD0004", "NATIVES\\beta.pdf"),
-        ],
-    )
-    csv_load = (
-        b"path,begin_bates,end_bates\n"
-        b"Vol1/NATIVES/alpha.pdf,PROD0001,PROD0002\n"
-        b"Vol1/NATIVES/beta.pdf,PROD0004,PROD0004\n"
-    )
+    dat = dat_bytes(("BEGDOC", "ENDDOC", "NATIVEPATH"), [
+        ("PROD0001", "PROD0002", "NATIVES\\alpha.pdf"), ("PROD0004", "PROD0004", "NATIVES\\beta.pdf"),
+    ])
+    csv_load = b"path,begin_bates,end_bates\nVol1/NATIVES/alpha.pdf,PROD0001,PROD0002\nVol1/NATIVES/beta.pdf,PROD0004,PROD0004\n"
     with opened_review(tmp_path / "runtime") as review:
         _upload_volume(review, {
             "Vol1/NATIVES/alpha.pdf": pdf_bytes(["Alpha page 1.", "Alpha page 2."]),
@@ -74,82 +70,76 @@ def test_list_sources_bates_and_inspect_production_end_to_end(tmp_path, monkeypa
             "Vol1/DATA/bates.csv": csv_load,
         })
         complete_listing(review)
-
-        alpha = review.document("Vol1/NATIVES/alpha.pdf")
-        extra = review.document("Vol1/NATIVES/extra.txt")
-        csv_doc = review.document("Vol1/DATA/bates.csv")
-
-        identifiers = IdentifierRepository(
+        alpha, extra, csv_doc = (review.document("Vol1/NATIVES/alpha.pdf"), review.document("Vol1/NATIVES/extra.txt"),
+                                 review.document("Vol1/DATA/bates.csv"))
+        IdentifierRepository(
             ModuleDatabase(review.bench.workspace.connection, review.bench.workspace._lock),
             review.bench.workspace.membership,
-        )
-        identifiers.assign(review.matter.matter_id, ACTOR, [(extra.document_id, "TEAM0009")])
-
+        ).assign(review.matter.matter_id, ACTOR, [(extra.document_id, "TEAM0009")])
         backend = WorkbenchToolBackend(review.bench, ACTOR)
         runtime = MatterToolRuntime(review.matter.matter_id, ACTOR, backend)
 
-        # list_sources populates exact produced Bates and distinct Team ID, and filters by Bates query.
-        listed = runtime.invoke("list_sources", {"limit": 50})
-        by_id = {row["document_id"]: row for row in listed["sources"]}
-        assert by_id[alpha.document_id]["bates"] == "PROD0001\u2013PROD0002"
-        assert by_id[extra.document_id]["bates"] == "Team ID: TEAM0009"
+        by_id = {row["document_id"]: row for row in runtime.invoke("list_sources", {"limit": 50})["sources"]}
+        assert by_id[alpha.document_id]["bates"] == "PROD0001\u2013PROD0002" and by_id[extra.document_id]["bates"] == "Team ID: TEAM0009"
+        assert [row["document_id"] for row in runtime.invoke("list_sources", {"query": "PROD0001", "limit": 10})["sources"]] == [alpha.document_id]
 
-        bates_search = runtime.invoke("list_sources", {"query": "PROD0001", "limit": 10})
-        assert [row["document_id"] for row in bates_search["sources"]] == [alpha.document_id]
-
-        # inspect_production returns counts, failed files, DAT attempt coverage, and Bates-gap findings.
         overview = runtime.invoke("inspect_production", {"load_file_document_id": csv_doc.document_id})
-        assert overview["total_sources"] == 6
-        assert overview["counts_by_media_type"]["application/pdf"] == 3
-        assert overview["recorded_pdf_pages"] == 3
+        assert overview["total_sources"] == 6 and overview["counts_by_media_type"]["application/pdf"] == 3 and overview["recorded_pdf_pages"] == 3
         assert any(item["source_name"].endswith("broken.pdf") for item in overview["unavailable_sources"])
         assert any(att["source_format"] == "dat" and att["status"] == "complete" for att in overview["load_file_attempts"])
-        assert overview["bates_gaps"]["notice"]
-        assert any("PROD0003" in fact["text"] for fact in overview["bates_gaps"]["facts"])
+        assert overview["bates_gaps"]["notice"] and any("PROD0003" in fact["text"] for fact in overview["bates_gaps"]["facts"])
 
-        # Source-set scope hides out-of-scope documents, suppresses aggregate attempt counts even if DAT is selected, and blocks out-of-scope load_file_document_id.
         dat_doc = review.document("Vol1/DATA/records.dat")
-        scoped = MatterToolRuntime(
-            review.matter.matter_id, ACTOR, backend, allowed_document_ids=frozenset({alpha.document_id, dat_doc.document_id}),
-        )
+        scoped = MatterToolRuntime(review.matter.matter_id, ACTOR, backend, allowed_document_ids=frozenset({alpha.document_id, dat_doc.document_id}))
         scoped_overview = scoped.invoke("inspect_production", {})
-        assert scoped_overview["total_sources"] == 2
-        assert scoped_overview["load_file_attempts"] == []
-        assert scoped_overview["bates_gaps"]["computed"] is False
+        assert scoped_overview["total_sources"] == 2 and scoped_overview["load_file_attempts"] == [] and scoped_overview["bates_gaps"]["computed"] is False
         with pytest.raises(AssistantAccessError):
             scoped.invoke("inspect_production", {"load_file_document_id": csv_doc.document_id})
 
-        # Malformed CSV quoting raises csv.Error in parse_load_file (caught cleanly), while an incompletely read CSV in the same root_key as a completed DAT puts gamma in conflicted status -> list_sources withholds Bates and file_failure is surfaced.
-        vol2_dat = dat_bytes(("BEGDOC", "ENDDOC", "NATIVEPATH"), [("SYN0001", "SYN0001", "NATIVES\\gamma.pdf")])
-        incomplete_csv = b"BEGDOC,,NATIVEPATH\nSYN0099,x,NATIVES\\gamma.pdf\n"
-        bad_csv = b'path,begin_bates,end_bates\n"Vol2/NATIVES/gamma.pdf,SYN0099,SYN0099\n'
         _upload_volume(review, {
             "Vol2/NATIVES/gamma.pdf": pdf_bytes(["Gamma page 1."]),
-            "Vol2/DATA/records.dat": vol2_dat,
-            "Vol2/DATA/incomplete.csv": incomplete_csv,
-            "Vol2/DATA/malformed.csv": bad_csv,
+            "Vol2/DATA/records.dat": dat_bytes(("BEGDOC", "ENDDOC", "NATIVEPATH"), [("SYN0001", "SYN0001", "NATIVES\\gamma.pdf")]),
+            "Vol2/DATA/incomplete.csv": b"BEGDOC,,NATIVEPATH\nSYN0099,x,NATIVES\\gamma.pdf\n",
+            "Vol2/DATA/malformed.csv": b'path,begin_bates,end_bates\n"Vol2/NATIVES/gamma.pdf,SYN0099,SYN0099\n',
         })
-        from tests.test_discovery_review_index import service_for
         service = service_for(review.bench)
         for _ in range(200):
             assert review.client.get(review.base).status_code == 200
             state = service.repository.state(review.matter.matter_id)
             if state and state["phase"] == "complete" and not state["pending"] and state["errors"] >= 1:
                 break
-        gamma = review.document("Vol2/NATIVES/gamma.pdf")
-        malformed_doc = review.document("Vol2/DATA/malformed.csv")
+        gamma, malformed_doc = review.document("Vol2/NATIVES/gamma.pdf"), review.document("Vol2/DATA/malformed.csv")
         bad_overview = runtime.invoke("inspect_production", {"load_file_document_id": malformed_doc.document_id})
-        assert bad_overview["bates_gaps"]["computed"] is False
-        assert "could not be computed" in bad_overview["bates_gaps"]["reason"]
-        conflicted_list = {row["document_id"]: row for row in runtime.invoke("list_sources", {"limit": 50})["sources"]}
-        assert conflicted_list[gamma.document_id]["bates"] == ""
+        assert bad_overview["bates_gaps"]["computed"] is False and "could not be computed" in bad_overview["bates_gaps"]["reason"]
+        assert {row["document_id"]: row for row in runtime.invoke("list_sources", {"limit": 50})["sources"]}[gamma.document_id]["bates"] == ""
         assert any(att["source_format"] == "csv" and att["status"] == "failed" and att["failure"] for att in bad_overview["load_file_attempts"])
 
-        # Unauthorized actor fails closed.
+        class _ProdAssistantClient:
+            def __init__(self): self.calls = 0
+            def complete_turn(self, messages, *, tools):
+                self.calls += 1
+                if self.calls == 1:
+                    return AssistantTurn(tool_calls=(AssistantModelCall("p1", "inspect_production", {"load_file_document_id": csv_doc.document_id}),))
+                payload = json.loads(messages[-1]["content"])
+                n_src, n_pages = payload["total_sources"], payload["recorded_pdf_pages"]
+                return AssistantTurn(content=json.dumps({
+                    "answerable": True,
+                    "summary": f"Production has {n_src} sources and {n_pages} PDF pages with Missing Bates PROD0003.",
+                    "findings": [{"text": f"The production has {n_src} sources, {n_pages} recorded PDF pages, and Missing Bates PROD0003.",
+                                  "citations": [payload["source_refs"][0]], "calculation_ids": [payload["calculation"]["receipt_id"]]}],
+                    "gaps": [], "competing_accounts": [],
+                }))
+        inv = CaseAssistant(_ProdAssistantClient()).investigate("Counts and Bates gaps?", MatterToolRuntime(review.matter.matter_id, ACTOR, backend))
+        assert inv.answerable is True and len(inv.findings) == 1 and inv.receipts
+
+        seen_lookups: list[int] = []
+        orig_map = backend._document_bates_map
+        monkeypatch.setattr(backend, "_document_bates_map", lambda mid, doc_ids: (seen_lookups.append(len(doc_ids)), orig_map(mid, doc_ids))[1])
+        assert len(runtime.invoke("list_sources", {"limit": 1})["sources"]) == 1 and seen_lookups[0] == 1 and max(seen_lookups) <= 2
+        monkeypatch.setattr(backend, "_document_bates_map", orig_map)
+
         unauth = MatterToolRuntime(review.matter.matter_id, "unauth-actor", WorkbenchToolBackend(review.bench, "unauth-actor"))
         with pytest.raises(AssistantAccessError):
             unauth.invoke("inspect_production", {})
-
-        # Non-boolean include_gaps fails closed.
         with pytest.raises(AssistantToolError):
             runtime.invoke("inspect_production", {"include_gaps": "yes"})

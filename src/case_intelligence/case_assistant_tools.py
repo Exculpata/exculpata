@@ -919,11 +919,42 @@ class MatterToolRuntime:
             handler = getattr(self.backend, "inspect_production", None)
             if not callable(handler):
                 raise AssistantToolError("Production inspection is not supported by this backend.")
-            data = handler(
+            data = dict(handler(
                 self.matter_id, load_file_document_id=load_doc_id,
                 include_gaps=include_gaps, document_ids=self.allowed_document_ids,
+            ))
+            refs = [
+                SourceRef(
+                    str(r["document_id"]), str(r.get("source_name") or ""),
+                    str(r.get("location") or "Production summary"), str(r.get("source_version_id") or ""),
+                )
+                for r in (data.get("source_refs") or ())
+                if isinstance(r, Mapping) and r.get("document_id")
+            ]
+            receipt_id = f"calc-{len(self._receipts) + 1}"
+            ref_tuple = tuple(refs[:10])
+            calc_inputs = [
+                CalculationInput("total_sources", str(int(data.get("total_sources") or 0)), ref_tuple),
+                CalculationInput("recorded_pdf_pages", str(int(data.get("recorded_pdf_pages") or 0)), ref_tuple),
+                CalculationInput("unavailable_count", str(int(data.get("unavailable_count") or 0)), ref_tuple),
+            ]
+            for media, count in (data.get("counts_by_media_type") or {}).items():
+                calc_inputs.append(CalculationInput(f"media:{media}", str(int(count)), ref_tuple))
+            gaps_counts = (data.get("bates_gaps") or {}).get("counts") or {}
+            for key, count in gaps_counts.items():
+                calc_inputs.append(CalculationInput(f"bates_{key}", str(int(count)), ref_tuple))
+            receipt = CalculationReceipt(
+                receipt_id, "production_summary",
+                f"production_summary(sources={data.get('total_sources', 0)}, pdf_pages={data.get('recorded_pdf_pages', 0)})",
+                str(int(data.get("total_sources") or 0)), "sources", tuple(calc_inputs),
             )
-            return dict(data), (), None
+            self._receipts[receipt_id] = receipt
+            data["calculation"] = {
+                "receipt_id": receipt_id, "operation": receipt.operation, "expression": receipt.expression,
+                "result": receipt.result, "unit": receipt.unit,
+                "inputs": [{"label": i.label, "value": i.value} for i in receipt.inputs],
+            }
+            return data, refs, receipt
         receipt_id = f"calc-{len(self._receipts) + 1}"
         precision = _int_arg(args, "precision", 6, minimum=0, maximum=12)
         receipt = run_calculation(str(args.get("operation", "")), inputs=args.get("inputs", ()),
