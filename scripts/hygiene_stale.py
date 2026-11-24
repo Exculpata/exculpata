@@ -26,7 +26,12 @@ def build_report(data: dict, now: datetime) -> dict:
         for item in data.get("issues", [])
         if parse_time(item["updated_at"]) < cutoff
     ]
-    registered = {Path(item["path"]).name for item in data.get("workflows", [])}
+    registered = {
+        Path(item["path"]).name
+        for item in data.get("workflows", [])
+        if str(item.get("path", "")).startswith(".github/workflows/")
+        and item.get("state", "active") == "active"
+    }
     present = {Path(item).name for item in data.get("workflow_files", [])}
     details = {
         "stale-branches": sorted(stale_branches, key=lambda item: item["name"]),

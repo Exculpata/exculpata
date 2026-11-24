@@ -56,8 +56,8 @@ The page does not promise on-prem-only operation, exhaustive review, guaranteed
 accuracy, production acceptance, or planned frontier-agent capabilities.
 
 A launch video sits under the hero. `assets/exculpata-launch-16x9.mp4` and
-`assets/exculpata-launch-9x16.mp4` are byte-for-byte copies of the files in
-`docs/assets/`. Each `<video>` uses `controls`, `preload="metadata"`, and
+`assets/exculpata-launch-9x16.mp4` are the canonical repository copies of the
+launch videos. Each `<video>` uses `controls`, `preload="metadata"`, and
 `playsinline`, with a poster and no autoplay. Wide screens show the 16:9 cut.
 Narrow screens, at the same 800px breakpoint as the rest of the page, show the
 9:16 cut. The posters are small JPEGs taken from a frame around 0:20, when the

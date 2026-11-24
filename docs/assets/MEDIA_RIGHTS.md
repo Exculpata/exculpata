@@ -2,14 +2,14 @@
 
 ## Launch videos
 
-`exculpata-launch-16x9.mp4` and `exculpata-launch-9x16.mp4` are the one-minute
-desktop (1920 × 1080) and vertical (1080 × 1920) launch videos, both with a
-soundtrack. They follow a fictional Calder Reservoir administrative inquiry
-built from synthetic records. The published copies are compressed to less than
-10,000,000 bytes each, retaining the full resolution, 30 fps, and soundtrack.
-They use H.264 High/yuv420p video and AAC-LC stereo audio in fast-start MP4.
-The same bytes are copied under `site/assets/` for the static
-landing page. Poster stills beside those copies are frames from these videos.
+`site/assets/exculpata-launch-16x9.mp4` and `site/assets/exculpata-launch-9x16.mp4`
+are the canonical one-minute desktop (1920 × 1080) and vertical (1080 × 1920)
+launch videos, both with a soundtrack. They follow a fictional Calder Reservoir
+administrative inquiry built from synthetic records. The published copies are
+compressed to less than 10,000,000 bytes each, retaining the full resolution,
+30 fps, and soundtrack. They use H.264 High/yuv420p video and AAC-LC stereo
+audio in fast-start MP4. Poster stills beside those files in `site/assets/` are
+frames from these videos.
 
 The source downloads and encoding record are listed in
 [launch video encoding](../LAUNCH_VIDEO_ENCODING.md). Unmodified originals are
@@ -21,22 +21,19 @@ including the soundtrack, and licenses them under the repository's
 [Apache-2.0 license](../../LICENSE). The poster stills are covered by the
 same license. No separate audio exclusion applies to either launch video.
 
-## Previous teaser
+## Previous teaser (historical)
 
-The previous teaser is no longer featured in the README. Its rights notice is
-retained for the existing media files and historical copies.
+The previous teaser (`exculpata-teaser.mp4` and `exculpata-teaser-preview.jpg`)
+has been removed from the working tree. Its rights notice is retained here for
+existing historical copies in Git history.
 
-`exculpata-teaser.mp4` is the previous product teaser, retained with its
-original bytes. It shows synthetic demonstration material and includes an
-original soundtrack supplied by the maintainer for this video. The previous
+`exculpata-teaser.mp4` showed synthetic demonstration material and included an
+original soundtrack supplied by the maintainer for that video. The previous
 filename is recorded in the
 [brand assets and project-copy guide](../BRANDING.md).
 
 The soundtrack is excluded from the repository's Apache-2.0 software license.
-Its inclusion does not grant a standalone music license. Permission for other
-uses of the music must be obtained from the maintainer. The original audio file
-is intentionally not distributed separately in this repository.
-
-`exculpata-teaser-preview.jpg` is a still extracted from the approved video.
-See [the brand assets and project-copy guide](../BRANDING.md) for presentation
-guidance.
+Its inclusion in Git history does not grant a standalone music license.
+Permission for other uses of the music must be obtained from the maintainer.
+The original audio file is intentionally not distributed separately in this
+repository.

@@ -5,7 +5,7 @@
 - Goal restated: Enable the single `VISION.md` Case Assistant by default for OpenAI-compatible and Ollama model endpoints (and generated node installations) without requiring an opt-in environment flag, while preserving safe zero-endpoint fallback, explicit opt-out (`CASE_INTELLIGENCE_CASE_ASSISTANT=0`), and existing test-suite single-turn generator contracts.
 - Expected files: `specs/case-assistant-default-on.md`, `src/case_intelligence/workbench_assistant.py`, `src/case_intelligence/workbench.py`, `scripts/exculpata_install.py`, `docs/CASE_ASSISTANT.md`, `tests/test_case_assistant_default_on.py`.
 - Acceptance check: Synthetic unit and HTTP tests prove (1) with `CASE_INTELLIGENCE_CASE_ASSISTANT` unset and `CASE_INTELLIGENCE_TEST_MODE` unset, OpenAI-compatible and Ollama endpoints run Case Assistant by default; (2) explicit `CASE_INTELLIGENCE_CASE_ASSISTANT=0` (or `false`/`off`/`no`) cleanly opts out to single-turn grounded generation; (3) `UnavailableGenerator` (zero-endpoint installations) never crashes when `CASE_INTELLIGENCE_CASE_ASSISTANT=1` or default-on is active; (4) an explicit `AssistantModelClient` runs Case Assistant without setting `CASE_INTELLIGENCE_CASE_ASSISTANT=1`; (5) `test_case_assistant_default_on.py`, `test_workbench_assistant.py`, `test_generation_matter_grants.py`, `test_answer_context.py`, `test_bring_your_own_model.py`, `test_oss_installer.py` (selected), `test_import_boundaries.py`, and `test_generator_no_tools.py` pass.
-- Issue link: [VISION.md](../VISION.md) (following Case Assistant Slices 1-7, #585-#591).
+- Issue link: [VISION.md](../../VISION.md) (following Case Assistant Slices 1-7, #585-#591).
 
 ## Problem and root cause
 

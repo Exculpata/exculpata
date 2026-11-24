@@ -36,8 +36,8 @@ Geist and JetBrains Mono are self-hosted; the app does not load them from a font
 | [Light-text wordmark](assets/brand/wordmark-cyan-transparent-lighttext.png) | README hero on a dark background. |
 | [Dark-text wordmark](assets/brand/wordmark-cyan-transparent-darktext.png) | README hero on a light background. |
 | [Social preview](assets/brand/social-preview-1280x640.png) | 1280 × 640 image for the GitHub social preview setting. |
-| [Launch video, 16:9](assets/exculpata-launch-16x9.mp4) | 1:00 landscape video with soundtrack, at 1920 × 1080. |
-| [Launch video, 9:16](assets/exculpata-launch-9x16.mp4) | 1:00 vertical video with soundtrack, at 1080 × 1920. |
+| [Launch video, 16:9](../site/assets/exculpata-launch-16x9.mp4) | 1:00 landscape video with soundtrack, at 1920 × 1080. |
+| [Launch video, 9:16](../site/assets/exculpata-launch-9x16.mp4) | 1:00 vertical video with soundtrack, at 1080 × 1920. |
 
 The SVGs are self-contained. They contain no external image or font requests,
 case screenshots, or deployment details. The application favicon repeats the
@@ -55,10 +55,10 @@ institutional endorsement.
 On GitHub, link each committed poster to https://exculpata.com and put an
 absolute raw download link under the poster:
 
-`https://github.com/Exculpata/exculpata/raw/main/docs/assets/exculpata-launch-16x9.mp4`
+`https://github.com/Exculpata/exculpata/raw/main/site/assets/exculpata-launch-16x9.mp4`
 
-and the 9:16 file beside it. Poster images are the JPEGs in `docs/assets/`
-copied from `site/assets/`. Do not leave an unfilled user-attachment
+and the 9:16 file beside it. Both videos and their poster JPEGs live in
+`site/assets/`. Do not leave an unfilled user-attachment
 placeholder, and do not use a relative `?raw=true` repository link as the only
 player. Preserve each video's aspect ratio and timing.
 

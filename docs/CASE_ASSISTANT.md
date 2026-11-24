@@ -91,4 +91,4 @@ synthetic 405-document stock-case benchmark (combining filings, brokerage
 statements, corporate splits/buybacks, emails, spreadsheets, transcripts, and
 deliberately unreadable files) to score cross-document synthesis, exact math
 receipts, source citations, and honest gap reporting against an operator-configured
-model endpoint. See [eval](EVAL.md) and the design notes under `specs/case-assistant*.md`.
+model endpoint. See [eval](EVAL.md) and the archived design notes under `specs/archive/case-assistant*.md`.
