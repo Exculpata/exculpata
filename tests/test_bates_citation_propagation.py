@@ -68,6 +68,15 @@ def test_bates_and_team_id_propagate_into_citations_without_altering_tokens(tmp_
         assert "Bates: PROD0001–PROD0003" in search_page.text
         assert "Team ID: TEAM0001" in search_page.text
 
+        # Full-text locator identity excludes display-only bates_label while hydration preserves live label.
+        from case_intelligence.full_text_review import compact_locator, resolve_text_report_citations, validate_text_citations
+        unit = next(iter(memo.iter_parsed_units()))
+        legacy_locator = compact_locator({k: v for k, v in memo_payload.items() if k != "bates_label"}, 1, unit.text)
+        assert "bates_label" not in compact_locator(memo_payload, 1, unit.text)
+        validate_text_citations(review.bench, review.matter, [legacy_locator])
+        hydrated = resolve_text_report_citations(review.bench, review.matter, [legacy_locator])
+        assert hydrated[0]["bates_label"] == "Bates: PROD0001–PROD0003"
+
         # Cross-matter isolation: another matter never sees these Bates labels.
         other = review.bench.create_matter("isolated-matter", "Isolated Matter", ACTOR)
         assert repo.document_bates_ranges(other.matter_id, [memo.document_id]) == {}

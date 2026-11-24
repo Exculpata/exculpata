@@ -1383,7 +1383,11 @@ class ProductionRepository:
                     if begin:
                         label = f"{begin}\u2013{end}" if end and end != begin else begin
                         found.setdefault(str(doc_id), set()).add(label)
-        return {doc_id: next(iter(labels)) for doc_id, labels in found.items() if len(labels) == 1}
+        return {
+            doc_id: next(iter(labels))
+            for doc_id, labels in found.items()
+            if len(labels) == 1 and self.document_status(matter_id, doc_id) == "complete"
+        }
 
 
 class ProjectionWindowFull(RuntimeError):
