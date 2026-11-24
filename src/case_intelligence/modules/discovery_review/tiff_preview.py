@@ -89,17 +89,20 @@ def _check_frame_bounds(image) -> tuple[int, int]:
 def _bounded_frame_count(image) -> int:
     """Count TIFF frames without traversing past MAX_TIFF_FRAMES + 1."""
     count = 1
-    while True:
-        try:
-            image.seek(count)
-        except EOFError:
-            break
-        except (OSError, ValueError) as exc:
-            raise TiffPreviewError("The TIFF frame chain could not be read safely.") from exc
-        count += 1
-        if count > MAX_TIFF_FRAMES:
-            raise TiffPreviewError("The TIFF frame count exceeds the preview limit.")
-    image.seek(0)
+    try:
+        while True:
+            try:
+                image.seek(count)
+            except EOFError:
+                break
+            count += 1
+            if count > MAX_TIFF_FRAMES:
+                raise TiffPreviewError("The TIFF frame count exceeds the preview limit.")
+        image.seek(0)
+    except TiffPreviewError:
+        raise
+    except (OSError, ValueError, SyntaxError, KeyError, TypeError) as exc:
+        raise TiffPreviewError("The TIFF frame chain could not be read safely.") from exc
     return count
 
 
@@ -107,14 +110,14 @@ def _open_tiff(raw: bytes):
     Image, UnidentifiedImageError = _pillow()
     try:
         image = Image.open(io.BytesIO(raw))
-    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError) as exc:
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError, SyntaxError, KeyError) as exc:
         raise TiffPreviewError("The stored file is not a supported TIFF image.") from exc
     if image.format != "TIFF":
         image.close()
         raise TiffPreviewError("The stored file is not a TIFF image.")
     try:
         return image, _bounded_frame_count(image), Image
-    except TiffPreviewError:
+    except BaseException:
         image.close()
         raise
 
@@ -155,7 +158,7 @@ def render_tiff_frame_bytes(raw: bytes, *, frame: int = 1) -> tuple[bytes, int]:
             converted = _to_preview_mode(image)
         except TiffPreviewError:
             raise
-        except (Image.DecompressionBombError, OSError, ValueError, TypeError, EOFError) as exc:
+        except (Image.DecompressionBombError, OSError, ValueError, TypeError, EOFError, SyntaxError, KeyError) as exc:
             raise TiffPreviewError("The requested TIFF frame could not be decoded safely.") from exc
         if max(converted.size) > MAX_PREVIEW_EDGE:
             converted.thumbnail((MAX_PREVIEW_EDGE, MAX_PREVIEW_EDGE), Image.Resampling.LANCZOS)

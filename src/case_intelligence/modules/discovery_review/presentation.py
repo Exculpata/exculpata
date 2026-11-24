@@ -165,7 +165,7 @@ def _tiff_embed(store, slug: str, document_id: str, version_id: str, frame: int,
             document = store.get(document_id)
             if document.version_id != version_id or document.state != "ready" or document.origin != "upload":
                 return None
-            path = store.source_path(document.document_id, verify_digest=True)
+            path = store.source_path(document.document_id, verify_digest=False)
             raw = read_verified_tiff_bytes(path, document.digest)
         meta = inspect_tiff_bytes(raw)
     except (KeyError, OSError, ValueError, TiffPreviewError, TiffPreviewStale):

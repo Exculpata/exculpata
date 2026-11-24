@@ -7,6 +7,7 @@ import io
 from PIL import Image
 import pytest
 
+from case_intelligence.modules.discovery_review import tiff_preview
 from case_intelligence.modules.discovery_review.tiff_preview import (
     MAX_PREVIEW_EDGE, TiffPreviewError, TiffPreviewStale, inspect_tiff, render_tiff_frame,
 )
@@ -18,10 +19,8 @@ from tests.test_discovery_review_image_load_files import upload_image_production
 def _tiff_bytes(colors: tuple[tuple[int, int, int], ...], *, size: tuple[int, int] = (16, 12), mode: str = "RGB") -> bytes:
     frames = [Image.new(mode, size, color) for color in colors]
     buf = io.BytesIO()
-    if len(frames) == 1:
-        frames[0].save(buf, format="TIFF")
-    else:
-        frames[0].save(buf, format="TIFF", save_all=True, append_images=frames[1:])
+    kwargs = {"save_all": True, "append_images": frames[1:]} if len(frames) > 1 else {}
+    frames[0].save(buf, format="TIFF", **kwargs)
     return buf.getvalue()
 
 
@@ -35,52 +34,42 @@ def test_tiff_renderer_handles_single_multiframe_and_downscale(tmp_path):
     path, digest = _write(tmp_path / "multi.tif", multi)
     meta = inspect_tiff(path, digest)
     assert (meta.frame_count, meta.width, meta.height) == (3, 32, 24)
-    png1, total1 = render_tiff_frame(path, digest, frame=1)
-    png3, total3 = render_tiff_frame(path, digest, frame=3)
-    assert total1 == 3 and total3 == 3
+    (png1, total1), (png3, total3) = render_tiff_frame(path, digest, frame=1), render_tiff_frame(path, digest, frame=3)
     img1, img3 = Image.open(io.BytesIO(png1)), Image.open(io.BytesIO(png3))
-    assert img1.format == "PNG" and img3.format == "PNG"
+    assert (total1, total3, img1.format, img3.format) == (3, 3, "PNG", "PNG")
     assert img1.getpixel((4, 4))[:3] == (200, 10, 10) and img3.getpixel((4, 4))[:3] == (10, 10, 200)
     assert path.read_bytes() == multi
-
-    large = _tiff_bytes(((40, 80, 120),), size=(MAX_PREVIEW_EDGE + 400, 200))
-    big_path, big_digest = _write(tmp_path / "wide.tif", large)
-    big_png, _ = render_tiff_frame(big_path, big_digest, frame=1)
-    assert max(Image.open(io.BytesIO(big_png)).size) == MAX_PREVIEW_EDGE
+    big_path, big_digest = _write(tmp_path / "wide.tif", _tiff_bytes(((40, 80, 120),), size=(MAX_PREVIEW_EDGE + 400, 200)))
+    assert max(Image.open(io.BytesIO(render_tiff_frame(big_path, big_digest, frame=1)[0])).size) == MAX_PREVIEW_EDGE
 
 
 def test_tiff_renderer_fails_closed_on_bounds_corrupt_and_stale(tmp_path, monkeypatch):
-    from case_intelligence.modules.discovery_review import tiff_preview
     path, digest = _write(tmp_path / "sample.tif", _tiff_bytes(((255, 0, 0), (0, 255, 0))))
     with pytest.raises(TiffPreviewStale):
         render_tiff_frame(path, "0" * 64, frame=1)
     for bad_frame in (0, 3):
         with pytest.raises(TiffPreviewError):
             render_tiff_frame(path, digest, frame=bad_frame)
-
-    corrupt_path, corrupt_digest = _write(tmp_path / "corrupt.tif", b"II*\x00not-a-real-tiff")
-    with pytest.raises(TiffPreviewError):
-        inspect_tiff(corrupt_path, corrupt_digest)
-
+    for name, raw_bytes in (("corrupt.tif", b"II*\x00not-a-real-tiff"),):
+        with pytest.raises(TiffPreviewError):
+            inspect_tiff(*_write(tmp_path / name, raw_bytes))
     png_buf = io.BytesIO()
     Image.new("RGB", (8, 8), (1, 2, 3)).save(png_buf, format="PNG")
-    disguised_path, disguised_digest = _write(tmp_path / "disguised.tif", png_buf.getvalue())
     with pytest.raises(TiffPreviewError):
-        inspect_tiff(disguised_path, disguised_digest)
-
-    # 16-bit grayscale TIFF renders cleanly to 8-bit grayscale PNG.
+        inspect_tiff(*_write(tmp_path / "disguised.tif", png_buf.getvalue()))
     buf16 = io.BytesIO()
     Image.new("I;16", (4, 4), 32768).save(buf16, format="TIFF")
-    p16, d16 = _write(tmp_path / "gray16.tif", buf16.getvalue())
-    png16, frames16 = render_tiff_frame(p16, d16, frame=1)
+    png16, frames16 = render_tiff_frame(*_write(tmp_path / "gray16.tif", buf16.getvalue()), frame=1)
     assert frames16 == 1 and Image.open(io.BytesIO(png16)).mode == "L"
-
-    # Frame enumeration stops at MAX_TIFF_FRAMES + 1 without unrestricted n_frames.
+    with pytest.raises(TiffPreviewError, match="frame chain"):
+        tiff_preview._bounded_frame_count(type("_S", (), {"seek": lambda self, n: (_ for _ in ()).throw(SyntaxError("bad"))})())
     monkeypatch.setattr(tiff_preview, "MAX_TIFF_FRAMES", 2)
-    p3, d3 = _write(tmp_path / "three.tif", _tiff_bytes(((10, 0, 0), (0, 10, 0), (0, 0, 10))))
     with pytest.raises(TiffPreviewError, match="frame count"):
-        inspect_tiff(p3, d3)
-
+        inspect_tiff(*_write(tmp_path / "three.tif", _tiff_bytes(((10, 0, 0), (0, 10, 0), (0, 0, 10)))))
+    monkeypatch.setattr(tiff_preview, "MAX_TIFF_BYTES", 10)
+    with pytest.raises(TiffPreviewError, match="byte limit"):
+        tiff_preview.read_verified_tiff_bytes(path, "0" * 64)
+    monkeypatch.setattr(tiff_preview, "MAX_TIFF_BYTES", 32 * 1024 * 1024)
     monkeypatch.setattr(tiff_preview, "MAX_TIFF_PIXELS", 100)
     with pytest.raises(TiffPreviewError):
         render_tiff_frame(path, digest, frame=1)

@@ -245,7 +245,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
             if document.media_type != "image/tiff":
                 raise HTTPException(415, "TIFF preview applies only to TIFF images.")
             try:
-                path = store.source_path(document.document_id, verify_digest=True)
+                path = store.source_path(document.document_id, verify_digest=False)
                 raw = tiff_preview.read_verified_tiff_bytes(path, document.digest)
             except (UploadProblem, tiff_preview.TiffPreviewStale) as exc:
                 raise HTTPException(409, "The stored TIFF original changed or is unavailable.") from exc
