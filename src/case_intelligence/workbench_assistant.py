@@ -29,8 +29,27 @@ _VERIFIED_INTRO = "Verified findings from inspected discovery:"
 _ABSTENTION_INTRO = "The inspected sources did not support a verified finding for that question."
 
 
-def case_assistant_enabled() -> bool:
-    return os.getenv("CASE_INTELLIGENCE_CASE_ASSISTANT", "").strip().casefold() in _TRUTHY
+def supports_case_assistant(client: object | None) -> bool:
+    """Return True when the configured answer client supports the Case Assistant tool loop."""
+    if client is None:
+        return False
+    return callable(getattr(client, "complete_turn", None)) or isinstance(
+        client, (OpenAICompatibleGenerator, OllamaGenerator),
+    )
+
+
+def case_assistant_enabled(client: object | None = None) -> bool:
+    """Enable Case Assistant by default for tool-capable endpoints, with explicit env override."""
+    raw = os.getenv("CASE_INTELLIGENCE_CASE_ASSISTANT", "").strip().casefold()
+    if raw in _TRUTHY:
+        return True if client is None else supports_case_assistant(client)
+    if raw:
+        return False
+    if client is not None and callable(getattr(client, "complete_turn", None)):
+        return True
+    if os.getenv("CASE_INTELLIGENCE_TEST_MODE", "").strip().casefold() in _TRUTHY:
+        return False
+    return True if client is None else supports_case_assistant(client)
 
 
 def assistant_client_from_generator(client: object) -> tuple[object, str]:
