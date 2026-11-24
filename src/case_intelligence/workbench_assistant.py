@@ -204,6 +204,23 @@ class WorkbenchToolBackend:
                     "counts": dict(att.get("counts") or {}),
                     "failure": att.get("file_failure") or "",
                 })
+        registered_refs: dict[str, dict[str, str]] = {}
+
+        def _register_doc_ref(doc) -> dict[str, str] | None:
+            if doc is None or doc.state != "ready":
+                return None
+            if doc.document_id in registered_refs:
+                return registered_refs[doc.document_id]
+            first_unit = next(iter(doc.iter_parsed_units()), None)
+            if first_unit is None:
+                return None
+            wc = self._unit_citation(matter, store, doc, 1, first_unit)
+            self._remember_citation(wc)
+            ref = {"document_id": wc.document_id, "source_name": wc.source_name, "location": wc.location,
+                   "source_version_id": wc.source_version_id, "excerpt_digest": wc.excerpt_digest}
+            registered_refs[doc.document_id] = ref
+            return ref
+
         bates_gaps: dict[str, object] = {"computed": False, "notice": summary.NOTICE, "counts": {}, "facts": []}
         target_doc = None
         if include_gaps:
@@ -220,51 +237,27 @@ class WorkbenchToolBackend:
                         target_doc = csv_docs[0]
                 if target_doc is not None:
                     try:
-                        built = summary.build_summary(
-                            matter.display_name, matter.slug, store, store.action_token(target_doc),
-                        )
+                        built = summary.build_summary(matter.display_name, matter.slug, store, store.action_token(target_doc))
                         fact_rows = []
                         for fact in built["facts"][:100]:
-                            f_refs = []
-                            for cid, ver in fact.get("cited_ids") or ():
-                                cdoc = by_doc_id.get(cid)
-                                if cdoc is not None:
-                                    f_refs.append({
-                                        "document_id": cid, "source_name": cdoc.display_name,
-                                        "location": "Production summary", "source_version_id": ver or cdoc.version_id,
-                                    })
+                            f_refs = [ref for cid, _ in (fact.get("cited_ids") or ()) if (ref := _register_doc_ref(by_doc_id.get(cid)))]
+                            if not f_refs and (load_ref := _register_doc_ref(target_doc)):
+                                f_refs.append(load_ref)
                             fact_rows.append({"kind": fact["kind"], "text": fact["text"], "source_refs": f_refs})
                         bates_gaps = {
-                            "computed": True,
-                            "load_file_document_id": target_doc.document_id,
-                            "load_file_name": target_doc.display_name,
-                            "notice": built["notice"],
-                            "counts": dict(built["counts"]),
-                            "facts": fact_rows,
-                            "truncated": len(built["facts"]) > 100,
+                            "computed": True, "load_file_document_id": target_doc.document_id,
+                            "load_file_name": target_doc.display_name, "notice": built["notice"],
+                            "counts": dict(built["counts"]), "facts": fact_rows, "truncated": len(built["facts"]) > 100,
                         }
                     except (ValueError, csv.Error, UnicodeDecodeError, WorkspaceProblem, UploadProblem) as exc:
                         bates_gaps["reason"] = f"Bates gaps could not be computed for {target_doc.display_name}: {exc}"
-        source_refs = [
-            {"document_id": d.document_id, "source_name": d.display_name,
-             "location": "Production summary", "source_version_id": d.version_id}
-            for d in sorted(docs, key=lambda item: (item.display_name.casefold(), item.document_id))[:50]
-        ]
-        if target_doc is not None and not any(r["document_id"] == target_doc.document_id for r in source_refs):
-            source_refs.append({
-                "document_id": target_doc.document_id, "source_name": target_doc.display_name,
-                "location": "Production summary", "source_version_id": target_doc.version_id,
-            })
+        source_refs = [ref for doc in sorted(docs, key=lambda item: (item.display_name.casefold(), item.document_id))[:50] if (ref := _register_doc_ref(doc))]
+        if target_doc is not None and not any(r["document_id"] == target_doc.document_id for r in source_refs) and (ref := _register_doc_ref(target_doc)):
+            source_refs.append(ref)
         return {
-            "total_sources": len(docs),
-            "counts_by_media_type": media_counts,
-            "recorded_pdf_pages": pdf_pages,
-            "unavailable_count": len(unavail),
-            "unavailable_sources": unavail[:50],
-            "load_files": load_files[:50],
-            "load_file_attempts": attempts,
-            "bates_gaps": bates_gaps,
-            "source_refs": source_refs,
+            "total_sources": len(docs), "counts_by_media_type": media_counts, "recorded_pdf_pages": pdf_pages,
+            "unavailable_count": len(unavail), "unavailable_sources": unavail[:50], "load_files": load_files[:50],
+            "load_file_attempts": attempts, "bates_gaps": bates_gaps, "source_refs": source_refs,
         }
 
     def search_discovery(

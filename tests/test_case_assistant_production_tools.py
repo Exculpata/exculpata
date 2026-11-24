@@ -1,30 +1,31 @@
 """Synthetic proving and fail-closed tests for Case Assistant production and Bates tools."""
 from __future__ import annotations
 
+import json
+from pathlib import Path
+import time
+import uuid
+
 import pytest
 
-from case_intelligence.case_assistant import validate_assistant_tool_payload
+from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn, CaseAssistant, validate_assistant_tool_payload
 from case_intelligence.case_assistant_tools import (
     ALLOWED_TOOLS, AssistantAccessError, AssistantToolError, MatterToolRuntime, openai_tool_schemas,
 )
 from case_intelligence.modules import ModuleDatabase
 from case_intelligence.modules.discovery_review.identifiers import IdentifierRepository
-from case_intelligence.workbench_assistant import WorkbenchToolBackend
+from case_intelligence.workbench_assistant import WorkbenchToolBackend, _result_to_answer
 from tests.test_discovery_review_dat_opt import ACTOR, complete_listing, dat_bytes, opened_review
+from tests.test_discovery_review_index import service_for
+from tests.test_intake_receipt_http import put, selection, upload
 from tests.test_workflow_quality_handoff import pdf_bytes
 
 
-def _upload_volume(review, files, media_overrides=None):
-    import time
-    import uuid
-    from pathlib import Path
-    from tests.test_intake_receipt_http import put, selection, upload
-
+def _upload_volume(review, files):
     media = {".pdf": "application/pdf", ".csv": "text/csv", ".dat": "text/plain", ".txt": "text/plain"}
-    overrides = media_overrides or {}
     names = list(files)
     descriptors = [{"name": Path(n).name, "relative_path": n, "size": len(files[n]),
-                    "media_type": overrides.get(n, media.get(Path(n).suffix.lower(), "text/plain"))} for n in names]
+                    "media_type": media.get(Path(n).suffix.lower(), "text/plain")} for n in names]
     ordinals = list(range(len(names)))
     receipt = selection(review.client, review.matter.slug, descriptors, ordinals, key=uuid.uuid4().hex)
     session = upload(review.client, review.matter.slug, receipt, descriptors, ordinals)
@@ -33,26 +34,19 @@ def _upload_volume(review, files, media_overrides=None):
         assert review.client.post(item["finalize_url"]).status_code == 200
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
-        items = [review.bench.workspace.upload_item(review.matter.matter_id, ACTOR,
-            session["upload_session_id"], item["upload_item_id"]) for item in session["items"]]
-        jobs = [review.bench.workspace.ingest_job(review.matter.matter_id, item.document_id) for item in items]
-        if all(job is not None and job.state in {"succeeded", "failed"} for job in jobs):
+        items = [review.bench.workspace.upload_item(review.matter.matter_id, ACTOR, session["upload_session_id"], item["upload_item_id"]) for item in session["items"]]
+        if all((job := review.bench.workspace.ingest_job(review.matter.matter_id, item.document_id)) is not None and job.state in {"succeeded", "failed"} for item in items):
             break
         time.sleep(0.01)
 
 
 def test_inspect_production_schema_and_allowlist():
-    assert "inspect_production" in ALLOWED_TOOLS
     schemas = openai_tool_schemas()
-    names = {entry["function"]["name"] for entry in schemas}
-    assert "inspect_production" in names
+    assert "inspect_production" in ALLOWED_TOOLS and "inspect_production" in {e["function"]["name"] for e in schemas}
     validate_assistant_tool_payload({"tools": schemas, "messages": [{"role": "user", "content": "Check production"}]})
 
 
 def test_list_sources_bates_and_inspect_production_end_to_end(tmp_path, monkeypatch):
-    import json
-    from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn, CaseAssistant
-    from tests.test_discovery_review_index import service_for
 
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
     monkeypatch.setenv("CASE_INTELLIGENCE_OCR_MODE", "disabled")
@@ -122,15 +116,18 @@ def test_list_sources_bates_and_inspect_production_end_to_end(tmp_path, monkeypa
                     return AssistantTurn(tool_calls=(AssistantModelCall("p1", "inspect_production", {"load_file_document_id": csv_doc.document_id}),))
                 payload = json.loads(messages[-1]["content"])
                 n_src, n_pages = payload["total_sources"], payload["recorded_pdf_pages"]
+                fact_cite = payload["bates_gaps"]["facts"][0]["source_refs"][0]
                 return AssistantTurn(content=json.dumps({
                     "answerable": True,
                     "summary": f"Production has {n_src} sources and {n_pages} PDF pages with Missing Bates PROD0003.",
                     "findings": [{"text": f"The production has {n_src} sources, {n_pages} recorded PDF pages, and Missing Bates PROD0003.",
-                                  "citations": [payload["source_refs"][0]], "calculation_ids": [payload["calculation"]["receipt_id"]]}],
+                                  "citations": [fact_cite], "calculation_ids": [payload["calculation"]["receipt_id"]]}],
                     "gaps": [], "competing_accounts": [],
                 }))
         inv = CaseAssistant(_ProdAssistantClient()).investigate("Counts and Bates gaps?", MatterToolRuntime(review.matter.matter_id, ACTOR, backend))
         assert inv.answerable is True and len(inv.findings) == 1 and inv.receipts
+        converted = _result_to_answer(review.bench, inv, backend, "")
+        assert converted.payload["answerable"] is True and len(converted.payload["claims"]) == 1 and converted.payload["case_assistant"]["receipts"]
 
         seen_lookups: list[int] = []
         orig_map = backend._document_bates_map

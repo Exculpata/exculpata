@@ -923,14 +923,23 @@ class MatterToolRuntime:
                 self.matter_id, load_file_document_id=load_doc_id,
                 include_gaps=include_gaps, document_ids=self.allowed_document_ids,
             ))
-            refs = [
-                SourceRef(
+            raw_refs = list(data.get("source_refs") or ())
+            for fact in (data.get("bates_gaps") or {}).get("facts") or ():
+                if isinstance(fact, Mapping):
+                    raw_refs.extend(fact.get("source_refs") or ())
+            refs, seen_keys = [], set()
+            for r in raw_refs:
+                if not isinstance(r, Mapping) or not r.get("document_id"):
+                    continue
+                ref = SourceRef(
                     str(r["document_id"]), str(r.get("source_name") or ""),
                     str(r.get("location") or "Production summary"), str(r.get("source_version_id") or ""),
+                    str(r.get("excerpt_digest") or ""),
                 )
-                for r in (data.get("source_refs") or ())
-                if isinstance(r, Mapping) and r.get("document_id")
-            ]
+                key = (ref.document_id, ref.location, ref.source_version_id, ref.excerpt_digest)
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    refs.append(ref)
             receipt_id = f"calc-{len(self._receipts) + 1}"
             ref_tuple = tuple(refs[:10])
             calc_inputs = [

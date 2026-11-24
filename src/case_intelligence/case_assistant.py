@@ -465,7 +465,11 @@ class CaseAssistant:
                             *(str(f.get("text") or "") for f in (gaps_block.get("facts") or ()) if isinstance(f, Mapping)),
                         ]
                         prod_text = " ".join(part for part in summary_parts if part)
-                        for sref in result.get("source_refs") or ():
+                        all_srefs = list(result.get("source_refs") or ())
+                        for fact in gaps_block.get("facts") or ():
+                            if isinstance(fact, Mapping):
+                                all_srefs.extend(fact.get("source_refs") or ())
+                        for sref in all_srefs:
                             if isinstance(sref, Mapping) and sref.get("document_id"):
                                 key = (str(sref["document_id"]), str(sref.get("location") or "Production summary"), str(sref.get("source_version_id") or ""))
                                 inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + prod_text).strip()
