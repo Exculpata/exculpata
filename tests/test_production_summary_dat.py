@@ -133,3 +133,41 @@ def test_http_production_summary_with_concordance_dat_and_bates_gaps(tmp_path, m
         bad_resp = review.client.get(f"/matters/{slug}/production-summary", params={"load_file": review.token("Vol1/DATA/broken.dat")})
         assert bad_resp.status_code == 400
         assert "Sensitive private marker" not in bad_resp.text and "broken.dat" not in bad_resp.text
+
+
+def test_resolve_dat_rows_enforces_root_ambiguity_and_control_chars(tmp_path):
+    from types import SimpleNamespace
+
+    def _doc(doc_id: str, rel: str):
+        return SimpleNamespace(document_id=doc_id, version_id=f"v-{doc_id}", relative_path=rel,
+                               media_type="application/pdf", page_count=1, state="ready")
+
+    load = _doc("load", "Vol1/DATA/index.dat")
+    vol1_doc = _doc("d1", "Vol1/NATIVES/a.pdf")
+    vol2_doc = _doc("d2", "Vol2/NATIVES/a.pdf")
+
+    # P1: Vol1 DAT cannot bind to Vol2 document or fall through to exact-path mapping.
+    # P2: Control characters (e.g. trailing tab) are rejected before stripping.
+    dat_file = tmp_path / "control_and_cross_root.dat"
+    dat_file.write_bytes(_dat_bytes(
+        ("BEGBATES", "ENDBATES", "NATIVELINK"),
+        [
+            ("SYN0001", "SYN0001", "Vol2/NATIVES/a.pdf"),
+            ("SYN0002", "SYN0002", "Vol1/NATIVES/a.pdf\t"),
+        ],
+    ))
+    parsed = summary.parse_dat_load_file(dat_file)
+    resolved = summary._resolve_dat_rows((load, vol1_doc, vol2_doc), parsed, load)
+    assert [row["path"] for row in resolved] == ["", ""]
+    mapped = {doc.document_id: doc for doc in summary.map_documents((load, vol1_doc, vol2_doc), resolved, load.document_id)}
+    assert mapped["d1"].labels == () and mapped["d2"].labels == ()
+
+    # P2: Ambiguous matches inside the production root fail closed instead of falling through.
+    nested_dup = _doc("d3", "Vol1/DATA/Vol1/NATIVES/a.pdf")
+    with pytest.raises(ValueError, match="Ambiguous DAT document path"):
+        summary._resolve_dat_rows(
+            (load, vol1_doc, nested_dup),
+            [{"path": "Vol1/NATIVES/a.pdf", "begin_bates": "SYN0003", "end_bates": "SYN0003"}],
+            load,
+        )
+

@@ -39,10 +39,15 @@ def _norm_header(header: str) -> str:
     return re.sub(r'[^a-z0-9]+', '', unicodedata.normalize('NFKC', header).casefold())
 
 
+def _has_control(value: str) -> bool:
+    return any(unicodedata.category(ch) in {'Cc', 'Cf'} for ch in value)
+
+
 def _safe_rel_path(value: str) -> str:
+    if _has_control(value):
+        return ''
     cleaned = unicodedata.normalize('NFC', value.strip()).replace('\\', '/')
-    if (not cleaned or cleaned.startswith('/') or re.match(r'^[A-Za-z]:', cleaned)
-            or any(unicodedata.category(ch) in {'Cc', 'Cf'} for ch in cleaned)):
+    if not cleaned or cleaned.startswith('/') or re.match(r'^[A-Za-z]:', cleaned):
         return ''
     parts = cleaned.split('/')
     if '..' in parts or any(':' in part for part in parts):
@@ -89,10 +94,11 @@ def parse_dat_load_file(path: Path, *, field_map: Mapping[str, str] | None = Non
     text_i = role_idx.get('text_path')
     rows: list[dict[str, str]] = []
     for values in raw_rows:
-        native_val = values[native_i].strip() if native_i is not None else ''
-        text_val = values[text_i].strip() if text_i is not None else ''
+        native_val = values[native_i] if native_i is not None else ''
+        text_val = values[text_i] if text_i is not None else ''
+        chosen = native_val if (native_val.strip() or _has_control(native_val)) else text_val
         rows.append({
-            'path': native_val or text_val,
+            'path': chosen,
             'begin_bates': values[begin_i],
             'end_bates': values[end_i] if end_i is not None else '',
         })
@@ -100,34 +106,36 @@ def parse_dat_load_file(path: Path, *, field_map: Mapping[str, str] | None = Non
 
 
 def _resolve_dat_rows(documents, rows, load):
-    """Bind safe DAT relative paths uniquely within the same production root."""
+    """Bind safe DAT relative paths uniquely within the load file's production root."""
+    load_parts = PurePosixPath(load.relative_path.replace('\\', '/')).parts
+    root = load_parts[0].casefold() if len(load_parts) > 1 else ''
+    parent = '/'.join(part.casefold() for part in load_parts[:-1]) if len(load_parts) > 1 else ''
     by_norm: dict[str, list] = {}
     for doc in documents:
         if doc.document_id == load.document_id:
             continue
         key = _safe_rel_path(doc.relative_path)
-        if key:
+        if key and (not root or key.startswith(root + '/')):
             by_norm.setdefault(key, []).append(doc)
-    load_parts = PurePosixPath(load.relative_path.replace('\\', '/')).parts
-    root = load_parts[0].casefold() if len(load_parts) > 1 else ''
-    parent = '/'.join(part.casefold() for part in load_parts[:-1]) if len(load_parts) > 1 else ''
     resolved: list[dict[str, str]] = []
     for row in rows:
         norm = _safe_rel_path(row['path'])
         if not norm:
-            resolved.append(row)
+            resolved.append({**row, 'path': ''})
             continue
-        candidates = [norm]
+        candidates = [norm] if (not root or norm.startswith(root + '/')) else []
         if root and not norm.startswith(root + '/'):
             candidates.append(f'{root}/{norm}')
         if parent and parent != root and not norm.startswith(parent + '/'):
             candidates.append(f'{parent}/{norm}')
         matched = {doc.document_id: doc for cand in candidates for doc in by_norm.get(cand, ())}
+        if len(matched) > 1:
+            raise ValueError('Ambiguous DAT document path reference')
         if len(matched) == 1:
             doc = next(iter(matched.values()))
             resolved.append({**row, 'path': doc.relative_path})
         else:
-            resolved.append(row)
+            resolved.append({**row, 'path': ''})
     return resolved
 
 
