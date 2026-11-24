@@ -27,7 +27,7 @@ from case_intelligence.modules.discovery_review.fields import (
 )
 from case_intelligence.modules.discovery_review.production.repository import ProductionStale
 
-EMBEDDED_MEDIA_TYPES = frozenset({"application/pdf", "image/jpeg", "image/png"})
+EMBEDDED_MEDIA_TYPES = frozenset({"application/pdf", "image/jpeg", "image/png", "image/tiff"})
 MAX_EMAIL_HEADER_BYTES = 256 * 1024
 MAX_CACHED_MATTERS = 8
 MAX_CACHED_ORDERS = 6

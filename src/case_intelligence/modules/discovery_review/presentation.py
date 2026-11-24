@@ -154,9 +154,36 @@ def read_unit(store, item: Item, number: int):
     return (chosen or last), (number if chosen else total), total
 
 
+def _tiff_embed(store, slug: str, document_id: str, version_id: str, frame: int, links, *,
+                from_page_record: bool = False, record_cursor: str = "") -> dict | None:
+    from case_intelligence.modules.discovery_review.tiff_preview import TiffPreviewError, TiffPreviewStale, inspect_tiff
+
+    try:
+        with store.mutation_guard():
+            document = store.get(document_id)
+            if document.version_id != version_id or document.state != "ready" or document.origin != "upload":
+                return None
+            path = store.source_path(document.document_id, verify_digest=True)
+            meta = inspect_tiff(path, document.digest)
+    except (KeyError, OSError, ValueError, TiffPreviewError, TiffPreviewStale):
+        return None
+    current_frame = min(max(int(frame), 1), meta.frame_count)
+    token = action_token(document_id, version_id)
+    extra = {"record": record_cursor, "record_dir": "at"} if record_cursor else {}
+    return {
+        "kind": "image",
+        "url": f"/matters/{slug}/production/tiff-preview/{token}?frame={current_frame}",
+        "frame": current_frame,
+        "frame_count": meta.frame_count,
+        "from_page_record": from_page_record,
+        "previous": links(view="document", tiff_frame=str(current_frame - 1), **extra) if current_frame > 1 else None,
+        "next": links(view="document", tiff_frame=str(current_frame + 1), **extra) if current_frame < meta.frame_count else None,
+    }
+
+
 def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slug: str, view: str,
                unit: int, list_url: str, production: dict | None = None,
-               record_window: dict | None = None) -> dict:
+               record_window: dict | None = None, tiff_frame: int = 1) -> dict:
     production = production or {}
     references = tuple(production.get('references', ()))
     page_records = any(reference['category'] == 'page' for reference in references)
@@ -168,7 +195,7 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
     fragment = f"/matters/{slug}/production/items/{item.token}"
     parsed_url = urlsplit(list_url)
     base_query = {key: value for key, value in parse_qsl(parsed_url.query)
-                  if key not in {'record', 'record_dir', 'unit', 'image_start'}}
+                  if key not in {'record', 'record_dir', 'unit', 'image_start', 'tiff_frame'}}
 
     def links(**query) -> dict:
         merged = {key: value for key, value in {**base_query, **query}.items() if value}
@@ -197,7 +224,10 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
         panel['family'] = {**item.family, 'context': {**item.family['context'],
             'url': f'/matters/{slug}/production?' + urlencode({'doc': item.family['context']['token']})}}
     if active == "document":
-        panel["embed"] = {"kind": item.embedded, "url": f"{source_url}/content"} if item.embedded else None
+        if item.media_type == "image/tiff" and item.embedded:
+            panel["embed"] = _tiff_embed(store, slug, item.document_id, item.version_id, tiff_frame, links)
+        else:
+            panel["embed"] = {"kind": item.embedded, "url": f"{source_url}/content"} if item.embedded else None
         if record_window is not None and record_window['category'] == 'page':
             panel['records'] = record_panel(definition, record_window, links, view='document')
             panel['native_embed'], panel['embed'] = panel['embed'], None
@@ -206,6 +236,11 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
             if image.get('media_type') in {'image/jpeg', 'image/png'}:
                 image_token = action_token(image['document_id'], image['version_id'])
                 panel['embed'] = {'kind': 'image', 'url': f'/matters/{slug}/sources/{image_token}/content'}
+            elif image.get('media_type') == 'image/tiff':
+                panel['embed'] = _tiff_embed(
+                    store, slug, image['document_id'], image['version_id'], tiff_frame, links,
+                    from_page_record=True, record_cursor=panel['records']['current_cursor'],
+                )
     elif active == "text":
         try:
             found, number, total = read_unit(store, item, max(unit, 1))

@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from urllib.parse import urlencode
 
 from fastapi import Depends, Form, HTTPException, Query, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 
 from case_intelligence.modules import ModuleContext
-from case_intelligence.modules.discovery_review import code_routes, fields, presentation, reader
+from case_intelligence.modules.discovery_review import code_routes, fields, presentation, reader, tiff_preview
 from case_intelligence.modules.discovery_review.codes import CodeRepository
 from case_intelligence.modules.discovery_review.stored_index import Service
 from case_intelligence.modules.discovery_review.stored_index import query as stored_query
@@ -16,6 +16,7 @@ from case_intelligence.modules.discovery_review.identifiers import (
 )
 from case_intelligence.modules.discovery_review.views import SCOPES, ViewRepository, ViewUnavailable
 from case_intelligence.modules.discovery_review.production import ProductionService, ProductionStale
+from case_intelligence.pilot_uploads import UploadProblem
 
 TOKEN = "^[0-9a-f]{32}$"
 VIEW = "^(|document|text|fields)$"
@@ -151,6 +152,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         record: str = Query('', max_length=56),
         record_dir: str = Query('at', pattern='^(at|next|previous)$'),
         image_start: int | None = Query(None, ge=1, le=MAX_POSITION),
+        tiff_frame: int = Query(1, ge=1, le=tiff_preview.MAX_TIFF_FRAMES),
         reload_attempt: str = Query('', pattern='^(|[0-9a-f]{32})$'),
         reload_token: str = Query('', pattern='^(|[0-9a-f]{32})$'),
         all_columns: str = Query("", pattern="^(|1)$"),
@@ -179,7 +181,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         panel = presentation.item_panel(
             definition, selected, choice, store, slug=matter.slug, view=view, unit=unit,
             list_url=base + "?" + urlencode({**state, "doc": selected.token}),
-            production=projection, record_window=window) if selected else None
+            production=projection, record_window=window, tiff_frame=tiff_frame) if selected else None
         if panel is not None:
             panel["codes"] = codes.controls(matter.matter_id, selected.document_id)
         return respond(request, matter, actor, "workbench_production_documents.html", {
@@ -200,6 +202,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         record: str = Query('', max_length=56),
         record_dir: str = Query('at', pattern='^(at|next|previous)$'),
         image_start: int | None = Query(None, ge=1, le=MAX_POSITION),
+        tiff_frame: int = Query(1, ge=1, le=tiff_preview.MAX_TIFF_FRAMES),
         q: str = Query("", max_length=presentation.MAX_QUERY_CHARS),
         sort: str = Query("", max_length=fields.MAX_KEY_CHARS),
         dir: str = Query("", pattern="^(|asc|desc)$"),
@@ -217,9 +220,50 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
                                         view=view, unit=unit, list_url=base + "?" + urlencode({
                                             "doc": token, "q": q.strip(), "dir": dir, "all_columns": all_columns,
                                             "sort": sort if definition.field(sort) is not None else ""}),
-                                        production=projection, record_window=window)
+                                        production=projection, record_window=window, tiff_frame=tiff_frame)
         panel["codes"] = codes.controls(matter.matter_id, item.document_id)
         return respond(request, matter, actor, "workbench_production_document_item.html", {"panel": panel})
+
+    @app.get("/matters/{slug}/production/tiff-preview/{token}", dependencies=[Depends(require_response_lease)])
+    def production_tiff_preview(
+        request: Request, slug: str, token: str,
+        frame: int = Query(1, ge=1, le=tiff_preview.MAX_TIFF_FRAMES),
+    ):
+        if re.fullmatch(TOKEN, token) is None:
+            raise HTTPException(404, "This source is not available.")
+        matter = authorized_matter(request, slug)
+        actor = auth_context(request).principal_id
+        membership(matter, actor)
+        store = context.source_store(matter)
+        with store.mutation_guard():
+            try:
+                document = store.get_by_action_token(token)
+            except KeyError as exc:
+                raise HTTPException(404, "This source is not available.") from exc
+            if document.origin != "upload" or document.state != "ready":
+                raise HTTPException(404, "This source is not available for preview.")
+            if document.media_type != "image/tiff":
+                raise HTTPException(415, "TIFF preview applies only to TIFF images.")
+            try:
+                path = store.source_path(document.document_id, verify_digest=True)
+                png, total_frames = tiff_preview.render_tiff_frame(path, document.digest, frame=frame)
+            except (UploadProblem, tiff_preview.TiffPreviewStale) as exc:
+                raise HTTPException(409, "The stored TIFF original changed or is unavailable.") from exc
+            except tiff_preview.TiffPreviewError as exc:
+                raise HTTPException(422, str(exc)) from exc
+        membership(matter, actor)
+        response = Response(
+            content=png,
+            media_type="image/png",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "Content-Security-Policy": "default-src 'none'",
+                "X-Tiff-Frame": str(frame),
+                "X-Tiff-Frames": str(total_frames),
+            },
+        )
+        return transfer_response_lease(request, response)
 
     @app.post("/matters/{slug}/production/view", dependencies=[Depends(require_csrf)])
     def save_production_view(

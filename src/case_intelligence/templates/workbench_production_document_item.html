@@ -58,7 +58,7 @@
       {% set images = record.indexed_images %}
       {% if images.page_file %}
         {% if images.page_file.url %}
-        <p><a data-image-file href="{{ images.page_file.url }}">Open indexed image</a> · {{ images.page_file.path }}{% if images.page_file.source.media_type == 'image/tiff' %} · <span data-page-image-unavailable>TIFF preview unavailable</span>{% endif %}</p>
+        <p><a data-image-file href="{{ images.page_file.url }}">Open indexed image</a> · {{ images.page_file.path }}{% if images.page_file.source.media_type == 'image/tiff' and not panel.embed %} · <span data-page-image-unavailable>TIFF preview unavailable</span>{% endif %}</p>
         {% else %}<p class="dr-muted" data-page-image-unavailable>{{ image_status(images.page_file.status) }}</p>{% endif %}
       {% elif images.open %}
       <p><a data-dii-files="open" href="{{ images.open }}">Browse listed image files</a></p>
@@ -99,6 +99,16 @@
   {% if not panel.embed and not panel.records.rows[0].indexed_images.page_file %}<p class="dr-state" data-page-image-unavailable>The page image is unavailable. Inspect the supplied page record for its label and image path.</p>{% endif %}
   {% endif %}
   {% if panel.embed %}
+  {% if panel.embed.frame_count and panel.embed.frame_count > 1 %}
+  <div class="dr-text-bar" data-tiff-frame-bar>
+    <span class="dr-position">TIFF frame {{ panel.embed.frame }} of {{ panel.embed.frame_count }}</span>
+    {% if panel.embed.from_page_record %}<span class="dr-muted">Page record does not bind a specific TIFF frame.</span>{% endif %}
+    <span class="dr-pager">
+      {% if panel.embed.previous %}<a href="{{ panel.embed.previous.url }}" data-review-fragment="{{ panel.embed.previous.fragment }}" data-tiff-frame="previous">Previous frame</a>{% else %}<span class="dr-muted">Previous frame</span>{% endif %}
+      {% if panel.embed.next %}<a href="{{ panel.embed.next.url }}" data-review-fragment="{{ panel.embed.next.fragment }}" data-tiff-frame="next">Next frame</a>{% else %}<span class="dr-muted">Next frame</span>{% endif %}
+    </span>
+  </div>
+  {% endif %}
   <div class="dr-document">
     {% if panel.embed.kind == 'image' %}<img src="{{ panel.embed.url }}" alt="{{ panel.heading.title }}">
     {% else %}<iframe src="{{ panel.embed.url }}#view=FitH&amp;navpanes=0" title="{{ panel.heading.title }}"></iframe>{% endif %}
