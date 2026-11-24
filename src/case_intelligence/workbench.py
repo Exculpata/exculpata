@@ -2571,23 +2571,6 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             (cls._support_token(candidate), cls._legacy_support_token(candidate))
         )
 
-    def _document_bates_label(self, matter_id: str, document_id: str) -> str:
-        """Resolve exact produced Bates range or Team ID read-only via discovery repositories."""
-        connection = getattr(self.workspace, "connection", None)
-        lock = getattr(self.workspace, "_lock", None)
-        if connection is None or lock is None or not document_id:
-            return ""
-        from .modules import ModuleDatabase
-        from .modules.discovery_review.identifiers import IdentifierRepository
-        from .modules.discovery_review.production import ProductionRepository
-
-        db = ModuleDatabase(connection, lock)
-        produced = ProductionRepository(db).document_bates_ranges(matter_id, (document_id,)).get(document_id, "")
-        if produced:
-            return f"Bates: {produced}"
-        assigned = IdentifierRepository(db, self.workspace.membership).read_documents(matter_id, (document_id,)).get(document_id, "")
-        return f"Team ID: {assigned}" if assigned else ""
-
     def _citation(self, matter: MatterRecord, candidate: Candidate, store: PilotStore | None = None) -> WorkbenchCitation:
         evidence_kind = "document"
         try:
@@ -2606,22 +2589,13 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
         href = f"/matters/{matter.slug}?support={token}#support-pane"
         if evidence_kind == "transcript":
             href = f"/matters/{matter.slug}?support={token}&play=1#support-pane"
+        from .modules.discovery_review.production.repository import document_bates_label
+        bates_label = document_bates_label(getattr(self, "workspace", None), matter.matter_id, candidate.document_id)
         return WorkbenchCitation(
-            candidate.source_name,
-            candidate.citation,
-            candidate.text,
-            href,
-            token,
-            candidate.matter_id,
-            candidate.document_id,
-            candidate.source_version_id,
-            candidate.excerpt_digest,
-            candidate.chunk_id,
-            candidate.page_number,
-            candidate.line_start,
-            candidate.line_end,
-            evidence_kind,
-            self._document_bates_label(matter.matter_id, candidate.document_id),
+            candidate.source_name, candidate.citation, candidate.text, href, token,
+            candidate.matter_id, candidate.document_id, candidate.source_version_id,
+            candidate.excerpt_digest, candidate.chunk_id, candidate.page_number,
+            candidate.line_start, candidate.line_end, evidence_kind, bates_label,
         )
 
     def _validate_candidates(
