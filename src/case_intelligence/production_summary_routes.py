@@ -26,7 +26,7 @@ def install_production_summary_routes(app, *, bench, authorized_matter, auth_con
         except WorkspaceProblem as exc:
             raise HTTPException(409, str(exc)) from exc
         except (ValueError, csv.Error) as exc:
-            raise HTTPException(400, 'Select a UTF-8 CSV with columns path,begin_bates,end_bates') from exc
+            raise HTTPException(400, 'Select a UTF-8 CSV (path,begin_bates,end_bates) or Concordance DAT load file') from exc
         return matter, actor, payload
 
     @app.get('/matters/{slug}/production-summary', dependencies=[Depends(require_response_lease)])

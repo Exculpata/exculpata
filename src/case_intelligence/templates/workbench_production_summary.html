@@ -11,7 +11,7 @@
 <option value="">No load file selected</option>
 {% for choice in summary.choices %}<option value="{{ choice.token }}"{% if choice.token == load_file %} selected{% endif %}>{{ visible(choice.name) }}</option>{% endfor %}
 </select>
-<p>Choose a CSV with columns path,begin_bates,end_bates. Paths must match the source paths exactly.</p>
+<p>Choose a CSV (path,begin_bates,end_bates) or Concordance DAT load file. Relative paths are matched safely within the production.</p>
 <button class="button button-secondary">Build summary</button>
 </form>
 <p>Download: {% for format in ('markdown', 'json') %}<a href="/matters/{{ matter.slug }}/production-summary/export?format={{ format }}&amp;load_file={{ load_file|urlencode }}">{{ format|upper }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>

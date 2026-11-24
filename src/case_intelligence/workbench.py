@@ -764,15 +764,19 @@ class WorkbenchCitation:
     line_start: int | None
     line_end: int | None
     evidence_kind: str
+    bates_label: str = ""
 
     def staff_payload(self) -> dict[str, str]:
-        return {
+        payload = {
             "source_name": self.source_name,
             "location": self.location,
             "href": self.href,
             "support_token": self.support_token,
             "evidence_kind": self.evidence_kind,
         }
+        if self.bates_label:
+            payload["bates_label"] = self.bates_label
+        return payload
 
 
 @dataclass(frozen=True)
@@ -2585,21 +2589,14 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
         href = f"/matters/{matter.slug}?support={token}#support-pane"
         if evidence_kind == "transcript":
             href = f"/matters/{matter.slug}?support={token}&play=1#support-pane"
+        from .modules.discovery_review.production.repository import document_bates_label
+        ws = getattr(self, "workspace", None)
+        bates_label = document_bates_label(getattr(ws, "connection", None), getattr(ws, "_lock", None), matter.matter_id, candidate.document_id)
         return WorkbenchCitation(
-            candidate.source_name,
-            candidate.citation,
-            candidate.text,
-            href,
-            token,
-            candidate.matter_id,
-            candidate.document_id,
-            candidate.source_version_id,
-            candidate.excerpt_digest,
-            candidate.chunk_id,
-            candidate.page_number,
-            candidate.line_start,
-            candidate.line_end,
-            evidence_kind,
+            candidate.source_name, candidate.citation, candidate.text, href, token,
+            candidate.matter_id, candidate.document_id, candidate.source_version_id,
+            candidate.excerpt_digest, candidate.chunk_id, candidate.page_number,
+            candidate.line_start, candidate.line_end, evidence_kind, bates_label,
         )
 
     def _validate_candidates(
@@ -4963,7 +4960,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
                     "The selected source set is empty. Add sources to it or use all searchable sources."
                 )
             from .workbench_assistant import case_assistant_enabled, run_workbench_assistant_job
-            if selected_snapshot is None and case_assistant_enabled():
+            if selected_snapshot is None and case_assistant_enabled(getattr(self.generator, "client", None)):
                 return run_workbench_assistant_job(
                     self, job, matter, prior=prior, scoped_document_ids=scoped_document_ids,
                     retrieval_boundary=retrieval_boundary, notebook_items=notebook_items,
@@ -5179,7 +5176,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
     def _workflow_citation_payload(citation: WorkbenchCitation) -> dict[str, object]:
         """Persist enough locator state to validate and reopen derived work product."""
 
-        return {
+        payload: dict[str, object] = {
             "source_name": citation.source_name,
             "location": citation.location,
             "excerpt": citation.excerpt,
@@ -5195,6 +5192,9 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             "line_end": citation.line_end,
             "evidence_kind": citation.evidence_kind,
         }
+        if citation.bates_label:
+            payload["bates_label"] = citation.bates_label
+        return payload
 
     @staticmethod
     def _workflow_citation(value: Mapping[str, object]) -> WorkbenchCitation:
@@ -5213,6 +5213,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             int(value["line_start"]) if value.get("line_start") is not None else None,
             int(value["line_end"]) if value.get("line_end") is not None else None,
             str(value["evidence_kind"]),
+            str(value.get("bates_label") or ""),
         )
 
     def _current_workflow_citation(

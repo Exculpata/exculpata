@@ -1396,6 +1396,26 @@ class ProductionRepository:
         }
 
 
+def document_bates_label(connection, lock, matter_id: str, document_id: str) -> str:
+    """Resolve exact produced Bates range or Team ID read-only for one document."""
+    if connection is None or lock is None or not document_id:
+        return ""
+    from case_intelligence.modules import ModuleDatabase
+
+    repo = ProductionRepository(ModuleDatabase(connection, lock))
+    produced = repo.document_bates_ranges(matter_id, (document_id,)).get(document_id, "")
+    if produced:
+        return f"Bates: {produced}"
+    if repo.document_status(matter_id, document_id) != "complete":
+        return ""
+    with repo.db.lock:
+        row = repo.execute(
+            "SELECT identifier FROM workbench_discovery_identifier WHERE matter_id=? AND document_id=? LIMIT 1",
+            (matter_id, document_id),
+        ).fetchone()
+    return f"Team ID: {row[0]}" if row and row[0] else ""
+
+
 class ProjectionWindowFull(RuntimeError):
     """Yield before a speculative read would consume the publication reserve."""
 

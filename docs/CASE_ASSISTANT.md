@@ -6,6 +6,13 @@ assistant decides how to search discovery, read originals, query structured file
 compute exact math, cite every source, and flag where the record has gaps—without
 forcing reviewers to choose a processing mode.
 
+Case Assistant is **enabled by default** whenever an OpenAI-compatible or Ollama
+answer endpoint is configured (and `CASE_INTELLIGENCE_CASE_ASSISTANT=1` is written
+for new node installations). Zero-endpoint installations without a configured
+answer model continue using the standard non-generative fallback automatically.
+Operators can explicitly opt out to legacy single-turn grounded generation with
+`CASE_INTELLIGENCE_CASE_ASSISTANT=0`.
+
 ## Architecture and boundaries
 
 The Case Assistant runs inside the application shell (`modules.answers`) and obeys

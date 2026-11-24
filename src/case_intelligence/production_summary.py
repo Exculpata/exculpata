@@ -4,14 +4,25 @@ from dataclasses import asdict, replace
 import hashlib
 import io
 import json
+from pathlib import Path, PurePosixPath
+import re
+from typing import Mapping
 import unicodedata
 from .bates_gaps import BatesDocument, compute_bates_gaps
 from .pilot_uploads import UploadProblem
+from .source_load_files import parse_dat
 from .timeline_exports import md_inline
 from .workspace_store import WorkspaceProblem
 
 NOTICE = ('Missing means no supplied label could cover the number. Possible means a label might. '
           'An empty list does not show the production is complete.')
+SUPPORTED_LOAD_SUFFIXES = ('.csv', '.dat')
+_DAT_ALIASES = {
+    'begin_bates': frozenset({'begdoc', 'begbates', 'beginbates', 'prodbeg'}),
+    'end_bates': frozenset({'enddoc', 'endbates', 'endbatesnum', 'prodend'}),
+    'native_path': frozenset({'native', 'nativepath', 'nativelink', 'nativefile', 'path', 'filepath'}),
+    'text_path': frozenset({'text', 'textpath', 'textlink', 'ocrpath'}),
+}
 
 
 def parse_load_file(raw: bytes) -> list[dict[str, str]]:
@@ -22,6 +33,110 @@ def parse_load_file(raw: bytes) -> list[dict[str, str]]:
     if any(None in row or None in row.values() for row in rows):
         raise ValueError('Each load file row must have three columns')
     return rows
+
+
+def _norm_header(header: str) -> str:
+    return re.sub(r'[^a-z0-9]+', '', unicodedata.normalize('NFKC', header).casefold())
+
+
+def _has_control(value: str) -> bool:
+    return any(unicodedata.category(ch) in {'Cc', 'Cf'} for ch in value)
+
+
+def _safe_rel_path(value: str) -> str:
+    if _has_control(value):
+        return ''
+    cleaned = unicodedata.normalize('NFC', value.strip()).replace('\\', '/')
+    if not cleaned or cleaned.startswith('/') or re.match(r'^[A-Za-z]:', cleaned):
+        return ''
+    parts = cleaned.split('/')
+    if '..' in parts or any(':' in part for part in parts):
+        return ''
+    return '/'.join(part for part in parts if part not in {'', '.'}).casefold()
+
+
+def parse_dat_load_file(path: Path, *, field_map: Mapping[str, str] | None = None) -> list[dict[str, str]]:
+    """Parse a Concordance DAT file via the shared bounded parser into summary rows."""
+    headers: list[str] = []
+    problems: list[str] = []
+    raw_rows: list[tuple[str, ...]] = []
+
+    def on_event(event):
+        if event.kind == 'file_failure' or event.kind == 'rejected' or event.diagnostics:
+            problems.extend(event.diagnostics or (event.kind,))
+
+    for row in parse_dat(path, headers_out=headers, on_event=on_event):
+        raw_rows.append(row.values)
+    if problems or not headers:
+        raise ValueError('The DAT load file could not be parsed cleanly')
+
+    role_idx: dict[str, int] = {}
+    if field_map:
+        for idx, header in enumerate(headers):
+            role = field_map.get(header)
+            if role in _DAT_ALIASES:
+                if role in role_idx:
+                    raise ValueError('Ambiguous DAT header mapping')
+                role_idx[role] = idx
+    else:
+        for role, aliases in _DAT_ALIASES.items():
+            matches = [idx for idx, header in enumerate(headers) if _norm_header(header) in aliases]
+            if len(matches) > 1:
+                raise ValueError('Ambiguous DAT header mapping')
+            if len(matches) == 1:
+                role_idx[role] = matches[0]
+    if 'begin_bates' not in role_idx or ('native_path' not in role_idx and 'text_path' not in role_idx):
+        raise ValueError('DAT load file requires a Begin Bates column and a native or text path column')
+
+    begin_i = role_idx['begin_bates']
+    end_i = role_idx.get('end_bates')
+    native_i = role_idx.get('native_path')
+    text_i = role_idx.get('text_path')
+    rows: list[dict[str, str]] = []
+    for values in raw_rows:
+        native_val = values[native_i] if native_i is not None else ''
+        text_val = values[text_i] if text_i is not None else ''
+        chosen = native_val if (native_val.strip() or _has_control(native_val)) else text_val
+        rows.append({
+            'path': chosen,
+            'begin_bates': values[begin_i],
+            'end_bates': values[end_i] if end_i is not None else '',
+        })
+    return rows
+
+
+def _resolve_dat_rows(documents, rows, load):
+    """Bind safe DAT relative paths uniquely within the load file's production root."""
+    load_parts = PurePosixPath(load.relative_path.replace('\\', '/')).parts
+    root = load_parts[0].casefold() if len(load_parts) > 1 else ''
+    parent = '/'.join(part.casefold() for part in load_parts[:-1]) if len(load_parts) > 1 else ''
+    by_norm: dict[str, list] = {}
+    for doc in documents:
+        if doc.document_id == load.document_id:
+            continue
+        key = _safe_rel_path(doc.relative_path)
+        if key and (not root or key.startswith(root + '/')):
+            by_norm.setdefault(key, []).append(doc)
+    resolved: list[dict[str, str]] = []
+    for row in rows:
+        norm = _safe_rel_path(row['path'])
+        if not norm:
+            resolved.append({**row, 'path': ''})
+            continue
+        candidates = [norm] if (not root or norm.startswith(root + '/')) else []
+        if root and not norm.startswith(root + '/'):
+            candidates.append(f'{root}/{norm}')
+        if parent and parent != root and not norm.startswith(parent + '/'):
+            candidates.append(f'{parent}/{norm}')
+        matched = {doc.document_id: doc for cand in candidates for doc in by_norm.get(cand, ())}
+        if len(matched) > 1:
+            raise ValueError('Ambiguous DAT document path reference')
+        if len(matched) == 1:
+            doc = next(iter(matched.values()))
+            resolved.append({**row, 'path': doc.relative_path})
+        else:
+            resolved.append({**row, 'path': ''})
+    return resolved
 
 
 def _real_label(begin):
@@ -49,7 +164,7 @@ def visible(text):
     return ''.join(f'[U+{ord(c):04X}]' if unicodedata.category(c) in {'Cc', 'Cf', 'Mn', 'Me'} else c for c in text)
 
 
-def build_summary(name, slug, store, load_file_token=''):
+def build_summary(name, slug, store, load_file_token='', *, field_map: Mapping[str, str] | None = None):
     with store.mutation_guard():
         documents = tuple(replace(d) for d in store.documents.values())
         versions = {d.document_id: (d.version_id, d.digest) for d in documents}
@@ -68,13 +183,18 @@ def build_summary(name, slug, store, load_file_token=''):
         try:
             if load_file_token:
                 load = replace(store.get_by_action_token(load_file_token))
-                if not load.relative_path.lower().endswith('.csv'):
-                    raise ValueError('Select a CSV load file')
-                raw = store.source_path(load.document_id, verify_digest=True).read_bytes()
+                suffix = PurePosixPath(load.relative_path.replace('\\', '/')).suffix.casefold()
+                if suffix not in SUPPORTED_LOAD_SUFFIXES:
+                    raise ValueError('Select a CSV or DAT load file')
+                load_path = store.source_path(load.document_id, verify_digest=True)
+                raw = load_path.read_bytes()
                 digest = hashlib.sha256(raw).hexdigest()
                 if digest != load.digest:
                     raise WorkspaceProblem('The load file changed during the build')
-                rows = parse_load_file(raw)
+                if suffix == '.dat':
+                    rows = _resolve_dat_rows(documents, parse_dat_load_file(load_path, field_map=field_map), load)
+                else:
+                    rows = parse_load_file(raw)
                 load_file = dict(document_id=load.document_id, version_id=load.version_id, sha256=digest)
                 bates.append(line(f'Load file sha256: {digest}', [load]))
                 for number, row in enumerate(rows, 2):
@@ -103,7 +223,7 @@ def build_summary(name, slug, store, load_file_token=''):
                     load_file=load_file, sections=sections, citations=list(citations.items()),
                     counts={kind: sum(f.kind == kind for f in facts) for kind in ('missing', 'possible')},
                     choices=[dict(token=store.action_token(d), name=d.display_name) for d in documents
-                             if d.relative_path.lower().endswith('.csv')])
+                             if d.relative_path.lower().endswith(SUPPORTED_LOAD_SUFFIXES)])
 
 
 def sections(payload):

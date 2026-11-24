@@ -199,6 +199,9 @@ services:
       - --tensor-parallel-size
       - ${EXCULPATA_GENERATOR_TENSOR_PARALLEL:-${RECORDBENCH_GENERATOR_TENSOR_PARALLEL:-1}}
       - --enable-prefix-caching
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - qwen3_coder
       - --generation-config
       - vllm
       - --no-enable-log-requests

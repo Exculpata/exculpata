@@ -52,7 +52,9 @@ def mount(app, *, context, current, codes, require_csrf, committed):
                                sort: str = Form("", max_length=fields.MAX_KEY_CHARS),
                                dir: str = Form("", pattern="^(|asc|desc)$"),
                                unit: int = Form(1, ge=1, le=1_000_000),
+                               tiff_frame: str = Form("", pattern="^(|[1-9][0-9]{0,2})$"),
                                all_columns: str = Form("", pattern="^(|1)$")):
         return change(request, slug, lambda matter, actor, item: codes.record(
             matter.matter_id, item.document_id, code_id, actor, action), token=token, state={
-                "q": q.strip(), "sort": sort, "dir": dir, "view": view, "unit": unit, "all_columns": all_columns})
+                "q": q.strip(), "sort": sort, "dir": dir, "view": view, "unit": unit,
+                "tiff_frame": tiff_frame, "all_columns": all_columns})
