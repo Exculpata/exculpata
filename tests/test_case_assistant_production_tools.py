@@ -53,7 +53,7 @@ def test_list_sources_bates_and_inspect_production_end_to_end(tmp_path, monkeypa
     dat = dat_bytes(("BEGDOC", "ENDDOC", "NATIVEPATH"), [
         ("PROD0001", "PROD0002", "NATIVES\\alpha.pdf"), ("PROD0004", "PROD0004", "NATIVES\\beta.pdf"),
     ])
-    csv_load = b"path,begin_bates,end_bates\nVol1/NATIVES/alpha.pdf,PROD0001,PROD0002\nVol1/NATIVES/beta.pdf,PROD0004,PROD0004\n"
+    csv_load = b"path,begin_bates,end_bates\nVol1/NATIVES/alpha.pdf,PROD0001,PROD0002\nVol1/NATIVES/beta.pdf,PROD0004,PROD0004\nVol1/NATIVES/broken.pdf,SYN 0099,SYN 0099\n"
     with opened_review(tmp_path / "runtime") as review:
         _upload_volume(review, {
             "Vol1/NATIVES/alpha.pdf": pdf_bytes(["Alpha page 1.", "Alpha page 2."]),
@@ -117,7 +117,7 @@ def test_list_sources_bates_and_inspect_production_end_to_end(tmp_path, monkeypa
                 payload = json.loads(messages[-1]["content"])
                 n_src, n_pages = payload["total_sources"], payload["recorded_pdf_pages"]
                 fact_cite = payload["bates_gaps"]["facts"][0]["source_refs"][0]
-                text = (f"The production has {n_src} sources, {n_pages} recorded PDF pages, and Missing Bates PROD0003."
+                text = (f"The production has {n_src} sources, {n_pages} recorded PDF pages, Missing Bates PROD0003, and Bates labels not read: SYN 0099."
                         if self.cite_receipt else f"The witness held {n_src} shares.")
                 return AssistantTurn(content=json.dumps({
                     "answerable": True, "summary": text,

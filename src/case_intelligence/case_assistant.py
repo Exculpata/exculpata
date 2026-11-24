@@ -335,7 +335,10 @@ def verify_assistant_answer(
                 receipt = receipts.get(str(cid))
                 if receipt is None: valid = False; break
                 calc_ids.append(receipt.receipt_id); allowed_nums.add(_norm_num(receipt.result))
-                if receipt.operation != "count":
+                if receipt.operation == "production_summary":
+                    for inp in receipt.inputs:
+                        allowed_nums.update(_extract_nums(inp.value))
+                elif receipt.operation != "count":
                     for inp in receipt.inputs:
                         allowed_nums.add(_norm_num(inp.value))
                 if receipt.operation == "running_balance":
