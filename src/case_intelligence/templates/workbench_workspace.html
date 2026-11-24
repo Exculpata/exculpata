@@ -5,7 +5,7 @@
 {# Small numbered links after a statement or limitation, one per distinct passage. #}
 {% macro citation_refs(citations, keys, conversation_id, review_return) %}{% set shown = namespace(keys=[]) %}{% for citation in citations or [] %}{% set key = (citation_ref_key(citation)|string) %}{% if key not in shown.keys %}{% set shown.keys = shown.keys + [key] %}{% set number = keys.index(key) + 1 %}<a class="citation-ref" href="{{ citation_href(citation, matter.slug, conversation_id, entity_return_to=review_return) }}" aria-label="Source {{ number }}: {{ citation.source_name }} · {{ citation.location }}">{{ number }}</a>{% endif %}{% endfor %}{% endmacro %}
 {# A full citation link carrying its passage number, read aloud as "Source N". #}
-{% macro numbered_citation(citation, number, href) %}<a class="citation{% if citation.evidence_kind == 'transcript' %} media-citation{% endif %}" href="{{ href }}"><span class="citation-number"><span class="visually-hidden">Source </span>{{ number }}</span>{% if citation.evidence_kind == 'transcript' %}<span class="citation-action">▶ Play cited moment</span>{% endif %}<span class="citation-label">{{ citation.source_name }} · {{ citation.location }}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg></a>{% endmacro %}
+{% macro numbered_citation(citation, number, href) %}<a class="citation{% if citation.evidence_kind == 'transcript' %} media-citation{% endif %}" href="{{ href }}"><span class="citation-number"><span class="visually-hidden">Source </span>{{ number }}</span>{% if citation.evidence_kind == 'transcript' %}<span class="citation-action">▶ Play cited moment</span>{% endif %}<span class="citation-label">{{ citation.source_name }} · {{ citation.location }}{% if citation.bates_label %} · {{ citation.bates_label }}{% endif %}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg></a>{% endmacro %}
 
 {% block title %}{{ matter.display_name }} · {{ product_name }}{% endblock %}
 {% block body_class %}workspace-page {% if support %}support-is-open{% endif %} {% if support and support.evidence_kind == 'transcript' %}support-media-is-open{% endif %}{% endblock %}
@@ -130,7 +130,7 @@
         <article class="search-result">
           <div>
             <h3>{{ result.source_name }}</h3>
-            <span>{{ result.location }}</span>
+            <span>{{ result.location }}{% if result.bates_label %} · {{ result.bates_label }}{% endif %}</span>
           </div>
           <p>{{ result.excerpt }}</p>
           <a class="open-support-link" href="{{ citation_href(result, matter.slug, conversation.conversation_id, entity_return_to=request.url.path ~ '?' ~ request.url.query ~ '#search-results') }}">
@@ -460,7 +460,7 @@
                     <p>These retrieved passages need direct review; no generated answer is shown.</p>
                     <div class="citation-list">
                       {% for citation in message.payload.source_matches %}
-                      <a class="citation{% if citation.evidence_kind == 'transcript' %} media-citation{% endif %}" href="{{ citation_href(citation, matter.slug, conversation.conversation_id, entity_return_to=review_return) }}">{% if citation.evidence_kind == 'transcript' %}<span class="citation-action">▶ Play cited moment</span>{% endif %}{{ citation.source_name }} · {{ citation.location }}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg></a>
+                      <a class="citation{% if citation.evidence_kind == 'transcript' %} media-citation{% endif %}" href="{{ citation_href(citation, matter.slug, conversation.conversation_id, entity_return_to=review_return) }}">{% if citation.evidence_kind == 'transcript' %}<span class="citation-action">▶ Play cited moment</span>{% endif %}{{ citation.source_name }} · {{ citation.location }}{% if citation.bates_label %} · {{ citation.bates_label }}{% endif %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg></a>
                       {% endfor %}
                     </div>
                   </div>

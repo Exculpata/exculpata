@@ -567,7 +567,7 @@ def process_text_source(bench, run, decision, cancelled):
 
 def compact_locator(payload, ordinal, text):
     from .full_text_review_budget import MAX_LOCATOR_BYTES, TextReviewLimit
-    payload = {key: value for key, value in payload.items() if key != 'excerpt'}
+    payload = {key: value for key, value in payload.items() if key not in {'excerpt', 'bates_label'}}
     payload.update(locator_kind='text_unit', unit_ordinal=ordinal, unit_digest=hashlib.sha256(text.encode()).hexdigest())
     if len(json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode()) > MAX_LOCATOR_BYTES:
         raise TextReviewLimit('A full-text unit locator exceeds its storage limit. Its identity was not truncated; this source requires direct review.')
@@ -633,7 +633,8 @@ def _resolve_text_citations(bench, matter, values, *, hydrate, source_basis_dige
                     continue
                 canonical = bench._workflow_citation_payload(bench._citation(matter, bench._candidate(matter, document, unit, ordinal)))
                 current = compact_locator(canonical, ordinal, unit.text)
-                if current != expected.pop(ordinal):
+                saved = {key: val for key, val in expected.pop(ordinal).items() if key != 'bates_label'}
+                if current != saved:
                     raise WorkflowFailure('The cited source unit changed before its outcome could be saved.')
                 if hydrate:
                     if export_bytes_remaining is None:
