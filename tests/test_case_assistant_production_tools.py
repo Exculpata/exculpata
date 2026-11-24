@@ -128,6 +128,10 @@ def test_list_sources_bates_and_inspect_production_end_to_end(tmp_path, monkeypa
         assert inv.answerable is True and len(inv.findings) == 1 and inv.receipts
         converted = _result_to_answer(review.bench, inv, backend, "")
         assert converted.payload["answerable"] is True and len(converted.payload["claims"]) == 1 and converted.payload["case_assistant"]["receipts"]
+        assert any(c["document_id"] == csv_doc.document_id for c in converted.payload["claims"][0]["citations"])
+        assert overview["load_file_attempts_truncated"] is False and any(
+            r["document_id"] == csv_doc.document_id for r in overview["bates_gaps"]["facts"][0]["source_refs"]
+        )
 
         seen_lookups: list[int] = []
         orig_map = backend._document_bates_map

@@ -949,9 +949,18 @@ class MatterToolRuntime:
             ]
             for media, count in (data.get("counts_by_media_type") or {}).items():
                 calc_inputs.append(CalculationInput(f"media:{media}", str(int(count)), ref_tuple))
-            gaps_counts = (data.get("bates_gaps") or {}).get("counts") or {}
-            for key, count in gaps_counts.items():
-                calc_inputs.append(CalculationInput(f"bates_{key}", str(int(count)), ref_tuple))
+            gaps_block = data.get("bates_gaps") or {}
+            load_file_ref = gaps_block.get("load_file_ref")
+            bates_refs = ref_tuple
+            if isinstance(load_file_ref, Mapping) and load_file_ref.get("document_id"):
+                lf_sr = SourceRef(
+                    str(load_file_ref["document_id"]), str(load_file_ref.get("source_name") or ""),
+                    str(load_file_ref.get("location") or "Production summary"),
+                    str(load_file_ref.get("source_version_id") or ""), str(load_file_ref.get("excerpt_digest") or ""),
+                )
+                bates_refs = (lf_sr, *(r for r in ref_tuple if r.document_id != lf_sr.document_id))[:10]
+            for key, count in (gaps_block.get("counts") or {}).items():
+                calc_inputs.append(CalculationInput(f"bates_{key}", str(int(count)), bates_refs))
             receipt = CalculationReceipt(
                 receipt_id, "production_summary",
                 f"production_summary(sources={data.get('total_sources', 0)}, pdf_pages={data.get('recorded_pdf_pages', 0)})",

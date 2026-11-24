@@ -190,11 +190,19 @@ class WorkbenchToolBackend:
             for d in docs if PurePosixPath(d.relative_path.replace("\\", "/")).suffix.casefold() in load_suffixes
         ]
         attempts: list[dict[str, object]] = []
+        attempts_truncated = False
         connection = getattr(self.bench.workspace, "connection", None)
         lock = getattr(self.bench.workspace, "_lock", None)
         if document_ids is None and connection is not None and lock is not None:
             repo = ProductionRepository(ModuleDatabase(connection, lock))
-            for att in repo.attempts(matter_id, limit=50):
+            raw_attempts = list(repo.attempts(matter_id, limit=51))
+            attempts_truncated = len(raw_attempts) > 50
+            raw_attempts = raw_attempts[:50]
+            if load_file_document_id and not any(a.get("document_id") == load_file_document_id for a in raw_attempts):
+                targeted = repo.current_attempt(matter_id, load_file_document_id)
+                if targeted is not None:
+                    raw_attempts.append(targeted)
+            for att in raw_attempts:
                 attempts.append({
                     "attempt_id": att.get("attempt_id", ""),
                     "document_id": att.get("document_id", ""),
@@ -238,26 +246,29 @@ class WorkbenchToolBackend:
                 if target_doc is not None:
                     try:
                         built = summary.build_summary(matter.display_name, matter.slug, store, store.action_token(target_doc))
+                        load_ref = _register_doc_ref(target_doc)
                         fact_rows = []
                         for fact in built["facts"][:100]:
                             f_refs = [ref for cid, _ in (fact.get("cited_ids") or ()) if (ref := _register_doc_ref(by_doc_id.get(cid)))]
-                            if not f_refs and (load_ref := _register_doc_ref(target_doc)):
-                                f_refs.append(load_ref)
+                            if load_ref is not None and not any(r["document_id"] == load_ref["document_id"] for r in f_refs):
+                                f_refs.insert(0, load_ref)
                             fact_rows.append({"kind": fact["kind"], "text": fact["text"], "source_refs": f_refs})
                         bates_gaps = {
                             "computed": True, "load_file_document_id": target_doc.document_id,
-                            "load_file_name": target_doc.display_name, "notice": built["notice"],
-                            "counts": dict(built["counts"]), "facts": fact_rows, "truncated": len(built["facts"]) > 100,
+                            "load_file_name": target_doc.display_name, "load_file_ref": load_ref,
+                            "notice": built["notice"], "counts": dict(built["counts"]),
+                            "facts": fact_rows, "truncated": len(built["facts"]) > 100,
                         }
                     except (ValueError, csv.Error, UnicodeDecodeError, WorkspaceProblem, UploadProblem) as exc:
                         bates_gaps["reason"] = f"Bates gaps could not be computed for {target_doc.display_name}: {exc}"
         source_refs = [ref for doc in sorted(docs, key=lambda item: (item.display_name.casefold(), item.document_id))[:50] if (ref := _register_doc_ref(doc))]
         if target_doc is not None and not any(r["document_id"] == target_doc.document_id for r in source_refs) and (ref := _register_doc_ref(target_doc)):
-            source_refs.append(ref)
+            source_refs.insert(0, ref)
         return {
             "total_sources": len(docs), "counts_by_media_type": media_counts, "recorded_pdf_pages": pdf_pages,
             "unavailable_count": len(unavail), "unavailable_sources": unavail[:50], "load_files": load_files[:50],
-            "load_file_attempts": attempts, "bates_gaps": bates_gaps, "source_refs": source_refs,
+            "load_file_attempts": attempts, "load_file_attempts_truncated": attempts_truncated,
+            "bates_gaps": bates_gaps, "source_refs": source_refs,
         }
 
     def search_discovery(
