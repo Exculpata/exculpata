@@ -112,6 +112,24 @@ class WorkbenchToolBackend:
         )
         return self.bench._citation(matter, candidate, store=store)
 
+    def _document_bates_map(self, matter_id: str, doc_ids: Sequence[str]) -> dict[str, str]:
+        connection = getattr(self.bench.workspace, "connection", None)
+        lock = getattr(self.bench.workspace, "_lock", None)
+        if connection is None or lock is None or not doc_ids:
+            return {}
+        from .modules import ModuleDatabase
+        from .modules.discovery_review.identifiers import IdentifierRepository
+        from .modules.discovery_review.production import ProductionRepository
+
+        db = ModuleDatabase(connection, lock)
+        repo = ProductionRepository(db)
+        labels = repo.document_bates_ranges(matter_id, doc_ids)
+        assigned = IdentifierRepository(db, self.bench.workspace.membership).read(matter_id)
+        for doc_id in doc_ids:
+            if doc_id not in labels and doc_id in assigned and repo.document_status(matter_id, doc_id) == "complete":
+                labels[doc_id] = f"Team ID: {assigned[doc_id]}"
+        return labels
+
     def list_sources(
         self, matter_id: str, *, query: str = "", kind: str = "", status: str = "",
         offset: int = 0, limit: int = 50, document_ids: frozenset[str] | None = None,
@@ -120,8 +138,7 @@ class WorkbenchToolBackend:
         store = self.bench.source_store(matter)
         with store._lock:
             docs = list(store.documents.values())
-        rows: list[SourceSummary] = []
-        needle = query.strip().casefold()
+        filtered = []
         for doc in docs:
             if document_ids is not None and doc.document_id not in document_ids:
                 continue
@@ -131,15 +148,147 @@ class WorkbenchToolBackend:
                 continue
             if kind and kind.casefold() not in (doc_kind.casefold(), doc.media_type.casefold()):
                 continue
-            if needle and needle not in (doc.display_name + " " + doc.relative_path).casefold():
+            filtered.append((doc, norm_status, doc_kind))
+        filtered.sort(key=lambda item: (item[0].display_name.casefold(), item[0].document_id))
+        needle = query.strip().casefold()
+        if not needle:
+            window = filtered[offset:offset + limit]
+            bates_map = self._document_bates_map(matter_id, [doc.document_id for doc, _, _ in window])
+            rows = [
+                SourceSummary(
+                    document_id=doc.document_id, source_name=doc.display_name, kind=doc_kind,
+                    status=norm_status, page_count=doc.page_count or doc.total_units,
+                    path=doc.relative_path, bates=bates_map.get(doc.document_id, ""),
+                    status_detail="" if norm_status == "ready" else (doc.message or doc.state),
+                )
+                for doc, norm_status, doc_kind in window
+            ]
+            return rows, len(filtered)
+        bates_map = self._document_bates_map(matter_id, [doc.document_id for doc, _, _ in filtered])
+        matched: list[SourceSummary] = []
+        for doc, norm_status, doc_kind in filtered:
+            bates = bates_map.get(doc.document_id, "")
+            if needle not in (doc.display_name + " " + doc.relative_path + " " + bates).casefold():
                 continue
-            rows.append(SourceSummary(
+            matched.append(SourceSummary(
                 document_id=doc.document_id, source_name=doc.display_name, kind=doc_kind,
                 status=norm_status, page_count=doc.page_count or doc.total_units,
-                path=doc.relative_path, status_detail="" if norm_status == "ready" else (doc.message or doc.state),
+                path=doc.relative_path, bates=bates,
+                status_detail="" if norm_status == "ready" else (doc.message or doc.state),
             ))
-        rows.sort(key=lambda item: (item.source_name.casefold(), item.document_id))
-        return rows[offset:offset + limit], len(rows)
+        return matched[offset:offset + limit], len(matched)
+
+    def inspect_production(
+        self, matter_id: str, *, load_file_document_id: str = "", include_gaps: bool = True,
+        document_ids: frozenset[str] | None = None,
+    ) -> Mapping[str, object]:
+        from collections import Counter
+        import csv
+        from pathlib import PurePosixPath
+        from . import production_summary as summary
+        from .modules import ModuleDatabase
+        from .modules.discovery_review.production import ProductionRepository
+        from .pilot_uploads import UploadProblem
+
+        matter = self.bench._matter_by_id(matter_id)
+        store = self.bench.source_store(matter)
+        with store._lock:
+            docs = [d for d in store.documents.values() if document_ids is None or d.document_id in document_ids]
+        by_doc_id = {d.document_id: d for d in docs}
+        media_counts = dict(sorted(Counter(d.media_type for d in docs).items()))
+        pdf_pages = sum(int(d.page_count or 0) for d in docs if d.media_type == "application/pdf")
+        unavail = [
+            {"document_id": d.document_id, "source_name": d.display_name, "state": d.state,
+             "status_detail": d.message or d.state}
+            for d in docs if d.state != "ready"
+        ]
+        load_suffixes = frozenset({".csv", ".dat", ".opt", ".lfp", ".dii"})
+        load_files = [
+            {"document_id": d.document_id, "source_name": d.display_name,
+             "relative_path": d.relative_path, "state": d.state}
+            for d in docs if PurePosixPath(d.relative_path.replace("\\", "/")).suffix.casefold() in load_suffixes
+        ]
+        attempts: list[dict[str, object]] = []
+        attempts_truncated = False
+        connection = getattr(self.bench.workspace, "connection", None)
+        lock = getattr(self.bench.workspace, "_lock", None)
+        if document_ids is None and connection is not None and lock is not None:
+            repo = ProductionRepository(ModuleDatabase(connection, lock))
+            raw_attempts = list(repo.attempts(matter_id, limit=51))
+            attempts_truncated = len(raw_attempts) > 50
+            raw_attempts = raw_attempts[:50]
+            if load_file_document_id and not any(a.get("document_id") == load_file_document_id for a in raw_attempts):
+                targeted = repo.current_attempt(matter_id, load_file_document_id)
+                if targeted is not None:
+                    raw_attempts.append(targeted)
+            for att in raw_attempts:
+                attempts.append({
+                    "attempt_id": att.get("attempt_id", ""),
+                    "document_id": att.get("document_id", ""),
+                    "source_name": att.get("name", ""),
+                    "source_format": att.get("source_format", ""),
+                    "status": att.get("status", ""),
+                    "counts": dict(att.get("counts") or {}),
+                    "failure": att.get("file_failure") or "",
+                })
+        registered_refs: dict[str, dict[str, str]] = {}
+
+        def _register_doc_ref(doc) -> dict[str, str] | None:
+            if doc is None or doc.state != "ready":
+                return None
+            if doc.document_id in registered_refs:
+                return registered_refs[doc.document_id]
+            first_unit = next(iter(doc.iter_parsed_units()), None)
+            if first_unit is None:
+                return None
+            wc = self._unit_citation(matter, store, doc, 1, first_unit)
+            self._remember_citation(wc)
+            ref = {"document_id": wc.document_id, "source_name": wc.source_name, "location": wc.location,
+                   "source_version_id": wc.source_version_id, "excerpt_digest": wc.excerpt_digest}
+            registered_refs[doc.document_id] = ref
+            return ref
+
+        bates_gaps: dict[str, object] = {"computed": False, "notice": summary.NOTICE, "counts": {}, "facts": []}
+        target_doc = None
+        if include_gaps:
+            if document_ids is not None:
+                bates_gaps["reason"] = "Source-set filter active; load-file attempt coverage and Bates gap computation require full-matter scope."
+            else:
+                if load_file_document_id:
+                    target_doc = next((d for d in docs if d.document_id == load_file_document_id), None)
+                    if target_doc is None:
+                        raise AssistantToolError("Requested load file was not found in this matter.")
+                else:
+                    csv_docs = [d for d in docs if d.relative_path.lower().endswith(".csv")]
+                    if len(csv_docs) == 1:
+                        target_doc = csv_docs[0]
+                if target_doc is not None:
+                    try:
+                        built = summary.build_summary(matter.display_name, matter.slug, store, store.action_token(target_doc))
+                        load_ref = _register_doc_ref(target_doc)
+                        fact_rows = []
+                        for fact in built["facts"][:100]:
+                            f_refs = [ref for cid, _ in (fact.get("cited_ids") or ()) if (ref := _register_doc_ref(by_doc_id.get(cid)))]
+                            if load_ref is not None and not any(r["document_id"] == load_ref["document_id"] for r in f_refs):
+                                f_refs.insert(0, load_ref)
+                            fact_rows.append({"kind": fact["kind"], "text": fact["text"], "source_refs": f_refs})
+                        bates_gaps = {
+                            "computed": True, "load_file_document_id": target_doc.document_id,
+                            "load_file_name": target_doc.display_name, "load_file_ref": load_ref,
+                            "notice": built["notice"], "counts": dict(built["counts"]),
+                            "facts": fact_rows, "truncated": len(built["facts"]) > 100,
+                        }
+                    except (ValueError, csv.Error, UnicodeDecodeError, WorkspaceProblem, UploadProblem) as exc:
+                        bates_gaps["reason"] = f"Bates gaps could not be computed for {target_doc.display_name}: {exc}"
+        source_refs = [ref for doc in sorted(docs, key=lambda item: (item.display_name.casefold(), item.document_id))[:50] if (ref := _register_doc_ref(doc))]
+        if target_doc is not None and not any(r["document_id"] == target_doc.document_id for r in source_refs) and (ref := _register_doc_ref(target_doc)):
+            source_refs.insert(0, ref)
+        return {
+            "total_sources": len(docs), "counts_by_media_type": media_counts, "recorded_pdf_pages": pdf_pages,
+            "unavailable_count": len(unavail), "unavailable_sources": unavail[:50], "load_files": load_files[:50],
+            "load_file_attempts": attempts, "load_file_attempts_truncated": attempts_truncated,
+            "bates_gaps": bates_gaps, "source_refs": source_refs,
+        }
 
     def search_discovery(
         self, matter_id: str, query: str, *, mode: str = "hybrid",

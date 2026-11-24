@@ -15,6 +15,7 @@ from typing import Mapping, Protocol, Sequence
 ALLOWED_TOOLS = frozenset({
     "list_sources", "search_discovery", "read_source", "get_case_knowledge",
     "calculate", "query_table", "read_email_thread", "read_transcript_window",
+    "inspect_production",
 })
 ALLOWED_CALC_OPS = frozenset({"sum", "subtract", "multiply", "divide", "percent", "days_between", "running_balance"})
 ALLOWED_TABLE_AGG_OPS = frozenset({"count", "sum", "min", "max"})
@@ -141,6 +142,9 @@ TOOL_DEFINITIONS: tuple[dict[str, object], ...] = (
         "start_seconds": {"type": "number", "minimum": 0}, "end_seconds": {"type": "number", "minimum": 0},
         "offset": {"type": "integer", "minimum": 0},
         "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIST_LIMIT}}, required=("document_id",)),
+    _tool_spec("inspect_production", "Inspect production counts, failed files, DAT/OPT/LFP/DII load-file coverage, and Bates gaps.", {
+        "load_file_document_id": {"type": "string", "maxLength": 128},
+        "include_gaps": {"type": "boolean"}}),
 )
 
 def openai_tool_schemas() -> list[dict[str, object]]:
@@ -900,6 +904,77 @@ class MatterToolRuntime:
                     if isinstance(extra_loc, str) and extra_loc:
                         refs.append(SourceRef(data["document_id"], data["source_name"], extra_loc, ver))
             return dict(data), refs, None
+        if tool_name == "inspect_production":
+            raw_load = args.get("load_file_document_id", "")
+            if raw_load is None:
+                raw_load = ""
+            if not isinstance(raw_load, str) or len(raw_load) > 128:
+                raise AssistantToolError("'load_file_document_id' must be a string up to 128 characters.")
+            load_doc_id = raw_load.strip()
+            if load_doc_id:
+                load_doc_id = self._check_doc_scope(load_doc_id)
+            include_gaps = args.get("include_gaps", True)
+            if type(include_gaps) is not bool:
+                raise AssistantToolError("'include_gaps' must be a boolean.")
+            handler = getattr(self.backend, "inspect_production", None)
+            if not callable(handler):
+                raise AssistantToolError("Production inspection is not supported by this backend.")
+            data = dict(handler(
+                self.matter_id, load_file_document_id=load_doc_id,
+                include_gaps=include_gaps, document_ids=self.allowed_document_ids,
+            ))
+            raw_refs = list(data.get("source_refs") or ())
+            for fact in (data.get("bates_gaps") or {}).get("facts") or ():
+                if isinstance(fact, Mapping):
+                    raw_refs.extend(fact.get("source_refs") or ())
+            def _to_sr(r: Mapping[str, object]) -> SourceRef:
+                return SourceRef(
+                    str(r["document_id"]), str(r.get("source_name") or ""),
+                    str(r.get("location") or "Production summary"),
+                    str(r.get("source_version_id") or ""), str(r.get("excerpt_digest") or ""),
+                )
+            refs, seen_keys = [], set()
+            for r in raw_refs:
+                if not isinstance(r, Mapping) or not r.get("document_id"):
+                    continue
+                ref = _to_sr(r)
+                key = (ref.document_id, ref.location, ref.source_version_id, ref.excerpt_digest)
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    refs.append(ref)
+            receipt_id = f"calc-{len(self._receipts) + 1}"
+            ref_tuple = tuple(refs[:10])
+            calc_inputs = [
+                CalculationInput("total_sources", str(int(data.get("total_sources") or 0)), ref_tuple),
+                CalculationInput("recorded_pdf_pages", str(int(data.get("recorded_pdf_pages") or 0)), ref_tuple),
+                CalculationInput("unavailable_count", str(int(data.get("unavailable_count") or 0)), ref_tuple),
+            ]
+            for media, count in (data.get("counts_by_media_type") or {}).items():
+                calc_inputs.append(CalculationInput(f"media:{media}", str(int(count)), ref_tuple))
+            gaps_block = data.get("bates_gaps") or {}
+            load_file_ref = gaps_block.get("load_file_ref")
+            bates_refs = ref_tuple
+            if isinstance(load_file_ref, Mapping) and load_file_ref.get("document_id"):
+                lf_sr = _to_sr(load_file_ref)
+                bates_refs = (lf_sr, *(r for r in ref_tuple if r.document_id != lf_sr.document_id))[:10]
+            for key, count in (gaps_block.get("counts") or {}).items():
+                calc_inputs.append(CalculationInput(f"bates_{key}", str(int(count)), bates_refs))
+            for idx, fact in enumerate(gaps_block.get("facts") or ()):
+                if isinstance(fact, Mapping) and fact.get("text"):
+                    f_srs = tuple(_to_sr(r) for r in (fact.get("source_refs") or ()) if isinstance(r, Mapping) and r.get("document_id"))
+                    calc_inputs.append(CalculationInput(f"bates_fact:{idx + 1}", str(fact["text"]), f_srs or bates_refs))
+            receipt = CalculationReceipt(
+                receipt_id, "production_summary",
+                f"production_summary(sources={data.get('total_sources', 0)}, pdf_pages={data.get('recorded_pdf_pages', 0)})",
+                str(int(data.get("total_sources") or 0)), "sources", tuple(calc_inputs),
+            )
+            self._receipts[receipt_id] = receipt
+            data["calculation"] = {
+                "receipt_id": receipt_id, "operation": receipt.operation, "expression": receipt.expression,
+                "result": receipt.result, "unit": receipt.unit,
+                "inputs": [{"label": i.label, "value": i.value} for i in receipt.inputs],
+            }
+            return data, refs, receipt
         receipt_id = f"calc-{len(self._receipts) + 1}"
         precision = _int_arg(args, "precision", 6, minimum=0, maximum=12)
         receipt = run_calculation(str(args.get("operation", "")), inputs=args.get("inputs", ()),
