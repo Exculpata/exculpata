@@ -40,12 +40,12 @@ Implementation modules:
 
 ## Matter-scoped read-only tools
 
-The assistant selects from eight fixed, read-only, allowlisted tools (unknown
+The assistant selects from nine fixed, read-only, allowlisted tools (unknown
 tools, cross-matter reads, unauthorized actors, and dynamic code execution fail closed):
 
 | Tool | Purpose |
 | --- | --- |
-| `list_sources` | Enumerate matter sources, status, and unreadable/failed files so record gaps are surfaced honestly. |
+| `list_sources` | Enumerate matter sources, produced Bates or Team IDs, status, and unreadable/failed files so record gaps are surfaced honestly. |
 | `search_discovery` | Run matter-scoped discovery search across indexed passages and return traceable references. |
 | `read_source` | Read exact original source spans with source/version identity preserved. |
 | `get_case_knowledge` | Read saved reviewer-confirmed case memory (case theory, entities, assertions, timelines) for the matter. |
@@ -53,6 +53,7 @@ tools, cross-matter reads, unauthorized actors, and dynamic code execution fail 
 | `query_table` | Filter, sort, and inspect structured CSV/spreadsheet tables within the matter without loading whole workbooks into prose. |
 | `read_email_thread` | Read chronologically ordered messages across a matter email thread with attachment-coverage notices preserved. |
 | `read_transcript_window` | Read timestamped windows around media transcript segments with speaker labels and provenance preserved. |
+| `inspect_production` | Inspect production counts by media type, failed/unreadable sources, DAT/OPT/LFP/DII load-file coverage, and lossless Bates-gap findings within authorized scope. |
 
 ## Work trace and live stages
 

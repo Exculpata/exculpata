@@ -15,6 +15,7 @@ from typing import Mapping, Protocol, Sequence
 ALLOWED_TOOLS = frozenset({
     "list_sources", "search_discovery", "read_source", "get_case_knowledge",
     "calculate", "query_table", "read_email_thread", "read_transcript_window",
+    "inspect_production",
 })
 ALLOWED_CALC_OPS = frozenset({"sum", "subtract", "multiply", "divide", "percent", "days_between", "running_balance"})
 ALLOWED_TABLE_AGG_OPS = frozenset({"count", "sum", "min", "max"})
@@ -141,6 +142,9 @@ TOOL_DEFINITIONS: tuple[dict[str, object], ...] = (
         "start_seconds": {"type": "number", "minimum": 0}, "end_seconds": {"type": "number", "minimum": 0},
         "offset": {"type": "integer", "minimum": 0},
         "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIST_LIMIT}}, required=("document_id",)),
+    _tool_spec("inspect_production", "Inspect production counts, failed files, DAT/OPT/LFP/DII load-file coverage, and Bates gaps.", {
+        "load_file_document_id": {"type": "string", "maxLength": 128},
+        "include_gaps": {"type": "boolean"}}),
 )
 
 def openai_tool_schemas() -> list[dict[str, object]]:
@@ -900,6 +904,26 @@ class MatterToolRuntime:
                     if isinstance(extra_loc, str) and extra_loc:
                         refs.append(SourceRef(data["document_id"], data["source_name"], extra_loc, ver))
             return dict(data), refs, None
+        if tool_name == "inspect_production":
+            raw_load = args.get("load_file_document_id", "")
+            if raw_load is None:
+                raw_load = ""
+            if not isinstance(raw_load, str) or len(raw_load) > 128:
+                raise AssistantToolError("'load_file_document_id' must be a string up to 128 characters.")
+            load_doc_id = raw_load.strip()
+            if load_doc_id:
+                load_doc_id = self._check_doc_scope(load_doc_id)
+            include_gaps = args.get("include_gaps", True)
+            if type(include_gaps) is not bool:
+                raise AssistantToolError("'include_gaps' must be a boolean.")
+            handler = getattr(self.backend, "inspect_production", None)
+            if not callable(handler):
+                raise AssistantToolError("Production inspection is not supported by this backend.")
+            data = handler(
+                self.matter_id, load_file_document_id=load_doc_id,
+                include_gaps=include_gaps, document_ids=self.allowed_document_ids,
+            )
+            return dict(data), (), None
         receipt_id = f"calc-{len(self._receipts) + 1}"
         precision = _int_arg(args, "precision", 6, minimum=0, maximum=12)
         receipt = run_calculation(str(args.get("operation", "")), inputs=args.get("inputs", ()),

@@ -405,6 +405,7 @@ _TOOL_STAGE_LABELS: Mapping[str, str] = {
     "query_table": "Filtering and aggregating tabular records...",
     "read_email_thread": "Reading linked email thread...",
     "read_transcript_window": "Inspecting media transcript window...",
+    "inspect_production": "Inspecting production load files and Bates coverage...",
     "get_case_knowledge": "Checking saved case memory...",
     "calculate": "Running exact calculation over cited values...",
 }
@@ -449,8 +450,9 @@ class CaseAssistant:
                     raise
                 except AssistantToolError as exc:
                     result = {"error": str(exc)}
-                if call.name == "list_sources":
-                    unavailable = list(result.get("unavailable_sources") or ())
+                if call.name in {"list_sources", "inspect_production"}:
+                    if result.get("unavailable_sources"):
+                        unavailable = list(result.get("unavailable_sources") or ())
                     unavailable_count = max(unavailable_count, int(result.get("unavailable_count") or len(unavailable)))
                 elif call.name == "search_discovery":
                     unavailable_count = max(unavailable_count, int(result.get("excluded_unavailable_count") or 0))
