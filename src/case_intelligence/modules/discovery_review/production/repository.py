@@ -1346,6 +1346,45 @@ class ProductionRepository:
             view.identifier = self.identifier_stamp(matter_id)
         return view
 
+    def document_bates_ranges(self, matter_id: str, document_ids=None) -> dict[str, str]:
+        """Return exact produced Bates range per document when uniquely matched."""
+        ids = None if document_ids is None else tuple(dict.fromkeys(str(d) for d in document_ids if d))
+        if ids is not None and not ids:
+            return {}
+        found: dict[str, set[str]] = {}
+        chunks = [None] if ids is None else [ids[i:i + 200] for i in range(0, len(ids), 200)]
+        with self.db.lock:
+            for chunk in chunks:
+                if chunk is None:
+                    rows = tuple(self.execute(
+                        "SELECT r.document_id,r.semantic_json FROM workbench_discovery_dat_record r "
+                        "JOIN workbench_discovery_production p ON p.matter_id=r.matter_id AND p.attempt_id=r.attempt_id "
+                        "WHERE r.matter_id=? AND p.status='complete' AND r.association_status='matched' "
+                        "AND r.generation=p.generation AND r.document_id<>''",
+                        (matter_id,),
+                    ))
+                else:
+                    marks = ",".join("?" for _ in chunk)
+                    rows = tuple(self.execute(
+                        "SELECT r.document_id,r.semantic_json FROM workbench_discovery_dat_record r "
+                        "JOIN workbench_discovery_production p ON p.matter_id=r.matter_id AND p.attempt_id=r.attempt_id "
+                        f"WHERE r.matter_id=? AND r.document_id IN ({marks}) AND p.status='complete' "
+                        "AND r.association_status='matched' AND r.generation=p.generation",
+                        (matter_id, *chunk),
+                    ))
+                for doc_id, semantic_json in rows:
+                    try:
+                        raw = json.loads(semantic_json)
+                    except (TypeError, ValueError):
+                        continue
+                    pairs = dict(raw) if isinstance(raw, list) else (raw if isinstance(raw, Mapping) else {})
+                    begin = str(pairs.get("begin_bates") or "").strip()
+                    end = str(pairs.get("end_bates") or "").strip()
+                    if begin:
+                        label = f"{begin}\u2013{end}" if end and end != begin else begin
+                        found.setdefault(str(doc_id), set()).add(label)
+        return {doc_id: next(iter(labels)) for doc_id, labels in found.items() if len(labels) == 1}
+
 
 class ProjectionWindowFull(RuntimeError):
     """Yield before a speculative read would consume the publication reserve."""

@@ -764,15 +764,19 @@ class WorkbenchCitation:
     line_start: int | None
     line_end: int | None
     evidence_kind: str
+    bates_label: str = ""
 
     def staff_payload(self) -> dict[str, str]:
-        return {
+        payload = {
             "source_name": self.source_name,
             "location": self.location,
             "href": self.href,
             "support_token": self.support_token,
             "evidence_kind": self.evidence_kind,
         }
+        if self.bates_label:
+            payload["bates_label"] = self.bates_label
+        return payload
 
 
 @dataclass(frozen=True)
@@ -2567,6 +2571,23 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             (cls._support_token(candidate), cls._legacy_support_token(candidate))
         )
 
+    def _document_bates_label(self, matter_id: str, document_id: str) -> str:
+        """Resolve exact produced Bates range or Team ID read-only via discovery repositories."""
+        connection = getattr(self.workspace, "connection", None)
+        lock = getattr(self.workspace, "_lock", None)
+        if connection is None or lock is None or not document_id:
+            return ""
+        from .modules import ModuleDatabase
+        from .modules.discovery_review.identifiers import IdentifierRepository
+        from .modules.discovery_review.production import ProductionRepository
+
+        db = ModuleDatabase(connection, lock)
+        produced = ProductionRepository(db).document_bates_ranges(matter_id, (document_id,)).get(document_id, "")
+        if produced:
+            return f"Bates: {produced}"
+        assigned = IdentifierRepository(db, self.workspace.membership).read_documents(matter_id, (document_id,)).get(document_id, "")
+        return f"Team ID: {assigned}" if assigned else ""
+
     def _citation(self, matter: MatterRecord, candidate: Candidate, store: PilotStore | None = None) -> WorkbenchCitation:
         evidence_kind = "document"
         try:
@@ -2600,6 +2621,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             candidate.line_start,
             candidate.line_end,
             evidence_kind,
+            self._document_bates_label(matter.matter_id, candidate.document_id),
         )
 
     def _validate_candidates(
@@ -5179,7 +5201,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
     def _workflow_citation_payload(citation: WorkbenchCitation) -> dict[str, object]:
         """Persist enough locator state to validate and reopen derived work product."""
 
-        return {
+        payload: dict[str, object] = {
             "source_name": citation.source_name,
             "location": citation.location,
             "excerpt": citation.excerpt,
@@ -5195,6 +5217,9 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             "line_end": citation.line_end,
             "evidence_kind": citation.evidence_kind,
         }
+        if citation.bates_label:
+            payload["bates_label"] = citation.bates_label
+        return payload
 
     @staticmethod
     def _workflow_citation(value: Mapping[str, object]) -> WorkbenchCitation:
@@ -5213,6 +5238,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             int(value["line_start"]) if value.get("line_start") is not None else None,
             int(value["line_end"]) if value.get("line_end") is not None else None,
             str(value["evidence_kind"]),
+            str(value.get("bates_label") or ""),
         )
 
     def _current_workflow_citation(
