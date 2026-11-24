@@ -77,6 +77,24 @@ def test_bates_and_team_id_propagate_into_citations_without_altering_tokens(tmp_
         hydrated = resolve_text_report_citations(review.bench, review.matter, [legacy_locator])
         assert hydrated[0]["bates_label"] == "Bates: PROD0001–PROD0003"
 
+        # Shared assistant fragment renders bates_label on saved claim citations.
+        conv = review.bench.workspace.create_conversation(review.matter.matter_id, "Bates Check", actor_id=ACTOR)
+        saved_cite = review.bench._saved_answer_citation_payload(by_doc[memo.document_id])
+        review.bench.workspace.append_message(
+            review.matter.matter_id, conv.conversation_id, "assistant", "Harbor note found.",
+            payload={"kind": "generated", "answerable": True, "claims": [{"text": "Harbor note.", "citations": [saved_cite]}]},
+        )
+        assistant_page = review.client.get(f"/matters/{review.matter.slug}/assistant", params={"conversation": conv.conversation_id})
+        assert assistant_page.status_code == 200 and "Bates: PROD0001–PROD0003" in assistant_page.text
+
+        # Removing the DAT load file immediately stops publishing stale produced Bates labels.
+        dat_token = review.token("Vol1/DATA/records.dat")
+        removed = review.client.post(f"/matters/{review.matter.slug}/sources/{dat_token}/remove", follow_redirects=False)
+        assert removed.status_code in {200, 303}
+        assert repo.document_bates_ranges(review.matter.matter_id, [memo.document_id]) == {}
+        after_hits = {hit.document_id: hit for hit in review.bench.search(review.matter, "harbor", limit=10)}
+        assert after_hits[memo.document_id].bates_label == ""
+
         # Cross-matter isolation: another matter never sees these Bates labels.
         other = review.bench.create_matter("isolated-matter", "Isolated Matter", ACTOR)
         assert repo.document_bates_ranges(other.matter_id, [memo.document_id]) == {}

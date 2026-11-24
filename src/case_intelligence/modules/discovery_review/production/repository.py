@@ -1347,7 +1347,7 @@ class ProductionRepository:
         return view
 
     def document_bates_ranges(self, matter_id: str, document_ids=None) -> dict[str, str]:
-        """Return exact produced Bates range per document when uniquely matched."""
+        """Return exact produced Bates range per document when uniquely matched and fresh."""
         ids = None if document_ids is None else tuple(dict.fromkeys(str(d) for d in document_ids if d))
         if ids is not None and not ids:
             return {}
@@ -1355,24 +1355,30 @@ class ProductionRepository:
         chunks = [None] if ids is None else [ids[i:i + 200] for i in range(0, len(ids), 200)]
         with self.db.lock:
             for chunk in chunks:
+                base_sql = (
+                    "SELECT r.document_id,r.semantic_json,p.input_revision "
+                    "FROM workbench_discovery_dat_record r "
+                    "JOIN workbench_discovery_production p "
+                    "ON p.matter_id=r.matter_id AND p.attempt_id=r.attempt_id "
+                    "JOIN workbench_source_catalog c "
+                    "ON c.matter_id=p.matter_id AND c.document_id=p.document_id "
+                    "AND c.version_id=p.version_id AND c.source_state='ready' "
+                    "WHERE r.matter_id=? AND p.status='complete' "
+                    "AND r.association_status='matched' AND r.generation=p.generation "
+                )
                 if chunk is None:
-                    rows = tuple(self.execute(
-                        "SELECT r.document_id,r.semantic_json FROM workbench_discovery_dat_record r "
-                        "JOIN workbench_discovery_production p ON p.matter_id=r.matter_id AND p.attempt_id=r.attempt_id "
-                        "WHERE r.matter_id=? AND p.status='complete' AND r.association_status='matched' "
-                        "AND r.generation=p.generation AND r.document_id<>''",
-                        (matter_id,),
-                    ))
+                    rows = tuple(self.execute(base_sql + "AND r.document_id<>''", (matter_id,)))
                 else:
                     marks = ",".join("?" for _ in chunk)
-                    rows = tuple(self.execute(
-                        "SELECT r.document_id,r.semantic_json FROM workbench_discovery_dat_record r "
-                        "JOIN workbench_discovery_production p ON p.matter_id=r.matter_id AND p.attempt_id=r.attempt_id "
-                        f"WHERE r.matter_id=? AND r.document_id IN ({marks}) AND p.status='complete' "
-                        "AND r.association_status='matched' AND r.generation=p.generation",
-                        (matter_id, *chunk),
-                    ))
-                for doc_id, semantic_json in rows:
+                    rows = tuple(self.execute(base_sql + f"AND r.document_id IN ({marks})", (matter_id, *chunk)))
+                for doc_id, semantic_json, input_rev in rows:
+                    try:
+                        parsed_rev = json.loads(input_rev) if input_rev and input_rev.startswith("{") else {}
+                    except (TypeError, ValueError):
+                        parsed_rev = {}
+                    deps = parsed_rev.get("dependencies", {}) if isinstance(parsed_rev, Mapping) else {}
+                    if isinstance(deps, Mapping) and deps.get("paused"):
+                        continue
                     try:
                         raw = json.loads(semantic_json)
                     except (TypeError, ValueError):

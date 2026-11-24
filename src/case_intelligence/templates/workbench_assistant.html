@@ -95,7 +95,7 @@
                 <div class="assistant-citations cited-context-list">
                   {% for citation in claim.citations %}
                   <div class="cited-context-item">
-                    <a href="{{ citation_href(citation, matter.slug, assistant.conversation.conversation_id, entity_return_to=source_review_return_href(matter.slug, request.query_params.get('entity_return_to', ''))) }}">{{ citation.source_name }} · {{ citation.location }}</a>
+                    <a href="{{ citation_href(citation, matter.slug, assistant.conversation.conversation_id, entity_return_to=source_review_return_href(matter.slug, request.query_params.get('entity_return_to', ''))) }}">{{ citation.source_name }} · {{ citation.location }}{% if citation.bates_label %} · <span class="bates-chip">{{ citation.bates_label }}</span>{% endif %}</a>
                     {{ cited_context(matter.slug, assistant.conversation.conversation_id, message.message_id, 'claim-' ~ claim_index, loop.index0, citation) }}
                   </div>
                   {% endfor %}
@@ -137,7 +137,7 @@
               <div class="assistant-citations cited-context-list">
                 {% for citation in message.payload.limitation.citations %}
                 <div class="cited-context-item">
-                  <a href="{{ citation_href(citation, matter.slug, assistant.conversation.conversation_id, entity_return_to=source_review_return_href(matter.slug, request.query_params.get('entity_return_to', ''))) }}">{{ citation.source_name }} · {{ citation.location }}</a>
+                  <a href="{{ citation_href(citation, matter.slug, assistant.conversation.conversation_id, entity_return_to=source_review_return_href(matter.slug, request.query_params.get('entity_return_to', ''))) }}">{{ citation.source_name }} · {{ citation.location }}{% if citation.bates_label %} · <span class="bates-chip">{{ citation.bates_label }}</span>{% endif %}</a>
                   {{ cited_context(matter.slug, assistant.conversation.conversation_id, message.message_id, 'limitation', loop.index0, citation) }}
                 </div>
                 {% endfor %}
@@ -176,7 +176,7 @@
             {% endif %}
           {% elif message.payload.kind == 'not-supported' %}
             <p>{{ rejected_answer_notice(message.payload.missing_information or message.content) }}</p>
-            {% if message.payload.source_matches %}<span class="assistant-citations">{% for citation in message.payload.source_matches[:3] %}<a href="{{ citation_href(citation, matter.slug, assistant.conversation.conversation_id, entity_return_to=source_review_return_href(matter.slug, request.query_params.get('entity_return_to', ''))) }}">Review {{ citation.source_name }} · {{ citation.location }}</a>{% endfor %}</span>{% endif %}
+            {% if message.payload.source_matches %}<span class="assistant-citations">{% for citation in message.payload.source_matches[:3] %}<a href="{{ citation_href(citation, matter.slug, assistant.conversation.conversation_id, entity_return_to=source_review_return_href(matter.slug, request.query_params.get('entity_return_to', ''))) }}">Review {{ citation.source_name }} · {{ citation.location }}{% if citation.bates_label %} · <span class="bates-chip">{{ citation.bates_label }}</span>{% endif %}</a>{% endfor %}</span>{% endif %}
           {% else %}
             <p>{{ message.content }}</p>
           {% endif %}
