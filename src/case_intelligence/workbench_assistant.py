@@ -969,13 +969,46 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
                         retrieval_source_fingerprint=source_fingerprint)
 
 
+class _AdmittedAssistantClient:
+    """Acquire shared GroundedGenerationService._admission around each assistant model turn."""
+
+    def __init__(self, inner: AssistantModelClient, service) -> None:
+        self._inner = inner
+        self._service = service
+
+    def complete_turn(
+        self,
+        messages: Sequence[Mapping[str, object]],
+        *,
+        tools: Sequence[Mapping[str, object]],
+    ) -> AssistantTurn:
+        admission = getattr(self._service, "_admission", None)
+        if admission is None:
+            return self._inner.complete_turn(messages, tools=tools)
+        if not admission.acquire(timeout=30):
+            raise GenerationUnavailable("The answer queue is full. Try again in a moment.")
+        try:
+            lock = getattr(self._service, "_counter_lock", None)
+            if lock is not None:
+                with lock:
+                    self._service.requests_started += 1
+            turn = self._inner.complete_turn(messages, tools=tools)
+            if lock is not None:
+                with lock:
+                    self._service.requests_completed += 1
+            return turn
+        finally:
+            admission.release()
+
+
 def run_workbench_assistant_job(
     bench, job, matter, *, prior: Sequence[object], scoped_document_ids: frozenset[str] | None,
     retrieval_boundary: Mapping[str, str], report_stage: Callable[[str, str], None],
     cancelled: Callable[[], bool], notebook_items: Sequence[object] | None = None,
 ) -> AnswerResult:
     """Execute one AnswerJobRecord through the tool-using CaseAssistant."""
-    client, tool_style = assistant_client_from_generator(getattr(bench.generator, "client", None))
+    raw_client, tool_style = assistant_client_from_generator(getattr(bench.generator, "client", None))
+    client = _AdmittedAssistantClient(raw_client, bench.generator)
     backend = WorkbenchToolBackend(bench, job.actor_id, allowed_notebook_items=notebook_items)
     runtime = MatterToolRuntime(matter.matter_id, job.actor_id, backend, allowed_document_ids=scoped_document_ids)
     history = tuple((m.role, m.content) for m in prior[-8:])

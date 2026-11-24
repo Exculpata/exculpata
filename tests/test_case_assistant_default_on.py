@@ -105,3 +105,65 @@ def test_http_case_assistant_runs_without_env_flag_and_zero_endpoint_stays_safe(
         )
         assert page.status_code == 200
         assert "does not support the Case Assistant tool loop" not in (job.get("error") or "") + page.text
+
+
+def test_bundled_vllm_tool_calling_flags_and_shared_generation_admission():
+    from pathlib import Path
+    import threading
+    from types import SimpleNamespace
+    from case_intelligence.case_assistant import OpenAIAssistantClient
+    from case_intelligence.workbench_assistant import _AdmittedAssistantClient
+
+    # P1: Bundled vLLM generator service enables auto tool choice and a Qwen3.5 tool-call parser.
+    compose = (Path(__file__).resolve().parents[1] / "compose.yaml").read_text(encoding="utf-8")
+    generator_block = compose.split("\n  generator:\n", 1)[1].split("\n  transcription-api:\n", 1)[0]
+    assert "--enable-auto-tool-choice" in generator_block
+    assert "--tool-call-parser" in generator_block
+    assert "qwen3_coder" in generator_block
+
+    # Verify OpenAIAssistantClient sends tool_choice="auto" and parses structured tool_calls.
+    import io
+    captured: list[dict] = []
+    class _Resp(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+    def _opener(req, timeout=None):
+        captured.append(json.loads(req.data.decode("utf-8")))
+        body = json.dumps({"choices": [{"message": {"tool_calls": [{"id": "tc1", "function": {"name": "list_sources", "arguments": "{}"}}]}}]}).encode()
+        return _Resp(body)
+    wire = OpenAIAssistantClient("http://127.0.0.1:8000", "exculpata-qwen35-4b", opener=SimpleNamespace(open=_opener))
+    turn = wire.complete_turn([{"role": "user", "content": "Check sources"}], tools=[{"type": "function", "function": {"name": "list_sources"}}])
+    assert captured[0]["tool_choice"] == "auto" and turn.tool_calls[0].name == "list_sources"
+
+    # P2: _AdmittedAssistantClient enforces GroundedGenerationService._admission concurrency limit.
+    active, peak = 0, 0
+    guard = threading.Lock()
+    entered = threading.Event()
+    release = threading.Event()
+
+    class _BlockingClient:
+        def complete_turn(self, messages, *, tools):
+            nonlocal active, peak
+            with guard:
+                active += 1
+                peak = max(peak, active)
+            if not entered.is_set():
+                entered.set()
+                release.wait(timeout=2)
+            with guard:
+                active -= 1
+            return AssistantTurn(content="{}")
+
+    service = SimpleNamespace(_admission=threading.BoundedSemaphore(1), _counter_lock=threading.Lock(),
+                              requests_started=0, requests_completed=0)
+    admitted = _AdmittedAssistantClient(_BlockingClient(), service)
+    t1 = threading.Thread(target=lambda: admitted.complete_turn([], tools=[]))
+    t2 = threading.Thread(target=lambda: admitted.complete_turn([], tools=[]))
+    t1.start()
+    assert entered.wait(timeout=2)
+    t2.start()
+    release.set()
+    t1.join(timeout=2)
+    t2.join(timeout=2)
+    assert peak == 1 and service.requests_started == 2 and service.requests_completed == 2
+
