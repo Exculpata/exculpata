@@ -470,8 +470,12 @@ def validate_runtime(runtime):
 def request_settings(payload, adapter):
     if adapter == "OllamaGenerator":
         thinking, total = payload["think"], payload["options"]["num_predict"]
-    else:
+    elif "chat_template_kwargs" in payload:
         thinking, total = payload["chat_template_kwargs"]["enable_thinking"], payload["max_tokens"]
+    elif "max_completion_tokens" in payload:
+        thinking, total = True, payload["max_completion_tokens"]
+    else:
+        raise ValueError("Capture request settings require thinking and token limit fields.")
     if type(thinking) is not bool or type(total) is not int:
         raise ValueError("Capture request settings require a boolean and an integer token limit.")
     reasoning = expected_request_settings(thinking)["reasoning_tokens"]

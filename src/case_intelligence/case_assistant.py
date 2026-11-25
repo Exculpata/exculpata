@@ -14,7 +14,7 @@ from .case_assistant_tools import (
 )
 from .generation import DEFAULT_TIMEOUT_SECONDS, _bounded_assistant_request, _validate_endpoint
 from .generation_errors import GenerationUnavailable
-from .generator_schema import ToolRequestRefused
+from .generator_schema import ToolRequestRefused, openai_wire_dialect
 
 _LEGACY_TOOL_KEYS = frozenset({"functions", "function_call", "parallel_tool_calls"})
 _NUMBER_RE = re.compile(
@@ -138,12 +138,27 @@ class _BaseAssistantClient:
 class OpenAIAssistantClient(_BaseAssistantClient):
     """OpenAI-compatible chat-with-tools adapter routed through the generator egress boundary."""
 
+    def __init__(
+        self,
+        endpoint: str,
+        model: str,
+        *,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        api_key: str = "",
+        opener=None,
+        schema_server: str = "vllm",
+    ) -> None:
+        super().__init__(endpoint, model, timeout=timeout, api_key=api_key, opener=opener)
+        self.schema_server = openai_wire_dialect(schema_server).server
+
     def complete_turn(self, messages: Sequence[Mapping[str, object]], *, tools: Sequence[Mapping[str, object]]) -> AssistantTurn:
+        dialect = openai_wire_dialect(self.schema_server)
         payload: dict[str, object] = {
             "model": self.model,
             "messages": _serialize_messages_for_provider(messages, provider="openai"),
-            "temperature": 0.1,
         }
+        if dialect.send_temperature:
+            payload["temperature"] = 0.1
         if tools:
             payload["tools"], payload["tool_choice"] = list(tools), "auto"
         response = _bounded_assistant_request(

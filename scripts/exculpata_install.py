@@ -580,7 +580,7 @@ def _collect_external_generator(console: Console, args: argparse.Namespace) -> G
         return None
     if args.non_interactive or args.external_generator or args.external_generator_url or args.external_generator_model:
         return _external_from_args(args)
-    print("Answer generation can use your Ollama, llama.cpp, LM Studio, or vLLM API.")
+    print("Answer generation can use your Ollama, llama.cpp, LM Studio, vLLM, or OpenAI-compatible API.")
     print("The server supplies the model.")
     choice = _choose(
         "Connect an answer server",

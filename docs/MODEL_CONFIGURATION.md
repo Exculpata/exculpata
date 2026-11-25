@@ -20,7 +20,7 @@ contracts. Run `./install doctor --root <node-root>` after applying changes.
 
 | Capability | Environment prefix | What the app sends and receives |
 |---|---|---|
-| Answer generation | `CASE_INTELLIGENCE_GENERATOR_` | Sends the question and cited passages to Ollama, llama.cpp, LM Studio or vLLM and validates the structured answer. [Answer endpoints](#existing-answer-endpoints) |
+| Answer generation | `CASE_INTELLIGENCE_GENERATOR_` | Sends the question and cited passages to Ollama, llama.cpp, LM Studio, vLLM, or a standard OpenAI-compatible API and validates the structured answer. [Answer endpoints](#existing-answer-endpoints) |
 | Embeddings | `CASE_INTELLIGENCE_EMBEDDING_` | Sends passage or query text to `/v1/embeddings`. The index requires 768-dimensional vectors and a compatible recorded identity. [Retrieval endpoints](#optional-embedding-and-rerank-endpoints) |
 | Reranking | `CASE_INTELLIGENCE_RERANK_` | Sends a query and candidate passages to `/v1/rerank` and ranks matches using the returned relevance scores. [Retrieval endpoints](#optional-embedding-and-rerank-endpoints) |
 | Speech recognition | `CASE_INTELLIGENCE_ASR_` | Sends the recording to `/v1/audio/transcriptions` and receives source-language text with timestamped segments. [Transcription contract](#check-a-speech-recognition-api) |
@@ -61,7 +61,7 @@ not. The two configured backends are:
 | Backend | Contract the code calls | Required settings |
 |---|---|---|
 | `ollama` | `GET {URL}/api/tags` and `POST {URL}/api/chat` with the answer JSON schema as `format` | `CASE_INTELLIGENCE_GENERATOR_URL`, `CASE_INTELLIGENCE_GENERATOR_MODEL`. Set `CASE_INTELLIGENCE_GENERATOR_SERVER=ollama`. |
-| `openai` | `GET {URL}/v1/models` and `POST {URL}/v1/chat/completions` with nested `response_format.json_schema.schema` and `strict` true | The same URL and model keys. `CASE_INTELLIGENCE_GENERATOR_SERVER` is `vllm`, `llamacpp`, or `lmstudio`. llama.cpp must receive that nested object; a top-level `response_format.schema` is not sent. Optional `CASE_INTELLIGENCE_GENERATOR_API_KEY`, or `CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE`, sends `Authorization: Bearer`. `classify_source` and internal extraction always send thinking false with `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING` set to either `0` or `1`; answer calls enable thinking. |
+| `openai` | `GET {URL}/v1/models` and `POST {URL}/v1/chat/completions` with nested `response_format.json_schema.schema` and `strict` true | The same URL and model keys. `CASE_INTELLIGENCE_GENERATOR_SERVER` is `vllm`, `llamacpp`, `lmstudio`, or `openai`. llama.cpp must receive that nested object; a top-level `response_format.schema` is not sent. Optional `CASE_INTELLIGENCE_GENERATOR_API_KEY`, or `CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE`, sends `Authorization: Bearer`. For `vllm`, `llamacpp`, and `lmstudio`, `classify_source` and internal extraction always send thinking false with `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING` set to either `0` or `1`, and answer calls enable thinking. For `openai` (standard OpenAI Chat Completions APIs), requests omit local-server `chat_template_kwargs` and `temperature`, send `max_completion_tokens` with reasoning headroom, and send a portable strict JSON Schema on the wire while keeping full local Draft 2020-12 validation. |
 
 `{URL}` is `CASE_INTELLIGENCE_GENERATOR_URL` after trimming a trailing slash.
 The URL is an origin or path prefix. It is not a URL that already ends in
@@ -85,7 +85,7 @@ lines 14–17:
 - Question drafting uses `CASE_INTELLIGENCE_GENERATOR_QUESTION_PROFILE` and is a separate policy. See [question drafts](QUESTION_DRAFTS.md).
 
 Fresh installs leave generation disabled until an operator configures an answer
-server. Use `--external-generator ollama|llamacpp|lmstudio|vllm` with
+server. Use `--external-generator ollama|llamacpp|lmstudio|vllm|openai` with
 `--external-generator-url` and `--external-generator-model`. Omit `--models`
 or use `--models none`. Existing nodes with the historical review bundle keep
 their saved private vLLM origin and model when resumed or updated.
@@ -157,8 +157,11 @@ false with `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING` set to either `0` or `
 Extraction requests use at most 400 output tokens, retaining any smaller frozen
 review limit, with no reasoning allowance. Neither a constructor nor a call setting
 can enable extraction thinking. An explicit `thinking` argument can override the
-answer default. OpenAI-compatible requests carry
-`chat_template_kwargs.enable_thinking`; Ollama requests carry `think`.
+answer default. Local OpenAI-compatible servers (`vllm`, `llamacpp`, `lmstudio`)
+carry `chat_template_kwargs.enable_thinking`; Ollama requests carry `think`;
+the standard `openai` server dialect omits `chat_template_kwargs` and `temperature`
+and uses `max_completion_tokens` with reasoning headroom so hosted chat and
+reasoning models work without model-specific heuristics.
 These defaults are code settings, with no model-profile override.
 Only `message.content` is parsed as the result; reasoning fields are not included
 in answers or saved review decisions. The visible answer allocation remains
@@ -174,7 +177,7 @@ running app container. It uses the configured relay and credentials for an
 external server and the companion transport for a bundled server. Use
 `--dry-run` to skip the request. Ollama
 is checked with native `format`. llama.cpp,
-LM Studio, and vLLM are checked with nested `json_schema.schema`. If the body
+LM Studio, vLLM, and standard `openai` servers are checked with nested `json_schema.schema`. If the body
 does not match, generation validates locally and retries, then refuses the
 answer. The first probe asks for a value the schema rejects, so a model that
 only follows the prompt is not reported as enforced. The doctor line and the

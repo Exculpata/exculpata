@@ -84,6 +84,7 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
     """
     from .generation import GenerationUnavailable, _bounded_json_request, _parse_model_content
     from .generation_matter import _evaluation_request_options
+    from .generator_schema import PROBE_REASONING_TOKENS, openai_response_format, openai_wire_dialect
     from .question_drafting import QUESTION_SCHEMA, question_prompt
     from .question_grounding import QuestionDraftReceipt, audit_attempts
     from .question_judging import judge_candidates
@@ -108,12 +109,24 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
                            options={"temperature": 0.2, "num_ctx": profile.context_tokens,
                                     "num_predict": tokens})
         else:
+            server = getattr(client, "schema_server", "vllm")
+            dialect = openai_wire_dialect(server)
             url = f"{client.endpoint}/v1/chat/completions"
-            payload.update(temperature=0.2, max_tokens=tokens,
-                           chat_template_kwargs={"enable_thinking": think},
-                           response_format={"type": "json_schema", "json_schema": {
-                               "name": "question_grounding" if stage.startswith("judge") else "drafted_questions",
-                               "strict": True, "schema": copy.deepcopy(schema)}})
+            token_limit = (
+                tokens + PROBE_REASONING_TOKENS
+                if dialect.always_reserve_reasoning_tokens and not think
+                else tokens
+            )
+            payload[dialect.token_limit_field] = token_limit
+            payload["response_format"] = openai_response_format(
+                "question_grounding" if stage.startswith("judge") else "drafted_questions",
+                copy.deepcopy(schema),
+                server=server,
+            )
+            if dialect.send_temperature:
+                payload["temperature"] = 0.2
+            if dialect.send_chat_template_kwargs:
+                payload["chat_template_kwargs"] = {"enable_thinking": think}
         record = {"stage": stage, "thinking": think, "token_limit": tokens,
                   "context_tokens": profile.context_tokens, "timeout_seconds": timeout}
         calls.append(record)
