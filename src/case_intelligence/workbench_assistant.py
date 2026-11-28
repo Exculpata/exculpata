@@ -5,7 +5,7 @@ from dataclasses import asdict, replace
 import os
 from typing import Callable, Mapping, Sequence
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from .answer_jobs import AnswerJobFailure, AnswerResult
@@ -1081,7 +1081,7 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
     }
     verified_result = replace(result, findings=tuple(retained_findings), receipts=verified_receipts)
     proposals_payload: list[dict[str, object]] = []
-    for prop in build_verified_proposals(verified_result):
+    for prop in build_verified_proposals(verified_result, raw_proposals=verified_result.raw_proposals):
         resolved_prop_wcs = [backend.citation_for_ref(ref) for ref in prop.citations]
         if not resolved_prop_wcs or any(wc is None for wc in resolved_prop_wcs):
             continue
@@ -1097,10 +1097,10 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
                 prop_cites.append(bench._saved_answer_citation_payload(wc))
         if prop_cites:
             proposals_payload.append({
-                "proposal_id": prop.proposal_id, "category": prop.category, "label": prop.label,
-                "title": prop.title, "detail": prop.detail, "date_label": prop.date_label,
-                "calculation_ids": list(prop.calculation_ids), "disclosure_note": prop.disclosure_note,
-                "citations": prop_cites,
+                "proposal_id": prop.proposal_id, "category": prop.category, "subtype": prop.subtype,
+                "label": prop.label, "title": prop.title, "detail": prop.detail,
+                "date_label": prop.date_label, "calculation_ids": list(prop.calculation_ids),
+                "disclosure_note": prop.disclosure_note, "citations": prop_cites,
             })
     supported = bool(result.answerable and claims_payload)
     intro = _VERIFIED_INTRO if supported else _ABSTENTION_INTRO
@@ -1216,7 +1216,12 @@ def install_assistant_proposal_routes(app, *, bench, authorized_matter, require_
         "/matters/{slug}/conversations/{conversation_id}/messages/{message_id}/assistant-proposals/{proposal_id}",
         dependencies=[Depends(require_csrf)],
     )
-    def save_assistant_proposal(request: Request, slug: str, conversation_id: str, message_id: str, proposal_id: str):
+    def save_assistant_proposal(
+        request: Request, slug: str, conversation_id: str, message_id: str, proposal_id: str,
+        decision: str = Form("save", max_length=16),
+    ):
+        if decision not in {"save", "review", "dismiss"}:
+            raise HTTPException(400, "Unsupported proposal decision.")
         matter = authorized_matter(request, slug)
         actor = auth_context(request).principal_id
         messages = bench.workspace.messages(matter.matter_id, conversation_id)
@@ -1244,19 +1249,22 @@ def install_assistant_proposal_routes(app, *, bench, authorized_matter, require_
                     _verify_original_integrity(bench, store, doc_id)
                 except Exception as exc:
                     raise HTTPException(409, "A cited original changed on disk or is unavailable; rerun the assistant before saving.") from exc
-            item_type, status = CATEGORY_STORAGE[category]
+            item_type, default_status = CATEGORY_STORAGE[category]
+            target_status = "confirmed" if decision == "review" else ("dismissed" if decision == "dismiss" else default_status)
             detail = str(proposal.get("detail", ""))
             if proposal.get("disclosure_note"):
                 detail = f"{proposal['disclosure_note']}\n\n{detail}".strip()
             try:
                 item, created = bench.workspace.create_notebook_item(
-                    matter.matter_id, actor, item_type=item_type, status=status,
+                    matter.matter_id, actor, item_type=item_type, status=target_status,
                     title=str(proposal.get("title", "Assistant proposal")), body=detail,
                     date_label=str(proposal.get("date_label", "")), origin="answer",
                     source_conversation_id=conversation_id, source_message_id=message_id,
                     dedupe_key=f"assistant-proposal:{message_id}:{proposal_id}",
                     references=references,
                 )
+                if not created and decision in {"review", "dismiss"} and item.status != target_status:
+                    item = bench.workspace.set_notebook_item_status(matter.matter_id, actor, item.item_id, target_status)
             except WorkspaceProblem as exc:
                 raise HTTPException(409, str(exc)) from exc
         if "application/json" in request.headers.get("accept", ""):

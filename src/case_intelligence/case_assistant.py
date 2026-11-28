@@ -30,7 +30,8 @@ _SYSTEM_PROMPT = (
     "citing exact source references for every input. Never guess when the record is incomplete; "
     "surface gaps and competing accounts plainly. Return a final JSON object with keys: "
     "answerable (bool), summary (str), findings (list of {text, citations, calculation_ids}), "
-    "gaps (list of str), and competing_accounts (list of str)."
+    "gaps (list of str), competing_accounts (list of str), and optional proposals "
+    "(list of {category, subtype, title, detail, citations} framed strictly as candidates for attorney review)."
 )
 
 @dataclass(frozen=True)
@@ -51,6 +52,7 @@ class AssistantInvestigationResult:
     omitted_findings: int; gaps: tuple[str, ...]; competing_accounts: tuple[str, ...]
     citations: tuple[SourceRef, ...]; receipts: Mapping[str, CalculationReceipt]
     trace: tuple[ToolCallRecord, ...]; turns_used: int; elapsed_ms: int
+    raw_proposals: tuple[Mapping[str, object], ...] = ()
 
 class AssistantModelClient(Protocol):
     def complete_turn(self, messages: Sequence[Mapping[str, object]], *, tools: Sequence[Mapping[str, object]]) -> AssistantTurn: ...
@@ -409,10 +411,16 @@ def verify_assistant_answer(
             summary = _ABSTENTION_SUMMARY
         else:
             summary = raw_summary
+    raw_props_in = raw.get("proposals")
+    raw_proposals = (
+        tuple(dict(p) for p in raw_props_in if isinstance(p, Mapping))[:25]
+        if isinstance(raw_props_in, list) else ()
+    )
     return AssistantInvestigationResult(
         answerable=answerable, summary=summary, findings=tuple(verified), omitted_findings=omitted,
         gaps=tuple(dict.fromkeys(gaps)), competing_accounts=competing, citations=runtime.inspected_refs,
         receipts=receipts, trace=runtime.trace, turns_used=turns_used, elapsed_ms=elapsed_ms,
+        raw_proposals=raw_proposals,
     )
 
 

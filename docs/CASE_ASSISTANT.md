@@ -78,11 +78,14 @@ cited inline proposal cards for four case-memory categories:
 - `case_theory`
 - `contradiction`
 - `timeline_event`
-- `disclosure_review`
+- `disclosure_review` — potential exculpatory or impeachment **candidates for review** across neutral categories (`inconsistent_statement`, `witness_benefit`, `alternate_suspect`, `credibility_issue`). Automated flags always require an inspected original citation and never assert legal conclusions or disclosure duties.
 
 Proposals are never committed automatically. An authorized reviewer inspects the
-cited originals and explicitly saves or dismisses each proposal inline (preserving
+cited originals and explicitly saves (`needs_review`), marks reviewed (`confirmed`),
+or dismisses (`dismissed`) each candidate inline (preserving
 [E4 — never silently overwrite reviewed work](IDEAL.md#evidence-integrity-and-human-work)).
+Saved candidates can be exported with their original citations through the matter
+notebook export (`Markdown`, `DOCX`, or `CSV`).
 
 ## Synthetic synthesis evaluation
 

@@ -55,7 +55,9 @@
       {% if prop.disclosure_note %}<small class="assistant-proposal-note">{{ prop.disclosure_note }}</small>{% endif %}
       <form class="assistant-proposal-form" method="post" action="/matters/{{ matter.slug }}/conversations/{{ assistant.conversation.conversation_id if assistant is defined else conversation.conversation_id }}/messages/{{ message.message_id }}/assistant-proposals/{{ prop.proposal_id }}" data-assistant-proposal-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit" class="button button-secondary">Save to case memory</button>
+        <button type="submit" name="decision" value="save" class="button button-secondary">Save to case memory</button>
+        <button type="submit" name="decision" value="review" class="button button-secondary">Mark reviewed</button>
+        <button type="submit" name="decision" value="dismiss" class="button button-secondary">Dismiss</button>
         <span class="assistant-proposal-status" data-assistant-proposal-status role="status" aria-live="polite" aria-atomic="true"></span>
       </form>
     </li>
