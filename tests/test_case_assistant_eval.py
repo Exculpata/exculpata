@@ -217,8 +217,18 @@ def test_extended_eval_suite_covers_bates_email_transcript_and_table_tools(tmp_p
     overlap = full_rt.invoke("read_transcript_window", {"document_id": "ext-transcript", "start_seconds": 95, "end_seconds": 110})
     assert overlap["count"] == 1 and overlap["cues"][0]["start_seconds"] == 90.0
 
-    # inspect_production honors load_file_document_id: rejects missing IDs and does not report gaps for non-load-file docs.
+    # inspect_production honors load_file_document_id: rejects missing IDs, does not report gaps for non-load-file docs,
+    # and requires an explicit target when multiple CSVs exist in the corpus.
     with pytest.raises(AssistantToolError, match="not found"):
         full_rt.invoke("inspect_production", {"load_file_document_id": "does-not-exist"})
     wrong_doc = full_rt.invoke("inspect_production", {"load_file_document_id": "ext-ledger"})
     assert wrong_doc["bates_gaps"]["computed"] is False and wrong_doc["bates_gaps"]["facts"] == []
+    untargeted = full_rt.invoke("inspect_production", {})
+    assert untargeted["bates_gaps"]["computed"] is False and untargeted["bates_gaps"]["facts"] == []
+
+    # read_email_thread includes the requested message in the default window (omitted offset vs explicit offset=0).
+    default_win = full_rt.invoke("read_email_thread", {"document_id": "ext-email-2", "limit": 1})
+    assert default_win["count"] == 1 and default_win["messages"][0]["document_id"] == "ext-email-2"
+    zero_win = full_rt.invoke("read_email_thread", {"document_id": "ext-email-2", "limit": 1, "offset": 0})
+    assert zero_win["count"] == 1 and zero_win["messages"][0]["document_id"] == "ext-email-1"
+

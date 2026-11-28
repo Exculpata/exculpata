@@ -150,7 +150,11 @@ class InMemoryEvalBackend:
             dict(m) for m in self._email_threads[document_id]
             if allowed_document_ids is None or m["document_id"] in allowed_document_ids
         ]
-        start = offset or 0
+        target_index = next((idx for idx, m in enumerate(msgs) if m["document_id"] == document_id), 0)
+        if offset is None:
+            start = max(0, target_index - limit + 1) if target_index >= limit else 0
+        else:
+            start = offset
         window = msgs[start:start + limit]
         return {
             "document_id": document_id,
@@ -213,7 +217,15 @@ class InMemoryEvalBackend:
             else:
                 bates_gaps = dict(audit.get("bates_gaps") or {"computed": False, "notice": "", "facts": [], "counts": {}})
         else:
-            bates_gaps = dict(audit.get("bates_gaps") or {"computed": False, "notice": "", "facts": [], "counts": {}})
+            csv_docs = [d for d in self.docs.values() if d.summary.source_name.casefold().endswith(".csv")]
+            if len(csv_docs) == 1 and csv_docs[0].summary.document_id == audit.get("load_file_id"):
+                bates_gaps = dict(audit.get("bates_gaps") or {"computed": False, "notice": "", "facts": [], "counts": {}})
+            else:
+                bates_gaps = {
+                    "computed": False,
+                    "notice": "Multiple CSV sources present; specify load_file_document_id to compute Bates gaps.",
+                    "facts": [], "counts": {},
+                }
         source_refs = list(audit.get("source_refs") or ())
         if document_ids is not None:
             source_refs = [r for r in source_refs if r["document_id"] in document_ids]
