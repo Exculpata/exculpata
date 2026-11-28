@@ -74,7 +74,7 @@ class _Transaction:
             raise
         return self.store.connection
 
-    def __exit__(self, typ, value, traceback) -> None:
+    def __exit__(self, typ, _value, _traceback) -> None:
         try:
             self.store.connection.execute("COMMIT" if typ is None else "ROLLBACK")
         finally:

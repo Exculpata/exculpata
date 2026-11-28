@@ -80,7 +80,7 @@ def validate_service_endpoint(
 
 
 class _NoServiceRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, request, response, code, message, headers, newurl):
+    def redirect_request(self, _request, _response, _code, _message, _headers, _newurl):
         return None
 
 

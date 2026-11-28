@@ -597,7 +597,7 @@ class JobWorker:
                 self.thread.start()
                 return self
 
-            def __exit__(self, exc_type, exc, traceback):
+            def __exit__(self, _exc_type, _exc, _traceback):
                 self.stop.set()
                 self.thread.join(timeout=2)
                 return False
