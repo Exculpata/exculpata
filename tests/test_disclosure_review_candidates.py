@@ -431,4 +431,23 @@ def test_pr609_round3_thirteenth_citation_truncation_admin_preview_and_long_conv
         assert reloaded.status_code == 200
         assert f'name="expected_updated_at" value="{rev}"' in reloaded.text
 
+        # Editing the saved note in the Notebook prevents blind confirmation from the original proposal card (IDEAL E4).
+        edited = bench.workspace.update_notebook_item(
+            matter.matter_id, actor, saved.json()["item_id"],
+            item_type=saved.json()["item_type"], status=saved.json()["status"],
+            title="Attorney-edited note title", body="Substantively edited notebook body.",
+            date_label="", pinned=False, expected_updated_at=rev,
+        )
+        after_edit = client.get(f"/matters/{slug}", params={"conversation": conv_id})
+        assert after_edit.status_code == 200
+        assert "Edited in case memory; review and update status in the Notebook." in after_edit.text
+        assert f'name="expected_updated_at" value="{edited.updated_at}"' not in after_edit.text
+        refused = client.post(
+            actions[0],
+            data={"csrf_token": csrf, "decision": "review", "expected_updated_at": edited.updated_at},
+            headers={"Accept": "application/json"},
+        )
+        assert refused.status_code == 409
+
+
 

@@ -1212,9 +1212,19 @@ def _verify_original_integrity(bench, store, doc_id: str) -> None:
         store.source_path(doc_id, verify_digest=True)
 
 
-def saved_proposal_states(bench, matter_id: str, actor_id: str, messages: Sequence[object]) -> dict[str, dict[str, str]]:
+def _proposal_note_fields(proposal: Mapping[str, object]) -> tuple[str, str, str]:
+    title = " ".join(str(proposal.get("title", "Assistant proposal")).split()).strip()[:160]
+    detail = str(proposal.get("detail", ""))
+    if proposal.get("disclosure_note"):
+        detail = f"{proposal['disclosure_note']}\n\n{detail}".strip()
+    body = detail.replace("\r\n", "\n").replace("\r", "\n").strip()[:20_000]
+    date_label = " ".join(str(proposal.get("date_label", "")).split()).strip()[:100]
+    return title, body, date_label
+
+
+def saved_proposal_states(bench, matter_id: str, actor_id: str, messages: Sequence[object]) -> dict[str, dict[str, object]]:
     """Return current notebook revision and status for any already-saved assistant proposals."""
-    key_to_pair: dict[str, str] = {}
+    key_to_meta: dict[str, tuple[str, tuple[str, str, str]]] = {}
     for msg in messages:
         if getattr(msg, "role", "") != "assistant":
             continue
@@ -1224,18 +1234,26 @@ def saved_proposal_states(bench, matter_id: str, actor_id: str, messages: Sequen
         for prop in proposals:
             if isinstance(prop, Mapping) and prop.get("proposal_id"):
                 pid = str(prop["proposal_id"])
-                key_to_pair[f"assistant-proposal:{msg_id}:{pid}"] = f"{msg_id}:{pid}"
-    if not key_to_pair:
+                key_to_meta[f"assistant-proposal:{msg_id}:{pid}"] = (f"{msg_id}:{pid}", _proposal_note_fields(prop))
+    if not key_to_meta:
         return {}
     try:
-        found = bench.workspace.notebook_revisions_by_dedupe_keys(matter_id, actor_id, tuple(key_to_pair))
+        found = bench.workspace.notebook_revisions_by_dedupe_keys(matter_id, actor_id, tuple(key_to_meta))
     except KeyError:
         return {}
-    return {
-        key_to_pair[dkey]: {"updated_at": updated_at, "status": status}
-        for dkey, (updated_at, status) in found.items()
-        if dkey in key_to_pair
-    }
+    states: dict[str, dict[str, object]] = {}
+    for dkey, (updated_at, status, title, body, date_label) in found.items():
+        meta = key_to_meta.get(dkey)
+        if meta is None:
+            continue
+        pair_key, expected_fields = meta
+        edited = (title, body, date_label) != expected_fields
+        states[pair_key] = {
+            "updated_at": "" if edited else updated_at,
+            "status": status,
+            "edited": edited,
+        }
+    return states
 
 
 def install_assistant_proposal_routes(app, *, bench, authorized_matter, require_csrf, auth_context) -> None:
@@ -1282,19 +1300,22 @@ def install_assistant_proposal_routes(app, *, bench, authorized_matter, require_
                     raise HTTPException(409, "A cited original changed on disk or is unavailable; rerun the assistant before saving.") from exc
             item_type, default_status = CATEGORY_STORAGE[category]
             target_status = "confirmed" if decision == "review" else ("dismissed" if decision == "dismiss" else default_status)
-            detail = str(proposal.get("detail", ""))
-            if proposal.get("disclosure_note"):
-                detail = f"{proposal['disclosure_note']}\n\n{detail}".strip()
+            expected_title, expected_body, expected_date = _proposal_note_fields(proposal)
             try:
                 item, created = bench.workspace.create_notebook_item(
                     matter.matter_id, actor, item_type=item_type, status=target_status,
-                    title=str(proposal.get("title", "Assistant proposal")), body=detail,
-                    date_label=str(proposal.get("date_label", "")), origin="answer",
+                    title=expected_title, body=expected_body,
+                    date_label=expected_date, origin="answer",
                     source_conversation_id=conversation_id, source_message_id=message_id,
                     dedupe_key=f"assistant-proposal:{message_id}:{proposal_id}",
                     references=references,
                 )
                 if not created and decision in {"review", "dismiss"} and item.status != target_status:
+                    if (item.title, item.body, item.date_label) != (expected_title, expected_body, expected_date):
+                        raise HTTPException(
+                            409,
+                            "This saved note was edited in case memory; review and update its status in the Notebook.",
+                        )
                     item = bench.workspace.set_notebook_item_status(
                         matter.matter_id, actor, item.item_id, target_status,
                         expected_updated_at=expected_updated_at,

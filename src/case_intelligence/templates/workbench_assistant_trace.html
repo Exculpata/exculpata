@@ -60,10 +60,10 @@
       <form class="assistant-proposal-form" method="post" action="/matters/{{ matter.slug }}/conversations/{{ assistant.conversation.conversation_id if assistant is defined else conversation.conversation_id }}/messages/{{ message.message_id }}/assistant-proposals/{{ prop.proposal_id }}" data-assistant-proposal-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="expected_updated_at" value="{{ _prop_state.get('updated_at', '') }}" data-assistant-proposal-revision>
-        <button type="submit" name="decision" value="save" class="button button-secondary">Save to case memory</button>
-        <button type="submit" name="decision" value="review" class="button button-secondary">Mark reviewed</button>
-        <button type="submit" name="decision" value="dismiss" class="button button-secondary">Dismiss</button>
-        <span class="assistant-proposal-status" data-assistant-proposal-status role="status" aria-live="polite" aria-atomic="true">{% if _prop_state.get('status') == 'confirmed' %}Marked reviewed in case memory.{% elif _prop_state.get('status') == 'dismissed' %}Dismissed in case memory.{% elif _prop_state.get('status') %}Saved in case memory.{% endif %}</span>
+        <button type="submit" name="decision" value="save" class="button button-secondary"{% if _prop_state.get('edited') %} disabled{% endif %}>Save to case memory</button>
+        <button type="submit" name="decision" value="review" class="button button-secondary"{% if _prop_state.get('edited') %} disabled{% endif %}>Mark reviewed</button>
+        <button type="submit" name="decision" value="dismiss" class="button button-secondary"{% if _prop_state.get('edited') %} disabled{% endif %}>Dismiss</button>
+        <span class="assistant-proposal-status" data-assistant-proposal-status role="status" aria-live="polite" aria-atomic="true">{% if _prop_state.get('edited') %}Edited in case memory; review and update status in the Notebook.{% elif _prop_state.get('status') == 'confirmed' %}Marked reviewed in case memory.{% elif _prop_state.get('status') == 'dismissed' %}Dismissed in case memory.{% elif _prop_state.get('status') %}Saved in case memory.{% endif %}</span>
       </form>
     </li>
     {% endfor %}
