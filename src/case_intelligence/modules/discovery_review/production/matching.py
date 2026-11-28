@@ -208,3 +208,54 @@ def candidate_agrees(projection: Projection, candidate: dict) -> bool:
 def literal_identifiers(projection: Projection) -> tuple[str, ...]:
     return tuple(projection.values[key] for key in ("begin_bates", "end_bates", "control_number")
                  if projection.values.get(key, "").strip())
+
+
+def source_input_identity(item) -> tuple[object, ...]:
+    """Canonical candidate snapshot tuple shared by ProductionService and freshness checks."""
+    return (item.version_id, item.digest, item.display_name, item.relative_path,
+            item.media_type, item.state, item.origin)
+
+
+def attempt_dependencies_fresh(
+    repository, matter_id: str, *, load_document_id: str, load_version_id: str,
+    root_key: str, input_revision: str, updated_at: str = "", store=None,
+) -> bool:
+    """Verify a persisted complete production attempt still matches live root dependencies."""
+    try:
+        parsed = json.loads(input_revision) if input_revision and input_revision.startswith("{") else {}
+    except (TypeError, ValueError):
+        return False
+    deps = parsed.get("dependencies") if isinstance(parsed, dict) else None
+    if not isinstance(deps, dict) or deps.get("paused") or deps.get("state") != "complete":
+        return False
+    if repository.provenance(matter_id, load_document_id, load_version_id) != root_key:
+        return False
+    if store is None:
+        if updated_at:
+            after = ""
+            while True:
+                rows = repository.candidates(matter_id, root_key, after=after, limit=100)
+                if not rows:
+                    break
+                if any((row.get("updated_at") or "") > updated_at for row in rows):
+                    return False
+                after = rows[-1]["document_id"]
+        return True
+    expected_epoch = f"production-v2-{store.source_changes.epoch}"
+    if deps.get("epoch") != expected_epoch:
+        return False
+    expected_hash = deps.get("hash")
+    if not isinstance(expected_hash, str):
+        return False
+    digest_hash, after = "", ""
+    while True:
+        rows = repository.candidates(matter_id, root_key, after=after, limit=8)
+        if not rows:
+            break
+        for row in rows:
+            snapshot = store.source_changes.read([row["document_id"]])
+            data = [(item.document_id, source_input_identity(item)) for item in snapshot]
+            digest_hash = hashlib.sha256((digest_hash + json.dumps(data, sort_keys=True)).encode()).hexdigest()
+            after = row["document_id"]
+    return digest_hash == expected_hash
+

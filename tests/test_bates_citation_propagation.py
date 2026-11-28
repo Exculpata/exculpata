@@ -99,3 +99,63 @@ def test_bates_and_team_id_propagate_into_citations_without_altering_tokens(tmp_
         other = review.bench.create_matter("isolated-matter", "Isolated Matter", ACTOR)
         assert repo.document_bates_ranges(other.matter_id, [memo.document_id]) == {}
         assert not re.search(r"PROD0001", review.client.get(f"/matters/{other.slug}").text)
+
+
+def test_cold_reopen_and_companion_mutation_withhold_stale_bates_until_reindexed(tmp_path, monkeypatch):
+    from case_intelligence.case_assistant_tools import MatterToolRuntime
+    from case_intelligence.workbench_assistant import WorkbenchToolBackend
+
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
+    monkeypatch.setenv("CASE_INTELLIGENCE_OCR_MODE", "disabled")
+    runtime = tmp_path / "runtime"
+    dat = dat_bytes(
+        ("BEGDOC", "ENDDOC", "NATIVEPATH"),
+        [
+            ("PROD0001", "PROD0003", "NATIVES\\memo.txt"),
+            ("PROD0004", "PROD0004", "NATIVES\\companion.txt"),
+        ],
+    )
+    with opened_review(runtime) as review:
+        upload_image_production(review, {
+            "Vol1/NATIVES/memo.txt": b"Synthetic witness memo mentioning harbor dock.\n",
+            "Vol1/NATIVES/companion.txt": b"Synthetic companion exhibit mentioning dock.\n",
+            "Vol1/DATA/records.dat": dat,
+        })
+        complete_listing(review)
+        slug = review.matter.slug
+        memo_id = review.document("Vol1/NATIVES/memo.txt").document_id
+        repo = ProductionRepository(ModuleDatabase(review.bench.workspace.connection, review.bench.workspace._lock))
+        assert repo.document_bates_ranges(review.matter.matter_id, [memo_id], store=review.store) == {memo_id: "PROD0001\u2013PROD0003"}
+
+    # Cold matter reopen before ProductionService re-validation must withhold stale Bates ranges.
+    with opened_review(runtime, slug) as reopened:
+        reopened_repo = ProductionRepository(ModuleDatabase(reopened.bench.workspace.connection, reopened.bench.workspace._lock))
+        assert reopened_repo.document_bates_ranges(reopened.matter.matter_id, [memo_id], store=reopened.store) == {}
+        cold_hits = {hit.document_id: hit for hit in reopened.bench.search(reopened.matter, "harbor", limit=10)}
+        assert cold_hits[memo_id].bates_label == ""
+        cold_runtime = MatterToolRuntime(reopened.matter.matter_id, ACTOR, WorkbenchToolBackend(reopened.bench, ACTOR))
+        cold_sources = {row["document_id"]: row for row in cold_runtime.invoke("list_sources", {"limit": 20})["sources"]}
+        assert cold_sources[memo_id]["bates"] == ""
+
+        # Re-indexing restores fresh Bates labels across repository, search citations, and Case Assistant.
+        complete_listing(reopened)
+        assert reopened_repo.document_bates_ranges(reopened.matter.matter_id, [memo_id], store=reopened.store) == {memo_id: "PROD0001\u2013PROD0003"}
+        warm_hits = {hit.document_id: hit for hit in reopened.bench.search(reopened.matter, "harbor", limit=10)}
+        assert warm_hits[memo_id].bates_label == "Bates: PROD0001\u2013PROD0003"
+        warm_sources = {row["document_id"]: row for row in cold_runtime.invoke("list_sources", {"limit": 20})["sources"]}
+        assert warm_sources[memo_id]["bates"] == "PROD0001\u2013PROD0003"
+
+        # Mutating a companion file in the same production root outside the load file invalidates cached Bates until re-indexed.
+        companion_token = reopened.token("Vol1/NATIVES/companion.txt")
+        removed = reopened.client.post(f"/matters/{slug}/sources/{companion_token}/remove", follow_redirects=False)
+        assert removed.status_code in {200, 303}
+        assert reopened_repo.document_bates_ranges(reopened.matter.matter_id, [memo_id], store=reopened.store) == {}
+        mutated_hits = {hit.document_id: hit for hit in reopened.bench.search(reopened.matter, "harbor", limit=10)}
+        assert mutated_hits[memo_id].bates_label == ""
+        mutated_sources = {row["document_id"]: row for row in cold_runtime.invoke("list_sources", {"limit": 20})["sources"]}
+        assert mutated_sources[memo_id]["bates"] == ""
+
+        # Re-indexing after the companion removal restores validated Bates for the remaining matched memo.
+        complete_listing(reopened)
+        assert reopened_repo.document_bates_ranges(reopened.matter.matter_id, [memo_id], store=reopened.store) == {memo_id: "PROD0001\u2013PROD0003"}
+

@@ -15,6 +15,7 @@ from .image_references import IMAGE_WINDOW, dii_paths, image_reference
 from .matching import (
     DatProfileError, candidate_agrees, compatible_metadata, finish_match, initial_match, label_key,
     literal_identifiers, observe_candidate, path_key, profile_positions, project_record,
+    source_input_identity,
 )
 from .repository import (
     MAX_BATCH_BYTES, MAX_BATCH_RECORDS, MAX_ORDINAL, ProductionRepository,
@@ -164,8 +165,7 @@ class ProductionService:
 
     @staticmethod
     def input_identity(item):
-        return (item.version_id, item.digest, item.display_name, item.relative_path,
-                item.media_type, item.state, item.origin)
+        return source_input_identity(item)
 
     def restart_state(self, matter_id, attempt, state):
         """Persist the lineage limit before allowing any replacement work."""

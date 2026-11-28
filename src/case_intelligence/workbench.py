@@ -2572,9 +2572,9 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
         )
 
     def _citation(self, matter: MatterRecord, candidate: Candidate, store: PilotStore | None = None) -> WorkbenchCitation:
-        evidence_kind = "document"
+        evidence_kind, active_store = "document", (store if store is not None else self.source_store(matter))
         try:
-            document = (store if store is not None else self.source_store(matter)).get(candidate.document_id)
+            document = active_store.get(candidate.document_id)
         except KeyError:
             document = None
         if document is not None and is_media_type(document.media_type):
@@ -2591,7 +2591,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts, WorkbenchRetrieval):
             href = f"/matters/{matter.slug}?support={token}&play=1#support-pane"
         from .modules.discovery_review.production.repository import document_bates_label
         ws = getattr(self, "workspace", None)
-        bates_label = document_bates_label(getattr(ws, "connection", None), getattr(ws, "_lock", None), matter.matter_id, candidate.document_id)
+        bates_label = document_bates_label(getattr(ws, "connection", None), getattr(ws, "_lock", None), matter.matter_id, candidate.document_id, store=active_store)
         return WorkbenchCitation(
             candidate.source_name, candidate.citation, candidate.text, href, token,
             candidate.matter_id, candidate.document_id, candidate.source_version_id,

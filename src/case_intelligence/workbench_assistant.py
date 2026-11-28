@@ -130,7 +130,8 @@ class WorkbenchToolBackend:
 
         db = ModuleDatabase(connection, lock)
         repo = ProductionRepository(db)
-        labels = repo.document_bates_ranges(matter_id, doc_ids)
+        store = self.bench.source_store(self.bench._matter_by_id(matter_id))
+        labels = repo.document_bates_ranges(matter_id, doc_ids, store=store)
         assigned = IdentifierRepository(db, self.bench.workspace.membership).read(matter_id)
         for doc_id in doc_ids:
             if doc_id not in labels and doc_id in assigned and repo.document_status(matter_id, doc_id) == "complete":
