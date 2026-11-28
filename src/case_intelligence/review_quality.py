@@ -247,11 +247,77 @@ def _query_subject_terms(query: str) -> frozenset[str]:
     )
 
 
+_CLAUSE_SPLIT_PATTERN = re.compile(
+    r"[?;]|,?\s*\b(?:and|or)\b(?=\s+(?:at\s+what|on\s+what|in\s+what|for\s+what|by\s+what|"
+    r"what|when|where|who|which|how|did|does|do|was|were|is|are|has|have|had)\b)",
+    re.IGNORECASE,
+)
+_RFC5322_HEADER_LINE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):\s*")
+_RFC5322_CONTINUATION = re.compile(r"^[ \t]+\S")
+_RFC5322_ENVELOPE_HEADERS = frozenset({"from", "date", "message-id", "received"})
+_RFC5322_TRANSPORT_HEADERS = _RFC5322_ENVELOPE_HEADERS | frozenset(
+    {"to", "cc", "subject", "mime-version", "content-type", "return-path", "reply-to"}
+)
+
+
+_EMAIL_TRANSMISSION_QUERY = re.compile(
+    r"\b(?:send|sent|receive|received|dispatch|dispatched|forward|forwarded|reply\s+to|replied\s+to)\s+"
+    r"(?:the\s+|an?\s+|this\s+|that\s+)?(?:[a-z0-9_-]+\s+){0,4}(?:email|e-mail|message)\b"
+    r"|\b(?:email|e-mail|message)\s+(?:was\s+|had\s+been\s+)?(?:sent|received|dispatched|forwarded)\b",
+    re.IGNORECASE,
+)
+
+
+def _asks_email_transmission_time(query: str) -> bool:
+    return bool(_EMAIL_TRANSMISSION_QUERY.search(query))
+
+
+def _query_clause_subject_sets(query: str) -> tuple[tuple[frozenset[str], bool], ...]:
+    parts = _CLAUSE_SPLIT_PATTERN.split(query)
+    clauses = tuple(
+        (terms, bool(_TEMPORAL_OBJECTIVE.search(part)))
+        for part in parts
+        if len(terms := _query_subject_terms(part)) >= 2
+    )
+    return clauses if len(clauses) > 1 else ()
+
+
+def _is_rfc5322_header_block(head: str) -> bool:
+    lines = [line for line in head.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return False
+    seen_headers: set[str] = set()
+    for idx, line in enumerate(lines):
+        match = _RFC5322_HEADER_LINE.match(line)
+        if match:
+            seen_headers.add(match.group(1).casefold())
+        elif idx > 0 and _RFC5322_CONTINUATION.match(line):
+            continue
+        else:
+            return False
+    return bool(seen_headers & _RFC5322_ENVELOPE_HEADERS) and len(seen_headers & _RFC5322_TRANSPORT_HEADERS) >= 2
+
+
+def _clock_scan_text(candidate: RankedCandidate, *, query: str = "") -> str:
+    keep_email_headers = _asks_email_transmission_time(query)
+    if candidate.location_label == "Email headers":
+        return candidate.text if keep_email_headers else ""
+    if candidate.location_label:
+        return candidate.text
+    text = candidate.text
+    if not keep_email_headers and candidate.source_name.casefold().endswith(".eml"):
+        head, sep, body = text.partition("\n\n")
+        if sep and _is_rfc5322_header_block(head):
+            return body
+    return text
+
+
 def _exact_record_features(
     query: str,
     candidate: RankedCandidate,
     *,
     subject_terms: frozenset[str],
+    clause_subject_sets: tuple[tuple[frozenset[str], bool], ...] = (),
 ) -> tuple[int, int, int, int]:
     haystack = f"{candidate.source_name}\n{candidate.text}"
     identifiers = tuple(dict.fromkeys(_IDENTIFIER.findall(query.upper())))
@@ -259,21 +325,31 @@ def _exact_record_features(
     identifier_matches = sum(
         1 for identifier in identifiers if identifier in candidate_identifiers
     )
-    clocks = _CLOCK.findall(candidate.text)
+    clocks = _CLOCK.findall(_clock_scan_text(candidate, query=query))
     temporal_precision = 0
-    if candidate.location_label != "Email headers" and _TEMPORAL_OBJECTIVE.search(query) and clocks:
+    if _TEMPORAL_OBJECTIVE.search(query) and clocks:
         temporal_precision = 2 if any(value.count(":") >= 2 for value in clocks) else 1
     authority = int(bool(_AUTHORITATIVE_RECORD.search(haystack)))
     if _LATER_SUMMARY.search(candidate.source_name):
         authority -= 1
     candidate_terms = set(_QUERY_TOKEN.findall(haystack.casefold()))
     subject_overlap = len(subject_terms.intersection(candidate_terms))
-    relevant = bool(identifier_matches) or (
+    full_relevant = bool(identifier_matches) or (
         bool(subject_terms) and subject_overlap * 2 >= len(subject_terms)
     )
+    clause_relevant = False
+    temporal_clause_relevant = False
+    for clause_terms, is_temporal in clause_subject_sets:
+        overlap = len(clause_terms.intersection(candidate_terms))
+        if overlap >= 2 and overlap * 2 >= len(clause_terms):
+            clause_relevant = True
+            if is_temporal:
+                temporal_clause_relevant = True
+    relevant = full_relevant or clause_relevant
+    temporal_relevant = full_relevant or temporal_clause_relevant
     return (
         identifier_matches, int(relevant),
-        temporal_precision if relevant else 0, authority if relevant else 0,
+        temporal_precision if temporal_relevant else 0, authority if relevant else 0,
     )
 
 
@@ -295,8 +371,11 @@ def rank_exact_record_candidates(
     if not (_IDENTIFIER.search(query.upper()) or _TEMPORAL_OBJECTIVE.search(query)):
         return bounded
     subject_terms = _query_subject_terms(query)
+    clause_subject_sets = _query_clause_subject_sets(query)
     features = [
-        _exact_record_features(query, item, subject_terms=subject_terms)
+        _exact_record_features(
+            query, item, subject_terms=subject_terms, clause_subject_sets=clause_subject_sets,
+        )
         for item in bounded
     ]
     if not any(feature[0] or feature[1] for feature in features):
