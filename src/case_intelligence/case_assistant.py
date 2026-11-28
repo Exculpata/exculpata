@@ -505,7 +505,21 @@ class CaseAssistant:
                         calc_payloads.append(result["calculation"])
                     for grp in result.get("groups") or ():
                         if isinstance(grp, Mapping) and isinstance(grp.get("calculation"), Mapping):
-                            calc_payloads.append(grp["calculation"])
+                            grp_calc = grp["calculation"]
+                            calc_payloads.append(grp_calc)
+                            group_text = "" if grp.get("is_blank") else str(grp.get("group") or "").strip()
+                            if group_text:
+                                for inp in grp_calc.get("inputs") or ():
+                                    if not isinstance(inp, Mapping):
+                                        continue
+                                    for sref in inp.get("source_refs") or ():
+                                        if isinstance(sref, Mapping):
+                                            key = (
+                                                str(sref.get("document_id") or doc_id),
+                                                str(sref.get("location") or default_loc),
+                                                str(sref.get("source_version_id") or default_ver),
+                                            )
+                                            inspected_texts[key] = (inspected_texts.get(key, "") + " " + group_text).strip()
                     for calc_payload in calc_payloads:
                         if calc_payload.get("operation") == "count":
                             continue

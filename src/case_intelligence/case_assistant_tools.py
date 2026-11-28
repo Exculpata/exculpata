@@ -611,29 +611,43 @@ def query_table_rows(
             )
         buckets: dict[str, list[tuple[dict[str, str], str, str]]] = {}
         for item in matched:
-            key = item[0].get(group_col, "").strip() or "(blank)"
-            buckets.setdefault(key, []).append(item)
+            raw_key = item[0].get(group_col, "").strip()
+            buckets.setdefault(raw_key, []).append(item)
         if len(buckets) > MAX_TABLE_GROUPS:
             raise AssistantToolError(
                 f"Grouped query produced {len(buckets)} distinct groups, exceeding limit ({MAX_TABLE_GROUPS}); narrow filters."
             )
-        for idx, group_key in enumerate(sorted(buckets, key=str.casefold)):
-            g_rows = buckets[group_key]
+        blank_label = "(blank)"
+        if "" in buckets:
+            existing_labels = {k.casefold() for k in buckets if k != ""}
+            if blank_label.casefold() in existing_labels:
+                blank_label = "(empty)"
+                suffix = 1
+                while blank_label.casefold() in existing_labels:
+                    suffix += 1
+                    blank_label = f"(empty {suffix})"
+        ordered_keys = sorted(buckets, key=lambda k: (k == "", k.casefold()))
+        for idx, raw_key in enumerate(ordered_keys):
+            g_rows = buckets[raw_key]
+            display_label = blank_label if raw_key == "" else raw_key
             g_rid = _next_receipt_id(receipt_id, idx)
             g_val, g_rec = _compute_table_aggregate(
                 document_id, source_name, g_rows, columns=columns,
                 aggregate_op=aggregate_op, aggregate_column=aggregate_column,
                 precision=precision, receipt_id=g_rid,
-                default_loc=first_loc, default_ver=first_ver, group_label=group_key,
+                default_loc=first_loc, default_ver=first_ver, group_label=display_label,
             )
             if receipt is None:
                 receipt = g_rec
             if extra_receipts is not None:
                 extra_receipts.append(g_rec)
-            group_rows_payload.append({
-                "group": group_key, "row_count": len(g_rows), "value": g_val,
+            entry: dict[str, object] = {
+                "group": display_label, "row_count": len(g_rows), "value": g_val,
                 "receipt_id": g_rid, "calculation": asdict(g_rec),
-            })
+            }
+            if raw_key == "":
+                entry["is_blank"] = True
+            group_rows_payload.append(entry)
     elif aggregate_op:
         _, receipt = _compute_table_aggregate(
             document_id, source_name, matched, columns=columns,

@@ -823,8 +823,65 @@ def test_case_assistant_verifies_grouped_table_receipts_end_to_end(tmp_path):
         assert {r.result for r in inv.receipts.values()} == {"15000.75", "4000"}
 
 
+def test_grouped_table_keeps_blank_distinct_from_literal_blank_and_grounds_keys_past_limit(tmp_path):
+    import json
+    from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn, CaseAssistant
 
+    # 1. Empty cells and literal "(blank)" cells stay in separate buckets with collision-safe labels.
+    collision_csv = "acct,amount\n,10\n(blank),20\n"
+    res, _ = query_table_rows(
+        "doc-blank", "blank.csv", collision_csv,
+        group_by="acct", aggregate_column="amount", aggregate_op="sum", receipt_id="calc-1",
+    )
+    assert len(res["groups"]) == 2
+    by_label = {g["group"]: g for g in res["groups"]}
+    assert by_label["(blank)"]["value"] == "20" and not by_label["(blank)"].get("is_blank")
+    blank_groups = [g for g in res["groups"] if g.get("is_blank")]
+    assert len(blank_groups) == 1 and blank_groups[0]["value"] == "10" and blank_groups[0]["group"] != "(blank)"
 
+    # 2. Numeric group keys only appearing past rows[:limit] remain grounded for CaseAssistant verification.
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test", malware_scanner=CleanScanner(), malware_scan_mode="extended")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Numeric Group Beyond Limit Matter")
+        acct_csv = b"acct,amount\n111111,10\n222222,20\n"
+        up = client.post(f"/matters/{slug}/uploads", files=[("files", ("accts.csv", acct_csv, "text/csv"))])
+        assert up.status_code == 200
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        backend = WorkbenchToolBackend(bench, actor)
+        rt0 = MatterToolRuntime(matter.matter_id, actor, backend)
+        csv_id = rt0.invoke("list_sources", {"limit": 10})["sources"][0]["document_id"]
 
+        class _PastLimitModel:
+            def __init__(self, op: str) -> None:
+                self.op = op
+                self.step = 0
 
+            def complete_turn(self, messages, *, tools):
+                self.step += 1
+                if self.step == 1:
+                    args: dict[str, object] = {"document_id": csv_id, "group_by": "acct", "aggregate_op": self.op, "limit": 1}
+                    if self.op != "count":
+                        args["aggregate_column"] = "amount"
+                    return AssistantTurn(tool_calls=(AssistantModelCall("g1", "query_table", args),))
+                payload = json.loads(messages[-1]["content"])
+                assert len(payload["rows"]) == 1 and payload["truncated"] is True
+                g2 = next(g for g in payload["groups"] if g["group"] == "222222")
+                sref = g2["calculation"]["inputs"][0]["source_refs"][0]
+                cite = {"document_id": sref["document_id"], "source_name": sref["source_name"], "location": sref["location"], "source_version_id": sref["source_version_id"]}
+                text = (
+                    f"Account 222222 sent {g2['value']}."
+                    if self.op != "count"
+                    else f"Account 222222 appears in {g2['value']} row."
+                )
+                return AssistantTurn(content=json.dumps({
+                    "answerable": True,
+                    "summary": text,
+                    "findings": [{"text": text, "citations": [cite], "calculation_ids": [g2["receipt_id"]]}],
+                    "gaps": [], "competing_accounts": [],
+                }))
 
+        for op in ("sum", "count"):
+            inv = CaseAssistant(_PastLimitModel(op)).investigate("Check account 222222?", MatterToolRuntime(matter.matter_id, actor, backend))
+            assert inv.answerable is True and len(inv.findings) == 1 and inv.omitted_findings == 0
