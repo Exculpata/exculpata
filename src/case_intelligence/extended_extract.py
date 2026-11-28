@@ -51,7 +51,7 @@ class _HtmlText(HTMLParser):
         if data.strip():
             self.parts.append(data.strip())
 
-    def handle_starttag(self, tag: str, attrs) -> None:
+    def handle_starttag(self, tag: str, _attrs) -> None:
         if tag.casefold() in {"br", "p", "div", "li", "tr", "h1", "h2", "h3"}:
             self.parts.append("\n")
 

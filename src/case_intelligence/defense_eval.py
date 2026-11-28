@@ -603,7 +603,7 @@ class PostgresHybridRetriever:
     def __enter__(self) -> "PostgresHybridRetriever":
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> bool:
+    def __exit__(self, _exc_type, _exc, _traceback) -> bool:
         self.close()
         return False
 

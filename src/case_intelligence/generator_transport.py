@@ -18,7 +18,7 @@ _MAX_CA_BYTES = 1024 * 1024
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(self, _req, _fp, _code, _msg, _headers, _newurl):
         return None
 
 
