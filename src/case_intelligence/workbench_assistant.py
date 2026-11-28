@@ -5,7 +5,7 @@ from dataclasses import asdict, replace
 import os
 from typing import Callable, Mapping, Sequence
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from .answer_jobs import AnswerJobFailure, AnswerResult
@@ -1081,7 +1081,11 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
     }
     verified_result = replace(result, findings=tuple(retained_findings), receipts=verified_receipts)
     proposals_payload: list[dict[str, object]] = []
-    for prop in build_verified_proposals(verified_result):
+    for prop in build_verified_proposals(
+        verified_result,
+        raw_proposals=verified_result.raw_proposals,
+        inspected_texts=verified_result.inspected_texts,
+    ):
         resolved_prop_wcs = [backend.citation_for_ref(ref) for ref in prop.citations]
         if not resolved_prop_wcs or any(wc is None for wc in resolved_prop_wcs):
             continue
@@ -1097,10 +1101,10 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
                 prop_cites.append(bench._saved_answer_citation_payload(wc))
         if prop_cites:
             proposals_payload.append({
-                "proposal_id": prop.proposal_id, "category": prop.category, "label": prop.label,
-                "title": prop.title, "detail": prop.detail, "date_label": prop.date_label,
-                "calculation_ids": list(prop.calculation_ids), "disclosure_note": prop.disclosure_note,
-                "citations": prop_cites,
+                "proposal_id": prop.proposal_id, "category": prop.category, "subtype": prop.subtype,
+                "label": prop.label, "title": prop.title, "detail": prop.detail,
+                "date_label": prop.date_label, "calculation_ids": list(prop.calculation_ids),
+                "disclosure_note": prop.disclosure_note, "citations": prop_cites,
             })
     supported = bool(result.answerable and claims_payload)
     intro = _VERIFIED_INTRO if supported else _ABSTENTION_INTRO
@@ -1208,6 +1212,50 @@ def _verify_original_integrity(bench, store, doc_id: str) -> None:
         store.source_path(doc_id, verify_digest=True)
 
 
+def _proposal_note_fields(proposal: Mapping[str, object]) -> tuple[str, str, str]:
+    title = " ".join(str(proposal.get("title", "Assistant proposal")).split()).strip()[:160]
+    detail = str(proposal.get("detail", ""))
+    if proposal.get("disclosure_note"):
+        detail = f"{proposal['disclosure_note']}\n\n{detail}".strip()
+    body = detail.replace("\r\n", "\n").replace("\r", "\n").strip()[:20_000]
+    date_label = " ".join(str(proposal.get("date_label", "")).split()).strip()[:100]
+    return title, body, date_label
+
+
+def saved_proposal_states(bench, matter_id: str, actor_id: str, messages: Sequence[object]) -> dict[str, dict[str, object]]:
+    """Return current notebook revision and status for any already-saved assistant proposals."""
+    key_to_meta: dict[str, tuple[str, tuple[str, str, str]]] = {}
+    for msg in messages:
+        if getattr(msg, "role", "") != "assistant":
+            continue
+        payload = getattr(msg, "payload", None) or {}
+        proposals = (payload.get("case_assistant") or {}).get("proposals") or ()
+        msg_id = str(getattr(msg, "message_id", ""))
+        for prop in proposals:
+            if isinstance(prop, Mapping) and prop.get("proposal_id"):
+                pid = str(prop["proposal_id"])
+                key_to_meta[f"assistant-proposal:{msg_id}:{pid}"] = (f"{msg_id}:{pid}", _proposal_note_fields(prop))
+    if not key_to_meta:
+        return {}
+    try:
+        found = bench.workspace.notebook_revisions_by_dedupe_keys(matter_id, actor_id, tuple(key_to_meta))
+    except KeyError:
+        return {}
+    states: dict[str, dict[str, object]] = {}
+    for dkey, (updated_at, status, title, body, date_label) in found.items():
+        meta = key_to_meta.get(dkey)
+        if meta is None:
+            continue
+        pair_key, expected_fields = meta
+        edited = (title, body, date_label) != expected_fields
+        states[pair_key] = {
+            "updated_at": "" if edited else updated_at,
+            "status": status,
+            "edited": edited,
+        }
+    return states
+
+
 def install_assistant_proposal_routes(app, *, bench, authorized_matter, require_csrf, auth_context) -> None:
     """Register the reviewer-gated endpoint that saves one cited proposal to matter memory."""
     from .case_assistant_proposals import CATEGORY_STORAGE
@@ -1216,7 +1264,13 @@ def install_assistant_proposal_routes(app, *, bench, authorized_matter, require_
         "/matters/{slug}/conversations/{conversation_id}/messages/{message_id}/assistant-proposals/{proposal_id}",
         dependencies=[Depends(require_csrf)],
     )
-    def save_assistant_proposal(request: Request, slug: str, conversation_id: str, message_id: str, proposal_id: str):
+    def save_assistant_proposal(
+        request: Request, slug: str, conversation_id: str, message_id: str, proposal_id: str,
+        decision: str = Form("save", max_length=16),
+        expected_updated_at: str = Form("", max_length=64),
+    ):
+        if decision not in {"save", "review", "dismiss"}:
+            raise HTTPException(400, "Unsupported proposal decision.")
         matter = authorized_matter(request, slug)
         actor = auth_context(request).principal_id
         messages = bench.workspace.messages(matter.matter_id, conversation_id)
@@ -1244,21 +1298,33 @@ def install_assistant_proposal_routes(app, *, bench, authorized_matter, require_
                     _verify_original_integrity(bench, store, doc_id)
                 except Exception as exc:
                     raise HTTPException(409, "A cited original changed on disk or is unavailable; rerun the assistant before saving.") from exc
-            item_type, status = CATEGORY_STORAGE[category]
-            detail = str(proposal.get("detail", ""))
-            if proposal.get("disclosure_note"):
-                detail = f"{proposal['disclosure_note']}\n\n{detail}".strip()
+            item_type, default_status = CATEGORY_STORAGE[category]
+            target_status = "confirmed" if decision == "review" else ("dismissed" if decision == "dismiss" else default_status)
+            expected_title, expected_body, expected_date = _proposal_note_fields(proposal)
             try:
                 item, created = bench.workspace.create_notebook_item(
-                    matter.matter_id, actor, item_type=item_type, status=status,
-                    title=str(proposal.get("title", "Assistant proposal")), body=detail,
-                    date_label=str(proposal.get("date_label", "")), origin="answer",
+                    matter.matter_id, actor, item_type=item_type, status=target_status,
+                    title=expected_title, body=expected_body,
+                    date_label=expected_date, origin="answer",
                     source_conversation_id=conversation_id, source_message_id=message_id,
                     dedupe_key=f"assistant-proposal:{message_id}:{proposal_id}",
                     references=references,
                 )
+                if not created and decision in {"review", "dismiss"} and item.status != target_status:
+                    if (item.title, item.body, item.date_label) != (expected_title, expected_body, expected_date):
+                        raise HTTPException(
+                            409,
+                            "This saved note was edited in case memory; review and update its status in the Notebook.",
+                        )
+                    item = bench.workspace.set_notebook_item_status(
+                        matter.matter_id, actor, item.item_id, target_status,
+                        expected_updated_at=expected_updated_at,
+                    )
             except WorkspaceProblem as exc:
                 raise HTTPException(409, str(exc)) from exc
         if "application/json" in request.headers.get("accept", ""):
-            return JSONResponse({"item_id": item.item_id, "created": created, "status": item.status, "item_type": item.item_type})
+            return JSONResponse({
+                "item_id": item.item_id, "created": created, "status": item.status,
+                "item_type": item.item_type, "updated_at": item.updated_at,
+            })
         return RedirectResponse(f"/matters/{slug}?conversation={conversation_id}#latest", status_code=303)

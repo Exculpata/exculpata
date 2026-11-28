@@ -920,11 +920,22 @@ def notebook_blocks(
                 )
             )
             blocks.append(ExportBlock(reference.excerpt, "citation"))
+    if any(
+        item.status == "needs_review" or "candidate for attorney review" in (item.body or "").casefold()
+        for item, _ in entries
+    ):
+        blocks.append(
+            ExportBlock(
+                "Disclosure-review items are surfaced strictly as candidates for attorney review; "
+                "automated flags do not establish legal obligations or conclusions.",
+                "note",
+            )
+        )
     if not entries:
         blocks.append(ExportBlock("No notebook items were present.", "note"))
     blocks.append(
         ExportBlock(
-            "Suggested and disputed notebook items require review against their cited source material.",
+            "Suggested, disputed, and candidate-for-review notebook items require attorney review against their cited source material.",
             "footer",
         )
     )

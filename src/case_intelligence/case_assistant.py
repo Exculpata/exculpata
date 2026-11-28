@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation, localcontext
 import json
 import re
 import time
+from types import MappingProxyType
 from typing import Callable, Mapping, Protocol, Sequence
 
 from .case_assistant_tools import (
@@ -30,7 +31,8 @@ _SYSTEM_PROMPT = (
     "citing exact source references for every input. Never guess when the record is incomplete; "
     "surface gaps and competing accounts plainly. Return a final JSON object with keys: "
     "answerable (bool), summary (str), findings (list of {text, citations, calculation_ids}), "
-    "gaps (list of str), and competing_accounts (list of str)."
+    "gaps (list of str), competing_accounts (list of str), and optional proposals "
+    "(list of {category, subtype, title, detail, citations} framed strictly as candidates for attorney review)."
 )
 
 @dataclass(frozen=True)
@@ -51,6 +53,8 @@ class AssistantInvestigationResult:
     omitted_findings: int; gaps: tuple[str, ...]; competing_accounts: tuple[str, ...]
     citations: tuple[SourceRef, ...]; receipts: Mapping[str, CalculationReceipt]
     trace: tuple[ToolCallRecord, ...]; turns_used: int; elapsed_ms: int
+    raw_proposals: tuple[Mapping[str, object], ...] = ()
+    inspected_texts: Mapping[tuple[str, ...], str] = MappingProxyType({})
 
 class AssistantModelClient(Protocol):
     def complete_turn(self, messages: Sequence[Mapping[str, object]], *, tools: Sequence[Mapping[str, object]]) -> AssistantTurn: ...
@@ -326,50 +330,67 @@ def verify_assistant_answer(
     if raw_findings is not None and not isinstance(raw_findings, list):
         omitted += 1
         raw_findings = ()
-    for item in (raw_findings or ()):
-        if not isinstance(item, Mapping) or not isinstance(item.get("text"), str) or not item["text"].strip():
-            omitted += 1; continue
-        raw_cites = item.get("citations") if isinstance(item.get("citations"), list) else []
-        raw_calcs = item.get("calculation_ids") if isinstance(item.get("calculation_ids"), list) else []
-        cites, calc_ids, allowed_nums, valid = [], [], set(), bool(raw_cites)
+    def _verify_item(
+        text: str, raw_cites: object, raw_calcs: object, *, max_citations: int | None = None,
+    ) -> tuple[tuple[SourceRef, ...], tuple[str, ...]] | None:
+        if not isinstance(raw_cites, list) or not raw_cites:
+            return None
+        if raw_calcs is not None and not isinstance(raw_calcs, list):
+            return None
+        cites: list[SourceRef] = []
+        calc_ids: list[str] = []
+        allowed_nums: set[str] = set()
         for c in raw_cites:
             if not isinstance(c, Mapping):
-                valid = False; break
+                return None
             ref = _resolve_inspected_ref(
                 by_vkey, by_doc_loc,
                 str(c.get("document_id", "")).strip(),
                 str(c.get("location", "")).strip(),
                 str(c.get("source_version_id", "")).strip(),
             )
-            if ref is None: valid = False; break
-            cites.append(ref)
-        if valid:
-            for ref in cites:
-                allowed_nums.update(_extract_nums(_inspected_text_for(inspected_texts, ref)))
-            for cid in raw_calcs:
-                receipt = receipts.get(str(cid))
-                if receipt is None: valid = False; break
-                calc_ids.append(receipt.receipt_id); allowed_nums.add(_norm_num(receipt.result))
-                if receipt.operation == "production_summary":
-                    for inp in receipt.inputs:
-                        allowed_nums.update(_extract_nums(inp.value))
-                elif receipt.operation != "count":
-                    for inp in receipt.inputs:
-                        allowed_nums.add(_norm_num(inp.value))
-                if receipt.operation == "running_balance":
-                    try:
-                        with localcontext() as ctx:
-                            ctx.prec = 64
-                            running = Decimal(0)
-                            for inp in receipt.inputs:
-                                running += Decimal(_norm_num(inp.value))
-                                allowed_nums.add(_norm_num(format(running, "f")))
-                    except InvalidOperation:
-                        pass
-            if not _extract_nums(item["text"]).issubset(allowed_nums):
-                valid = False
-        if valid: verified.append(AssistantFinding(item["text"].strip(), tuple(cites), tuple(calc_ids)))
-        else: omitted += 1
+            if ref is None:
+                return None
+            if ref not in cites:
+                cites.append(ref)
+        if max_citations is not None:
+            cites = cites[:max_citations]
+        for ref in cites:
+            allowed_nums.update(_extract_nums(_inspected_text_for(inspected_texts, ref)))
+        for cid in (raw_calcs or ()):
+            receipt = receipts.get(str(cid))
+            if receipt is None:
+                return None
+            calc_ids.append(receipt.receipt_id)
+            allowed_nums.add(_norm_num(receipt.result))
+            if receipt.operation == "production_summary":
+                for inp in receipt.inputs:
+                    allowed_nums.update(_extract_nums(inp.value))
+            elif receipt.operation != "count":
+                for inp in receipt.inputs:
+                    allowed_nums.add(_norm_num(inp.value))
+            if receipt.operation == "running_balance":
+                try:
+                    with localcontext() as ctx:
+                        ctx.prec = 64
+                        running = Decimal(0)
+                        for inp in receipt.inputs:
+                            running += Decimal(_norm_num(inp.value))
+                            allowed_nums.add(_norm_num(format(running, "f")))
+                except InvalidOperation:
+                    pass
+        if not _extract_nums(text).issubset(allowed_nums):
+            return None
+        return tuple(cites), tuple(calc_ids)
+
+    for item in (raw_findings or ()):
+        if not isinstance(item, Mapping) or not isinstance(item.get("text"), str) or not item["text"].strip():
+            omitted += 1; continue
+        checked = _verify_item(item["text"], item.get("citations"), item.get("calculation_ids"))
+        if checked is not None:
+            verified.append(AssistantFinding(item["text"].strip(), checked[0], checked[1]))
+        else:
+            omitted += 1
 
     gaps: list[str] = []
     raw_gaps = raw.get("gaps")
@@ -409,10 +430,50 @@ def verify_assistant_answer(
             summary = _ABSTENTION_SUMMARY
         else:
             summary = raw_summary
+    raw_props_in = raw.get("proposals")
+    verified_proposals: list[Mapping[str, object]] = []
+    if isinstance(raw_props_in, list):
+        for prop in raw_props_in:
+            if not isinstance(prop, Mapping):
+                continue
+            title = str(prop.get("title", "")).strip() if isinstance(prop.get("title"), str) else ""
+            detail = str(prop.get("detail", "")).strip() if isinstance(prop.get("detail"), str) else ""
+            date_label = str(prop.get("date_label", "")).strip() if isinstance(prop.get("date_label"), str) else ""
+            if not title:
+                continue
+            checked_prop = _verify_item(
+                f"{title} {detail} {date_label}",
+                prop.get("citations"),
+                prop.get("calculation_ids"),
+                max_citations=12,
+            )
+            if checked_prop is None:
+                continue
+            prop_cites, prop_calcs = checked_prop
+            verified_proposals.append({
+                **dict(prop),
+                "title": title,
+                "detail": detail,
+                "date_label": date_label,
+                "citations": [
+                    {
+                        "document_id": ref.document_id,
+                        "source_name": ref.source_name,
+                        "location": ref.location,
+                        "source_version_id": ref.source_version_id,
+                    }
+                    for ref in prop_cites
+                ],
+                "calculation_ids": list(prop_calcs),
+            })
+            if len(verified_proposals) >= 25:
+                break
     return AssistantInvestigationResult(
         answerable=answerable, summary=summary, findings=tuple(verified), omitted_findings=omitted,
         gaps=tuple(dict.fromkeys(gaps)), competing_accounts=competing, citations=runtime.inspected_refs,
         receipts=receipts, trace=runtime.trace, turns_used=turns_used, elapsed_ms=elapsed_ms,
+        raw_proposals=tuple(verified_proposals),
+        inspected_texts=MappingProxyType(dict(inspected_texts)),
     )
 
 

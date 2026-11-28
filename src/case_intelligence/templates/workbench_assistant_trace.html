@@ -46,7 +46,11 @@
 <div class="assistant-proposals" data-assistant-proposals>
   <strong>Proposed updates to case memory (requires reviewer confirmation)</strong>
   <ul class="assistant-proposal-list">
+    {% set _ws_states = proposal_states if proposal_states is defined else {} %}
+    {% set _dock_states = assistant.proposal_states if assistant is defined and assistant.proposal_states is defined else {} %}
     {% for prop in message.payload.case_assistant.proposals %}
+    {% set _prop_key = message.message_id ~ ':' ~ prop.proposal_id %}
+    {% set _prop_state = _ws_states.get(_prop_key) or _dock_states.get(_prop_key) or {} %}
     <li class="assistant-proposal-card">
       <div class="assistant-proposal-header">
         <span class="assistant-proposal-badge" data-category="{{ prop.category }}">{{ prop.label }}</span>
@@ -55,8 +59,11 @@
       {% if prop.disclosure_note %}<small class="assistant-proposal-note">{{ prop.disclosure_note }}</small>{% endif %}
       <form class="assistant-proposal-form" method="post" action="/matters/{{ matter.slug }}/conversations/{{ assistant.conversation.conversation_id if assistant is defined else conversation.conversation_id }}/messages/{{ message.message_id }}/assistant-proposals/{{ prop.proposal_id }}" data-assistant-proposal-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit" class="button button-secondary">Save to case memory</button>
-        <span class="assistant-proposal-status" data-assistant-proposal-status role="status" aria-live="polite" aria-atomic="true"></span>
+        <input type="hidden" name="expected_updated_at" value="{{ _prop_state.get('updated_at', '') }}" data-assistant-proposal-revision>
+        <button type="submit" name="decision" value="save" class="button button-secondary"{% if _prop_state.get('edited') %} disabled{% endif %}>Save to case memory</button>
+        <button type="submit" name="decision" value="review" class="button button-secondary"{% if _prop_state.get('edited') %} disabled{% endif %}>Mark reviewed</button>
+        <button type="submit" name="decision" value="dismiss" class="button button-secondary"{% if _prop_state.get('edited') %} disabled{% endif %}>Dismiss</button>
+        <span class="assistant-proposal-status" data-assistant-proposal-status role="status" aria-live="polite" aria-atomic="true">{% if _prop_state.get('edited') %}Edited in case memory; review and update status in the Notebook.{% elif _prop_state.get('status') == 'confirmed' %}Marked reviewed in case memory.{% elif _prop_state.get('status') == 'dismissed' %}Dismissed in case memory.{% elif _prop_state.get('status') %}Saved in case memory.{% endif %}</span>
       </form>
     </li>
     {% endfor %}

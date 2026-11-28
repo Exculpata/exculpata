@@ -22,8 +22,54 @@ CATEGORY_STORAGE: Mapping[str, tuple[str, str]] = {
     "timeline_event": ("event", "suggested"),
     "disclosure_review": ("issue", "needs_review"),
 }
-DISCLOSURE_NOTICE = "Candidate for attorney review (Brady/Giglio/impeachment); machine output does not establish a legal duty or fact."
+DISCLOSURE_NOTICE = "Candidate for attorney review (potential exculpatory or impeachment material); machine output does not establish a legal duty or fact."
+DISCLOSURE_SUBTYPES: Mapping[str, str] = {
+    "inconsistent_statement": "Inconsistent statement — candidate for review",
+    "witness_benefit": "Witness benefit or agreement — candidate for review",
+    "alternate_suspect": "Alternate suspect — candidate for review",
+    "credibility_issue": "Credibility issue — candidate for review",
+}
+PROHIBITED_DISCLOSURE_PHRASES: tuple[str, ...] = (
+    "is brady material",
+    "is giglio material",
+    "brady violation",
+    "giglio violation",
+    "disclosure was required",
+    "disclosure violated",
+    "must be disclosed",
+    "prosecutor violated",
+    "constitutional violation",
+    "unlawfully withheld",
+)
+_DISCLOSURE_PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
+    (
+        "inconsistent_statement",
+        re.compile(r"\b(?:inconsistent|contradict(?:s|ed|ing|ion)?|changed\s+(?:his|her|their)\s+(?:story|account|statement)|prior\s+statement\s+(?:differs|conflicted))\b", re.IGNORECASE),
+        "Passage references a potential statement inconsistency; candidate for attorney review.",
+    ),
+    (
+        "witness_benefit",
+        re.compile(r"\b(?:cooperation\s+agreement|plea\s+(?:deal|agreement)|sentencing\s+leniency|immunity\s+(?:agreement|grant)|reduced\s+sentence|in\s+exchange\s+for\s+testimony|benefit\s+for\s+testif(?:ying|y))\b", re.IGNORECASE),
+        "Passage references a potential witness benefit or agreement; candidate for attorney review.",
+    ),
+    (
+        "alternate_suspect",
+        re.compile(r"\b(?:alternate\s+suspect|other\s+suspect|another\s+(?:person|individual)\s+(?:confessed|admitted|matched)|third[- ]party\s+(?:culpability|suspect))\b", re.IGNORECASE),
+        "Passage references a potential alternate suspect; candidate for attorney review.",
+    ),
+    (
+        "credibility_issue",
+        re.compile(r"\b(?:prior\s+false\s+(?:report|statement)|credibility\s+(?:concern|issue)|bias\s+against\s+the\s+defendant|fabricated\s+(?:report|account)|disciplinary\s+finding\s+for\s+dishonesty)\b", re.IGNORECASE),
+        "Passage references a potential witness credibility concern; candidate for attorney review.",
+    ),
+)
 _ISO_DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+
+
+def has_prohibited_disclosure_wording(text: str) -> bool:
+    """Fail closed when text contains conclusive Brady/Giglio legal-duty or violation phrasing."""
+    lowered = " ".join((text or "").casefold().split())
+    return any(phrase in lowered for phrase in PROHIBITED_DISCLOSURE_PHRASES)
 
 
 @dataclass(frozen=True)
@@ -37,6 +83,7 @@ class AssistantProposal:
     citations: tuple[SourceRef, ...]
     calculation_ids: tuple[str, ...] = ()
     disclosure_note: str = ""
+    subtype: str = ""
 
 
 def _proposal_id(category: str, title: str, refs: Sequence[SourceRef]) -> str:
@@ -94,34 +141,68 @@ def _collect_calc_premise_refs(calc_ids: Sequence[str], receipts: Mapping[str, o
     return refs
 
 
+def detect_disclosure_candidates(
+    refs: Sequence[SourceRef],
+    inspected_texts: Mapping[tuple[str, ...], str],
+) -> tuple[AssistantProposal, ...]:
+    """Deterministically surface cited disclosure-review candidates across neutral categories."""
+    found: list[AssistantProposal] = []
+    seen: set[str] = set()
+    for ref in refs:
+        if not (ref.document_id and ref.source_name and ref.location):
+            continue
+        text = inspected_texts.get((ref.document_id, ref.location, ref.source_version_id)) or inspected_texts.get((ref.document_id, ref.location), "")
+        if not text.strip():
+            continue
+        for subtype, pattern, reason in _DISCLOSURE_PATTERNS:
+            if pattern.search(text):
+                label = DISCLOSURE_SUBTYPES[subtype]
+                title = _short_title(f"{ref.source_name} ({ref.location})", label)
+                pid = _proposal_id("disclosure_review", f"{subtype}:{title}", (ref,))
+                if pid in seen:
+                    continue
+                seen.add(pid)
+                found.append(AssistantProposal(
+                    proposal_id=pid, category="disclosure_review", label=label,
+                    title=title, detail=reason, date_label="", citations=(ref,),
+                    calculation_ids=(), disclosure_note=DISCLOSURE_NOTICE, subtype=subtype,
+                ))
+    return tuple(found)
+
+
 def build_verified_proposals(
     result: AssistantInvestigationResult,
     *,
     raw_proposals: Sequence[Mapping[str, object]] = (),
+    inspected_texts: Mapping[tuple[str, ...], str] | None = None,
 ) -> tuple[AssistantProposal, ...]:
-    """Build strictly cited, reviewer-gated proposals; drop any uncited or fabricated entry."""
+    """Build strictly cited, reviewer-gated proposals; drop any uncited, fabricated, or conclusive-wording entry."""
     inspected = {(ref.document_id, ref.location): ref for ref in result.citations}
     proposals: list[AssistantProposal] = []
     seen_ids: set[str] = set()
 
     def add(category: str, title: str, detail: str, refs: Sequence[SourceRef],
-            *, date_label: str = "", calc_ids: Sequence[str] = ()) -> None:
+            *, date_label: str = "", calc_ids: Sequence[str] = (), subtype: str = "") -> None:
         if category not in PROPOSAL_CATEGORIES or not title.strip():
+            return
+        if category == "disclosure_review" and has_prohibited_disclosure_wording(f"{title} {detail}"):
             return
         valid_calcs = tuple(cid for cid in calc_ids if cid in result.receipts)
         combined_refs = (*refs, *_collect_calc_premise_refs(valid_calcs, result.receipts))
         if not combined_refs:
             return
         unique_refs = tuple(dict.fromkeys(combined_refs))[:12]
+        norm_subtype = subtype if (category == "disclosure_review" and subtype in DISCLOSURE_SUBTYPES) else ""
         pid = _proposal_id(category, title.strip(), unique_refs)
         if pid in seen_ids:
             return
         seen_ids.add(pid)
         note = DISCLOSURE_NOTICE if category == "disclosure_review" else ""
+        label = DISCLOSURE_SUBTYPES[norm_subtype] if norm_subtype else CATEGORY_LABELS[category]
         proposals.append(AssistantProposal(
-            proposal_id=pid, category=category, label=CATEGORY_LABELS[category],
+            proposal_id=pid, category=category, label=label,
             title=title.strip()[:160], detail=detail.strip()[:4_000], date_label=date_label.strip()[:100],
-            citations=unique_refs, calculation_ids=valid_calcs, disclosure_note=note,
+            citations=unique_refs, calculation_ids=valid_calcs, disclosure_note=note, subtype=norm_subtype,
         ))
 
     for raw in raw_proposals:
@@ -137,10 +218,16 @@ def build_verified_proposals(
         title = str(raw.get("title", "")).strip()
         detail = str(raw.get("detail", "")).strip() or title
         date_label = str(raw.get("date_label", "")).strip()
+        subtype = str(raw.get("subtype", "")).strip()
         if category == "timeline_event" and not date_label:
             found = _ISO_DATE_RE.search(f"{title} {detail}")
             date_label = found.group() if found else ""
-        add(category, title, detail, refs, date_label=date_label, calc_ids=[str(c) for c in raw_calcs])
+        add(category, title, detail, refs, date_label=date_label, calc_ids=[str(c) for c in raw_calcs], subtype=subtype)
+
+    effective_texts = inspected_texts if inspected_texts is not None else result.inspected_texts
+    if effective_texts:
+        for cand in detect_disclosure_candidates(result.citations, effective_texts):
+            add(cand.category, cand.title, cand.detail, cand.citations, subtype=cand.subtype)
 
     for finding in result.findings:
         if not finding.citations:
