@@ -140,6 +140,7 @@
   ["notebook_item", "(self, matter_id: 'str', actor_id: 'str', item_id: 'str', *, administrator_override: 'bool' = False) -> 'NotebookItemRecord'"],
   ["notebook_page", "(self, matter_id: 'str', actor_id: 'str', *, administrator_override: 'bool' = False, query: 'str' = '', item_type: 'str' = '', status: 'str' = '', page: 'int' = 1, page_size: 'int' = 24) -> 'NotebookPageRecord'"],
   ["notebook_references", "(self, matter_id: 'str', actor_id: 'str', item_id: 'str', *, administrator_override: 'bool' = False) -> 'tuple[NotebookReferenceRecord, ...]'"],
+  ["notebook_revisions_by_dedupe_keys", "(self, matter_id: 'str', actor_id: 'str', dedupe_keys: 'Sequence[str]') -> 'dict[str, tuple[str, str, str, str, str]]'"],
   ["observe_model_destinations", "(self) -> None"],
   ["pending_review_decisions", "(self, run_id: 'str', *, limit: 'int' = 2) -> 'tuple[ReviewDecisionRecord, ...]'"],
   ["pending_upload_bytes", "(self, matter_id: 'str | None' = None) -> 'int'"],
