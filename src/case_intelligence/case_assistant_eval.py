@@ -36,6 +36,7 @@ class EvalCase:
     require_gap_notice: bool = False
     require_competing_accounts: bool = False
     expected_conclusion_pattern: str = ""
+    required_gap_pattern: str = ""
 
 
 @dataclass(frozen=True)
@@ -47,9 +48,20 @@ class _EvalDoc:
 class InMemoryEvalBackend:
     """Deterministic MatterToolBackend backed by a rendered synthetic discovery corpus."""
 
-    def __init__(self, matter_id: str, docs: Sequence[_EvalDoc]) -> None:
+    def __init__(
+        self,
+        matter_id: str,
+        docs: Sequence[_EvalDoc],
+        *,
+        email_threads: Mapping[str, Sequence[Mapping[str, object]]] = (),
+        transcript_cues: Mapping[str, Sequence[Mapping[str, object]]] = (),
+        production_audit: Mapping[str, object] | None = None,
+    ) -> None:
         self.matter_id = matter_id
         self.docs = {d.summary.document_id: d for d in docs}
+        self._email_threads = dict(email_threads)
+        self._transcript_cues = dict(transcript_cues)
+        self._production_audit = dict(production_audit) if production_audit is not None else None
 
     def authorize(self, matter_id: str, actor_id: str) -> bool:
         return matter_id == self.matter_id
@@ -126,6 +138,84 @@ class InMemoryEvalBackend:
                            document_ids: frozenset[str] | None = None) -> Mapping[str, object]:
         return {}
 
+    def read_email_thread(
+        self, matter_id: str, document_id: str, *, limit: int = 25, offset: int | None = None,
+        allowed_document_ids: frozenset[str] | None = None,
+    ) -> Mapping[str, object] | None:
+        if matter_id != self.matter_id or document_id not in self._email_threads:
+            return None
+        if allowed_document_ids is not None and document_id not in allowed_document_ids:
+            return None
+        msgs = [
+            dict(m) for m in self._email_threads[document_id]
+            if allowed_document_ids is None or m["document_id"] in allowed_document_ids
+        ]
+        start = offset or 0
+        window = msgs[start:start + limit]
+        return {
+            "document_id": document_id,
+            "count": len(window),
+            "total_messages": len(msgs),
+            "messages": window,
+        }
+
+    def read_transcript_window(
+        self, matter_id: str, document_id: str, *, start_seconds: float = 0.0,
+        end_seconds: float | None = None, limit: int = 50, offset: int = 0,
+    ) -> Mapping[str, object] | None:
+        if matter_id != self.matter_id or document_id not in self._transcript_cues:
+            return None
+        doc = self.docs[document_id]
+        cues = [
+            dict(c) for c in self._transcript_cues[document_id]
+            if c["start_seconds"] >= start_seconds and (end_seconds is None or c["start_seconds"] <= end_seconds)
+        ]
+        window = cues[offset:offset + limit]
+        return {
+            "document_id": document_id,
+            "source_name": doc.summary.source_name,
+            "count": len(window),
+            "total_cues": len(cues),
+            "cues": window,
+        }
+
+    def inspect_production(
+        self, matter_id: str, *, load_file_document_id: str = "", include_gaps: bool = True,
+        document_ids: frozenset[str] | None = None,
+    ) -> Mapping[str, object]:
+        scoped = [d for d in self.docs.values() if document_ids is None or d.summary.document_id in document_ids]
+        unavail = [asdict_summary(d.summary) for d in scoped if d.summary.status != "ready"]
+        counts: dict[str, int] = {}
+        for d in scoped:
+            counts[d.summary.kind] = counts.get(d.summary.kind, 0) + 1
+        audit = dict(self._production_audit or {})
+        if not include_gaps or (document_ids is not None and audit.get("load_file_id") not in document_ids):
+            bates_gaps = {"computed": False, "notice": "Bates gaps omitted or outside scope.", "facts": [], "counts": {}}
+        else:
+            bates_gaps = dict(audit.get("bates_gaps") or {"computed": False, "notice": "", "facts": [], "counts": {}})
+        source_refs = list(audit.get("source_refs") or ())
+        if document_ids is not None:
+            source_refs = [r for r in source_refs if r["document_id"] in document_ids]
+        return {
+            "total_sources": len(scoped),
+            "recorded_pdf_pages": sum(d.summary.page_count for d in scoped if d.summary.kind == "pdf"),
+            "counts_by_media_type": counts,
+            "unavailable_count": len(unavail),
+            "unavailable_sources": unavail[:25],
+            "load_file_attempts": list(audit.get("load_file_attempts") or ()),
+            "load_file_attempts_truncated": False,
+            "bates_gaps": bates_gaps,
+            "source_refs": source_refs,
+        }
+
+
+def asdict_summary(summary: SourceSummary) -> dict[str, object]:
+    return {
+        "document_id": summary.document_id, "source_name": summary.source_name,
+        "kind": summary.kind, "status": summary.status, "bates": summary.bates,
+        "status_detail": summary.status_detail,
+    }
+
 
 def build_stock_eval_suite(seed: int = 7) -> tuple[tuple[EvalCase, ...], InMemoryEvalBackend]:
     """Build the seeded 405-document stock corpus + unreadable scan and exact answer key."""
@@ -170,6 +260,110 @@ def build_stock_eval_suite(seed: int = 7) -> tuple[tuple[EvalCase, ...], InMemor
         ),
     )
     return suite, InMemoryEvalBackend(case["matter_id"], docs)
+
+
+def build_extended_eval_suite(seed: int = 7) -> tuple[tuple[EvalCase, ...], InMemoryEvalBackend]:
+    """Build the 8-case extended synthesis suite exercising Bates gaps, email threads, transcripts, and CSV tables."""
+    stock_suite, stock_backend = build_stock_eval_suite(seed=seed)
+    docs = list(stock_backend.docs.values())
+
+    ledger_csv = (
+        "wire_id,from_account,amount,date\n"
+        "w-1,stk-0,12500.50,2024-09-01\n"
+        "w-2,stk-1,4000.00,2024-09-02\n"
+        "w-3,stk-0,7500.25,2024-09-05\n"
+    )
+    docs.extend([
+        _EvalDoc(
+            SourceSummary("ext-bates-csv", "EXT-0001-loadfile.csv", "loadfile", "ready", 1, bates="PROD0001"),
+            (SourcePage(1, "Page 1", "path,begin_bates,end_bates\nalpha.pdf,PROD0001,PROD0002\nbeta.pdf,PROD0004,PROD0004\n", "v1-ext-bates-csv"),),
+        ),
+        _EvalDoc(
+            SourceSummary("ext-email-1", "EXT-0001-email.eml", "email", "ready", 1, bates="PROD0010"),
+            (SourcePage(1, "Page 1", "Subject: Side letter draft\nInitial terms proposed for Q3 wire transfers.", "v1-ext-email-1"),),
+        ),
+        _EvalDoc(
+            SourceSummary("ext-email-2", "EXT-0002-email.eml", "email", "ready", 1, bates="PROD0011"),
+            (SourcePage(1, "Page 1", "Subject: Re: Side letter draft\nSee attached signed-side-letter.bin (attachment not extracted).", "v1-ext-email-2"),),
+        ),
+        _EvalDoc(
+            SourceSummary("ext-email-3", "EXT-0003-email.eml", "email", "ready", 1, bates="PROD0012"),
+            (SourcePage(1, "Page 1", "Subject: Re: Side letter draft\nProceeding with the stk-0 transfer schedule.", "v1-ext-email-3"),),
+        ),
+        _EvalDoc(
+            SourceSummary("ext-transcript", "EXT-0004-transcript.txt", "transcript", "ready", 1, bates="PROD0013"),
+            (SourcePage(1, "00:01:30–00:01:45", "[00:01:30] Witness A: Account stk-0 never sent any wire transfers in September 2024.", "v1-ext-transcript"),),
+        ),
+        _EvalDoc(
+            SourceSummary("ext-ledger", "EXT-0005-ledger.csv", "ledger", "ready", 1, bates="PROD0014"),
+            (SourcePage(1, "Line 1", ledger_csv, "v1-ext-ledger"),),
+        ),
+    ])
+
+    thread_messages = (
+        {"document_id": "ext-email-1", "source_name": "EXT-0001-email.eml", "location": "Page 1", "source_version_id": "v1-ext-email-1",
+         "body": "Initial terms proposed for Q3 wire transfers.", "attachment_gaps": []},
+        {"document_id": "ext-email-2", "source_name": "EXT-0002-email.eml", "location": "Page 1", "source_version_id": "v1-ext-email-2",
+         "body": "See attached signed-side-letter.bin (attachment not extracted).", "attachment_gaps": ["signed-side-letter.bin"]},
+        {"document_id": "ext-email-3", "source_name": "EXT-0003-email.eml", "location": "Page 1", "source_version_id": "v1-ext-email-3",
+         "body": "Proceeding with the stk-0 transfer schedule.", "attachment_gaps": []},
+    )
+    email_threads = {m["document_id"]: thread_messages for m in thread_messages}
+    transcript_cues = {
+        "ext-transcript": (
+            {"start_seconds": 15.0, "end_seconds": 30.0, "speaker": "Interviewer", "location": "00:00:15–00:00:30",
+             "source_version_id": "v1-ext-transcript", "text": "Opening statement for the recorded interview."},
+            {"start_seconds": 90.0, "end_seconds": 105.0, "speaker": "Witness A", "location": "00:01:30–00:01:45",
+             "source_version_id": "v1-ext-transcript", "text": "Account stk-0 never sent any wire transfers in September 2024."},
+        ),
+    }
+    bates_ref = {"document_id": "ext-bates-csv", "source_name": "EXT-0001-loadfile.csv", "location": "Page 1", "source_version_id": "v1-ext-bates-csv"}
+    production_audit = {
+        "load_file_id": "ext-bates-csv",
+        "load_file_attempts": [{"document_id": "ext-bates-csv", "source_format": "csv", "status": "complete"}],
+        "source_refs": [bates_ref],
+        "bates_gaps": {
+            "computed": True,
+            "notice": "Bates gap findings reflect the inspected load file only.",
+            "load_file_ref": bates_ref,
+            "counts": {"missing": 1},
+            "facts": [{"text": "Missing Bates PROD0003 between PROD0002 and PROD0004.", "source_refs": [bates_ref]}],
+        },
+    }
+    extended_cases = (
+        EvalCase(
+            "bates_gap_production_audit",
+            "Inspect the production load file for any missing Bates numbers and note unreadable files.",
+            expected_answerable=True, require_receipt=True,
+            required_source_kinds=("loadfile",), require_gap_notice=True,
+            expected_conclusion_pattern=r"\bPROD0003\b",
+        ),
+        EvalCase(
+            "email_thread_attachment_gap",
+            "Summarize the side-letter email thread chronologically and identify any unextracted attachment gaps.",
+            expected_answerable=True, required_source_kinds=("email",),
+            require_gap_notice=True, required_gap_pattern=r"signed-side-letter\.bin|attachment",
+            expected_conclusion_pattern=r"signed-side-letter\.bin|side letter",
+        ),
+        EvalCase(
+            "transcript_window_contradiction",
+            "Compare Witness A's recorded interview around 00:01:30 against the wire ledger for account stk-0.",
+            expected_answerable=True, required_source_kinds=("transcript", "ledger"),
+            require_competing_accounts=True,
+            expected_conclusion_pattern=r"\b(?:contradict\w*|inconsistent|conflict\w*|discrepanc\w*)\b",
+        ),
+        EvalCase(
+            "table_ledger_aggregation",
+            "What is the exact total dollar amount wired from account stk-0 in the wire ledger?",
+            expected_answerable=True, expected_value="20000.75", tolerance=0.0,
+            require_receipt=True, required_source_kinds=("ledger",),
+        ),
+    )
+    backend = InMemoryEvalBackend(
+        stock_backend.matter_id, docs,
+        email_threads=email_threads, transcript_cues=transcript_cues, production_audit=production_audit,
+    )
+    return (*stock_suite, *extended_cases), backend
 
 
 def _matches_numeric(target: str, candidates: Sequence[str], tolerance: float) -> bool:
@@ -238,7 +432,12 @@ def score_eval_case(case: EvalCase, result: AssistantInvestigationResult) -> dic
     if case.require_receipt:
         used_ids = {cid for f in result.findings for cid in f.calculation_ids}
         receipt_vals = [result.receipts[cid].result for cid in used_ids if cid in result.receipts]
-        if case.expected_value and _matches_numeric(case.expected_value, receipt_vals, case.tolerance):
+        if case.expected_value:
+            if _matches_numeric(case.expected_value, receipt_vals, case.tolerance):
+                math_pts = 20.0
+            else:
+                penalties.append("missing_calculation_receipt")
+        elif used_ids and any(cid in result.receipts for cid in used_ids):
             math_pts = 20.0
         else:
             penalties.append("missing_calculation_receipt")
@@ -248,9 +447,14 @@ def score_eval_case(case: EvalCase, result: AssistantInvestigationResult) -> dic
     if result.omitted_findings > 0:
         honesty_pts = max(0.0, honesty_pts - 5.0 * result.omitted_findings)
         penalties.append("omitted_unverified_findings")
-    if case.require_gap_notice and not any(_UNREADABLE_SCAN_NAME in g or "unavailable" in g.casefold() for g in result.gaps):
-        honesty_pts = max(0.0, honesty_pts - 7.5)
-        penalties.append("missed_unreadable_gap")
+    if case.require_gap_notice:
+        if case.required_gap_pattern:
+            gap_ok = any(re.search(case.required_gap_pattern, g, flags=re.IGNORECASE) for g in result.gaps)
+        else:
+            gap_ok = any(_UNREADABLE_SCAN_NAME in g or "unavailable" in g.casefold() for g in result.gaps)
+        if not gap_ok:
+            honesty_pts = max(0.0, honesty_pts - 7.5)
+            penalties.append("missed_unreadable_gap")
     if case.require_competing_accounts and not result.competing_accounts:
         honesty_pts = max(0.0, honesty_pts - 7.5)
         penalties.append("missed_competing_accounts")
@@ -264,7 +468,7 @@ def score_eval_case(case: EvalCase, result: AssistantInvestigationResult) -> dic
 
 
 class _ScriptedEvalModel:
-    """Reference synthetic model proving the full 4-case stock suite end to end."""
+    """Reference synthetic model proving the stock and extended eval suites end to end."""
 
     def __init__(self) -> None:
         self._step = 0
@@ -272,6 +476,68 @@ class _ScriptedEvalModel:
     def complete_turn(self, messages, *, tools):
         q = next(m["content"] for m in messages if m["role"] == "user")
         tool_msgs = [json.loads(m["content"]) for m in messages if m.get("role") == "tool"]
+        if "missing Bates numbers" in q:
+            if not tool_msgs:
+                return AssistantTurn(tool_calls=(AssistantModelCall("b1", "inspect_production", {"load_file_document_id": "ext-bates-csv"}),))
+            payload = tool_msgs[0]
+            cite = payload["bates_gaps"]["facts"][0]["source_refs"][0]
+            rid = payload["calculation"]["receipt_id"]
+            return AssistantTurn(content=json.dumps({
+                "answerable": True,
+                "summary": "Production inspection identified Missing Bates PROD0003 between PROD0002 and PROD0004.",
+                "findings": [{"text": "Missing Bates PROD0003 between PROD0002 and PROD0004.",
+                              "citations": [cite], "calculation_ids": [rid]}],
+                "gaps": [], "competing_accounts": [],
+            }))
+        if "side-letter email thread" in q:
+            if not tool_msgs:
+                return AssistantTurn(tool_calls=(AssistantModelCall("e1", "read_email_thread", {"document_id": "ext-email-2"}),))
+            msgs = tool_msgs[0]["messages"]
+            cites = [{k: m[k] for k in ("document_id", "source_name", "location", "source_version_id")} for m in msgs]
+            return AssistantTurn(content=json.dumps({
+                "answerable": True,
+                "summary": "The side-letter thread proposed Q3 terms, referenced unextracted attachment signed-side-letter.bin, and proceeded with the stk-0 transfer schedule.",
+                "findings": [{"text": "The side letter thread referenced signed-side-letter.bin (attachment not extracted) before proceeding with stk-0 transfers.",
+                              "citations": cites, "calculation_ids": []}],
+                "gaps": ["Attachment signed-side-letter.bin was not extracted and could not be reviewed."],
+                "competing_accounts": [],
+            }))
+        if "recorded interview around 00:01:30" in q:
+            if not tool_msgs:
+                return AssistantTurn(tool_calls=(
+                    AssistantModelCall("tw1", "read_transcript_window", {"document_id": "ext-transcript", "start_seconds": 60, "end_seconds": 120}),
+                    AssistantModelCall("tw2", "query_table", {"document_id": "ext-ledger", "filters": {"from_account": "stk-0"}}),
+                ))
+            tr = next(m for m in tool_msgs if "cues" in m)
+            tb = next(m for m in tool_msgs if "rows" in m)
+            cue = tr["cues"][0]
+            tr_cite = {"document_id": tr["document_id"], "source_name": tr["source_name"], "location": cue["location"], "source_version_id": cue["source_version_id"]}
+            tb_cite = {"document_id": tb["document_id"], "source_name": tb["source_name"], "location": tb["location"], "source_version_id": tb["source_version_id"]}
+            return AssistantTurn(content=json.dumps({
+                "answerable": True,
+                "summary": "Witness A's recorded interview contradicts the wire ledger for account stk-0.",
+                "findings": [{"text": "Witness A denied stk-0 sent wires in September 2024, which contradicts wire ledger entries w-1 and w-3.",
+                              "citations": [tr_cite, tb_cite], "calculation_ids": []}],
+                "gaps": [],
+                "competing_accounts": ["Transcript denies any September 2024 stk-0 wires while the CSV ledger records two stk-0 transfers."],
+            }))
+        if "exact total dollar amount wired from account stk-0" in q:
+            if not tool_msgs:
+                return AssistantTurn(tool_calls=(AssistantModelCall("qt1", "query_table", {
+                    "document_id": "ext-ledger", "filters": {"from_account": "stk-0"},
+                    "aggregate_column": "amount", "aggregate_op": "sum",
+                }),))
+            tb = tool_msgs[0]
+            val = tb["calculation"]["result"]
+            rid = tb["calculation"]["receipt_id"]
+            tb_cite = {"document_id": tb["document_id"], "source_name": tb["source_name"], "location": tb["location"], "source_version_id": tb["source_version_id"]}
+            return AssistantTurn(content=json.dumps({
+                "answerable": True,
+                "summary": f"Account stk-0 wired a total of {val}.",
+                "findings": [{"text": f"Wire ledger entries for account stk-0 total {val}.",
+                              "citations": [tb_cite], "calculation_ids": [rid]}],
+                "gaps": [], "competing_accounts": [],
+            }))
         if "closing market price" in q:
             if not tool_msgs:
                 return AssistantTurn(tool_calls=(AssistantModelCall("t1", "search_discovery", {"query": "closing market price share", "limit": 5}),))
@@ -358,10 +624,16 @@ def run_evaluation(
     max_turns: int = 12,
     backend: str | None = None,
     model: str | None = None,
+    suite: str = "stock-ownership",
 ) -> dict[str, object]:
-    suite, backend_impl = build_stock_eval_suite(seed=seed)
+    if suite == "extended":
+        cases, backend_impl = build_extended_eval_suite(seed=seed)
+    elif suite == "stock-ownership":
+        cases, backend_impl = build_stock_eval_suite(seed=seed)
+    else:
+        raise ValueError(f"Unsupported eval suite: {suite!r}")
     rows = []
-    for case in suite:
+    for case in cases:
         runtime = MatterToolRuntime(backend_impl.matter_id, "eval-defender", backend_impl)
         result = CaseAssistant(client, tool_style=tool_style).investigate(case.question, runtime, max_turns=max_turns)
         rows.append(score_eval_case(case, result))
@@ -370,7 +642,7 @@ def run_evaluation(
     synthetic_reference = resolved_backend == "scripted"
     resolved_model = model or ("scripted-reference" if synthetic_reference else (getattr(client, "model", "") or "unknown"))
     return {
-        "suite": "stock-ownership",
+        "suite": suite,
         "seed": seed,
         "backend": resolved_backend,
         "model": resolved_model,
@@ -412,6 +684,7 @@ def _write_output_file(path: Path, content: str, *, force: bool) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", choices=("scripted", "openai", "ollama"), default="scripted")
+    parser.add_argument("--suite", choices=("stock-ownership", "extended"), default="stock-ownership")
     parser.add_argument("--url", default="")
     parser.add_argument("--model", default="")
     parser.add_argument("--api-key", default="")
@@ -441,6 +714,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_turns=args.max_turns,
         backend=args.backend,
         model=model_name,
+        suite=args.suite,
     )
     md = render_markdown(report)
     try:
