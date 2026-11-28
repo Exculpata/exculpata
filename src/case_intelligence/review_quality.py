@@ -247,19 +247,50 @@ def _query_subject_terms(query: str) -> frozenset[str]:
     )
 
 
+_CLAUSE_SPLIT_PATTERN = re.compile(
+    r"[?;]|,?\s*\b(?:and|or)\b(?=\s+(?:at\s+what|on\s+what|in\s+what|for\s+what|by\s+what|"
+    r"what|when|where|who|which|how|did|does|do|was|were|is|are|has|have|had)\b)",
+    re.IGNORECASE,
+)
+_RFC5322_HEADER_LINE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):\s*")
+_RFC5322_CONTINUATION = re.compile(r"^[ \t]+\S")
+_RFC5322_ENVELOPE_HEADERS = frozenset({"from", "date", "message-id", "received"})
+_RFC5322_TRANSPORT_HEADERS = _RFC5322_ENVELOPE_HEADERS | frozenset(
+    {"to", "cc", "subject", "mime-version", "content-type", "return-path", "reply-to"}
+)
+
+
 def _query_clause_subject_sets(query: str) -> tuple[frozenset[str], ...]:
-    parts = re.split(r"[?;]|\b(?:and|or)\b", query)
+    parts = _CLAUSE_SPLIT_PATTERN.split(query)
     clauses = tuple(terms for part in parts if len(terms := _query_subject_terms(part)) >= 2)
     return clauses if len(clauses) > 1 else ()
+
+
+def _is_rfc5322_header_block(head: str) -> bool:
+    lines = [line for line in head.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return False
+    seen_headers: set[str] = set()
+    for idx, line in enumerate(lines):
+        match = _RFC5322_HEADER_LINE.match(line)
+        if match:
+            seen_headers.add(match.group(1).casefold())
+        elif idx > 0 and _RFC5322_CONTINUATION.match(line):
+            continue
+        else:
+            return False
+    return bool(seen_headers & _RFC5322_ENVELOPE_HEADERS) and len(seen_headers & _RFC5322_TRANSPORT_HEADERS) >= 2
 
 
 def _clock_scan_text(candidate: RankedCandidate) -> str:
     if candidate.location_label == "Email headers":
         return ""
+    if candidate.location_label:
+        return candidate.text
     text = candidate.text
     if candidate.source_name.casefold().endswith(".eml"):
         head, sep, body = text.partition("\n\n")
-        if sep and any(line.startswith(("From:", "Date:", "Subject:")) for line in head.splitlines()):
+        if sep and _is_rfc5322_header_block(head):
             return body
     return text
 

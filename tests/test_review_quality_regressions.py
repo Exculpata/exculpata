@@ -499,5 +499,36 @@ def test_exact_record_ignores_rfc5322_date_header_clocks_in_raw_eml_chunks():
     assert ranked[0].document_id == "report"
 
 
+def test_exact_record_does_not_split_joined_subjects_as_independent_clauses():
+    query = "At what time did Alex Rown and Jordan Stone enter Harbor Arcade?"
+    entry = _exact_record_candidate(
+        "entry", "e1", "gate-log.txt",
+        "Alex Rown and Jordan Stone entered Harbor Arcade at 14:22.",
+        0.9,
+    )
+    distractor = _exact_record_candidate(
+        "lunch", "l1", "cafeteria-log.txt",
+        "Alex Rown had lunch at 12:00:00.",
+        0.5,
+    )
+    ranked = rank_exact_record_candidates(query, (entry, distractor), matter_id="matter-quality")
+    assert ranked[0].document_id == "entry"
 
 
+def test_exact_record_preserves_clock_in_labeled_email_body_with_subject_line():
+    query = "At what time did the route inspection end?"
+    body = replace(
+        _exact_record_candidate(
+            "body", "b1", "update.eml",
+            "Subject: Route inspection update\nRoute inspection ended at 14:22.\n\nNo further observations.",
+            0.5,
+        ),
+        location_label="Email body lines 1-3",
+    )
+    summary = _exact_record_candidate(
+        "summary", "s1", "summary.txt",
+        "Route inspection summary note without a clock time.",
+        0.9,
+    )
+    ranked = rank_exact_record_candidates(query, (summary, body), matter_id="matter-quality")
+    assert ranked[0].document_id == "body"
