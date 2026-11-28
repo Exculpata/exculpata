@@ -224,8 +224,9 @@ def build_verified_proposals(
             date_label = found.group() if found else ""
         add(category, title, detail, refs, date_label=date_label, calc_ids=[str(c) for c in raw_calcs], subtype=subtype)
 
-    if inspected_texts:
-        for cand in detect_disclosure_candidates(result.citations, inspected_texts):
+    effective_texts = inspected_texts if inspected_texts is not None else result.inspected_texts
+    if effective_texts:
+        for cand in detect_disclosure_candidates(result.citations, effective_texts):
             add(cand.category, cand.title, cand.detail, cand.citations, subtype=cand.subtype)
 
     for finding in result.findings:

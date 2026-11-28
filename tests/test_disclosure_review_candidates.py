@@ -172,7 +172,10 @@ def test_disclosure_candidates_end_to_end_review_dismiss_and_export_with_citatio
         assert not has_prohibited_disclosure_wording(page.text)
 
         csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.text).group(1)
-        actions = list(dict.fromkeys(re.findall(r'action="(/matters/[^"]+/assistant-proposals/[^"]+)"', page.text)))
+        actions: list[str] = []
+        for match in re.findall(r'action="(/matters/[^"]+/assistant-proposals/[^"]+)"', page.text):
+            if match not in actions:
+                actions.append(match)
         assert len(actions) >= 2
 
         # 1. Mark first candidate as reviewed (confirmed)
@@ -213,3 +216,137 @@ def test_disclosure_candidates_end_to_end_review_dismiss_and_export_with_citatio
         disc_props = [p for p in verified_props if p.category == "disclosure_review"]
         assert {p.subtype for p in disc_props} == {"witness_benefit", "alternate_suspect"}
         assert all(p.citations for p in disc_props)
+
+
+class _NoProposalAndFabricatedNumClient:
+    """Model client that emits an ungrounded-number proposal and omits disclosure proposals."""
+
+    available = True
+    model = "synthetic-disclosure-round2"
+
+    def __init__(self, *, emit_fabricated_proposal: bool) -> None:
+        self._emit_fabricated = emit_fabricated_proposal
+        self._step = 0
+
+    def complete_turn(self, messages, *, tools):
+        self._step += 1
+        if self._step == 1:
+            return AssistantTurn(tool_calls=(
+                AssistantModelCall("s1", "search_discovery", {"query": "cooperation agreement sentencing leniency", "limit": 5}),
+            ))
+        hits = json.loads(messages[-1]["content"]).get("hits") or ()
+        hit = next(h for h in hits if "proffer" in h["source_name"])
+        cite = {k: hit[k] for k in ("document_id", "source_name", "location", "source_version_id")}
+        payload: dict[str, object] = {
+            "answerable": True,
+            "summary": "Proffer memo documents a cooperation agreement with sentencing leniency.",
+            "findings": [{
+                "text": "Proffer memo documents a cooperation agreement with sentencing leniency.",
+                "citations": [cite], "calculation_ids": [],
+            }],
+            "gaps": [], "competing_accounts": [],
+        }
+        if self._emit_fabricated:
+            payload["proposals"] = [
+                {
+                    "category": "disclosure_review",
+                    "subtype": "witness_benefit",
+                    "title": "Unsupported payment of $250000 in proffer memo",
+                    "detail": "Fabricated $250000 figure not present in cited source.",
+                    "citations": [cite],
+                },
+                {
+                    "category": "case_theory",
+                    "title": "Cooperating witness received sentencing leniency",
+                    "detail": "Proffer memo notes a cooperation agreement with sentencing leniency.",
+                    "citations": [cite],
+                },
+            ]
+        return AssistantTurn(content=json.dumps(payload))
+
+
+def test_pr609_round2_proposal_grounding_deterministic_detection_and_revision_transitions(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
+    monkeypatch.setenv("CASE_INTELLIGENCE_CASE_ASSISTANT", "1")
+
+    # 1. Production workbench surfaces deterministic disclosure candidates even when model omits proposals,
+    #    and enforces expected_updated_at when transitioning a saved proposal to reviewed/dismissed.
+    app = create_workbench_app(
+        tmp_path / "rt1", generator=_NoProposalAndFabricatedNumClient(emit_fabricated_proposal=False), auth_mode="test",
+    )
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Deterministic Disclosure Matter")
+        up = client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("proffer-memo.txt", b"Cooperating witness signed a cooperation agreement for sentencing leniency.\n", "text/plain")),
+        ])
+        assert up.status_code == 200
+        workspace = client.get(f"/matters/{slug}")
+        conv_id = re.search(r'name="conversation" value="([^"]+)"', workspace.text).group(1)
+
+        _, page = _answer_and_wait(client, slug, conv_id, "Review the proffer memo.")
+        assert "Witness benefit or agreement" in page.text
+        assert "Candidate for attorney review" in page.text
+
+        csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.text).group(1)
+        actions: list[str] = []
+        for match in re.findall(r'action="(/matters/[^"]+/assistant-proposals/[^"]+)"', page.text):
+            if match not in actions:
+                actions.append(match)
+        assert actions
+
+        # Save first -> returns updated_at
+        saved = client.post(actions[0], data={"csrf_token": csrf, "decision": "save"}, headers={"Accept": "application/json"})
+        assert saved.status_code == 200
+        saved_json = saved.json()
+        assert saved_json["created"] is True and saved_json["updated_at"]
+
+        # Reloaded page renders the saved revision in the hidden expected_updated_at field.
+        reloaded = client.get(f"/matters/{slug}", params={"conversation": conv_id})
+        assert saved_json["updated_at"] in reloaded.text
+
+        # Missing or stale expected_updated_at fails closed with 409 Conflict (no TypeError / silent overwrite).
+        stale = client.post(
+            actions[0],
+            data={"csrf_token": csrf, "decision": "review", "expected_updated_at": "2000-01-01T00:00:00Z"},
+            headers={"Accept": "application/json"},
+        )
+        assert stale.status_code == 409
+
+        # Valid expected_updated_at transitions saved proposal to confirmed and advances updated_at.
+        reviewed = client.post(
+            actions[0],
+            data={"csrf_token": csrf, "decision": "review", "expected_updated_at": saved_json["updated_at"]},
+            headers={"Accept": "application/json"},
+        )
+        assert reviewed.status_code == 200
+        reviewed_json = reviewed.json()
+        assert reviewed_json["status"] == "confirmed" and reviewed_json["updated_at"] != saved_json["updated_at"]
+
+        # Subsequent transition to dismissed with the new revision also succeeds cleanly.
+        dismissed = client.post(
+            actions[0],
+            data={"csrf_token": csrf, "decision": "dismiss", "expected_updated_at": reviewed_json["updated_at"]},
+            headers={"Accept": "application/json"},
+        )
+        assert dismissed.status_code == 200 and dismissed.json()["status"] == "dismissed"
+
+        # 2. Ungrounded numbers in model-emitted proposals ($250000) are dropped before exposure.
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        runtime = MatterToolRuntime(matter.matter_id, actor, WorkbenchToolBackend(bench, actor))
+        inv = CaseAssistant(_NoProposalAndFabricatedNumClient(emit_fabricated_proposal=True)).investigate(
+            "Check proffer memo.", runtime,
+        )
+        assert all("250000" not in str(p.get("title", "")) and "250000" not in str(p.get("detail", "")) for p in inv.raw_proposals)
+        assert any(p.get("category") == "case_theory" for p in inv.raw_proposals)
+        assert inv.inspected_texts
+
+    # 3. Proposal form JS submits event.submitter so Mark reviewed / Dismiss send their decision value.
+    js_path = Path(__file__).resolve().parent.parent / "src" / "case_intelligence" / "static" / "case-intelligence.js"
+    js_src = js_path.read_text(encoding="utf-8")
+    assert "new FormData(form, submitter)" in js_src
+    assert "data-assistant-proposal-revision" in js_src
+

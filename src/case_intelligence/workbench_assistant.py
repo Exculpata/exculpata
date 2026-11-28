@@ -1081,7 +1081,11 @@ def _result_to_answer(bench, result: AssistantInvestigationResult, backend: Work
     }
     verified_result = replace(result, findings=tuple(retained_findings), receipts=verified_receipts)
     proposals_payload: list[dict[str, object]] = []
-    for prop in build_verified_proposals(verified_result, raw_proposals=verified_result.raw_proposals):
+    for prop in build_verified_proposals(
+        verified_result,
+        raw_proposals=verified_result.raw_proposals,
+        inspected_texts=verified_result.inspected_texts,
+    ):
         resolved_prop_wcs = [backend.citation_for_ref(ref) for ref in prop.citations]
         if not resolved_prop_wcs or any(wc is None for wc in resolved_prop_wcs):
             continue
@@ -1208,6 +1212,29 @@ def _verify_original_integrity(bench, store, doc_id: str) -> None:
         store.source_path(doc_id, verify_digest=True)
 
 
+def saved_proposal_states(bench, matter_id: str, actor_id: str, messages: Sequence[object]) -> dict[str, dict[str, str]]:
+    """Return current notebook revision and status for any already-saved assistant proposals."""
+    key_to_pair: dict[str, str] = {}
+    for msg in messages:
+        if getattr(msg, "role", "") != "assistant":
+            continue
+        payload = getattr(msg, "payload", None) or {}
+        proposals = (payload.get("case_assistant") or {}).get("proposals") or ()
+        msg_id = str(getattr(msg, "message_id", ""))
+        for prop in proposals:
+            if isinstance(prop, Mapping) and prop.get("proposal_id"):
+                pid = str(prop["proposal_id"])
+                key_to_pair[f"assistant-proposal:{msg_id}:{pid}"] = f"{msg_id}:{pid}"
+    if not key_to_pair:
+        return {}
+    found = bench.workspace.notebook_revisions_by_dedupe_keys(matter_id, actor_id, tuple(key_to_pair))
+    return {
+        key_to_pair[dkey]: {"updated_at": updated_at, "status": status}
+        for dkey, (updated_at, status) in found.items()
+        if dkey in key_to_pair
+    }
+
+
 def install_assistant_proposal_routes(app, *, bench, authorized_matter, require_csrf, auth_context) -> None:
     """Register the reviewer-gated endpoint that saves one cited proposal to matter memory."""
     from .case_assistant_proposals import CATEGORY_STORAGE
@@ -1219,6 +1246,7 @@ def install_assistant_proposal_routes(app, *, bench, authorized_matter, require_
     def save_assistant_proposal(
         request: Request, slug: str, conversation_id: str, message_id: str, proposal_id: str,
         decision: str = Form("save", max_length=16),
+        expected_updated_at: str = Form("", max_length=64),
     ):
         if decision not in {"save", "review", "dismiss"}:
             raise HTTPException(400, "Unsupported proposal decision.")
@@ -1264,9 +1292,15 @@ def install_assistant_proposal_routes(app, *, bench, authorized_matter, require_
                     references=references,
                 )
                 if not created and decision in {"review", "dismiss"} and item.status != target_status:
-                    item = bench.workspace.set_notebook_item_status(matter.matter_id, actor, item.item_id, target_status)
+                    item = bench.workspace.set_notebook_item_status(
+                        matter.matter_id, actor, item.item_id, target_status,
+                        expected_updated_at=expected_updated_at,
+                    )
             except WorkspaceProblem as exc:
                 raise HTTPException(409, str(exc)) from exc
         if "application/json" in request.headers.get("accept", ""):
-            return JSONResponse({"item_id": item.item_id, "created": created, "status": item.status, "item_type": item.item_type})
+            return JSONResponse({
+                "item_id": item.item_id, "created": created, "status": item.status,
+                "item_type": item.item_type, "updated_at": item.updated_at,
+            })
         return RedirectResponse(f"/matters/{slug}?conversation={conversation_id}#latest", status_code=303)

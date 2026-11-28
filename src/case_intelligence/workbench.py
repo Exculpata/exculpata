@@ -7377,6 +7377,8 @@ def create_workbench_app(
         else:
             page = request.url.path + ("?" + request.url.query if request.url.query else "")
         page = matter_return_path(matter.slug, page)
+        recent_messages = bench.workspace.messages(matter.matter_id, conversation.conversation_id)[-8:]
+        from .workbench_assistant import saved_proposal_states
         return {
             "saved_context": saved_context,
             "suggestions": assistant_suggestions(matter, page),
@@ -7384,9 +7386,8 @@ def create_workbench_app(
             "conversation": conversation,
             "conversation_choices": conversation_choices,
             "conversation_total": len(conversation_summaries),
-            "messages": bench.workspace.messages(
-                matter.matter_id, conversation.conversation_id
-            )[-8:],
+            "messages": recent_messages,
+            "proposal_states": saved_proposal_states(bench, matter.matter_id, context.principal_id, recent_messages),
             "active_answer": projected_job,
             "source_sets": bench.workspace.source_sets(matter.matter_id),
             "searchable_source_count": int(readiness["searchable_count"]),
@@ -11449,6 +11450,7 @@ def create_workbench_app(
             status="all",
             page_size=50,
         )
+        from .workbench_assistant import saved_proposal_states
         return templates.TemplateResponse(
             request=request,
             name="workbench_workspace.html",
@@ -11480,8 +11482,11 @@ def create_workbench_app(
                 ),
                 "conversation": active_conversation,
                 "conversation_summary": active_conversation_summary,
-                "messages": bench.workspace.messages(
+                "messages": (workspace_messages := bench.workspace.messages(
                     matter.matter_id, active_conversation.conversation_id
+                )),
+                "proposal_states": saved_proposal_states(
+                    bench, matter.matter_id, context.principal_id, workspace_messages
                 ),
                 "active_answer": (
                     answer_projection(request, matter, active_answer)

@@ -4962,27 +4962,45 @@ document.addEventListener("submit", async (event) => {
   const form = event.target instanceof HTMLFormElement && event.target.matches("[data-assistant-proposal-form]") ? event.target : null;
   if (!form || typeof window.fetch !== "function") return;
   event.preventDefault();
-  const button = form.querySelector('button[type="submit"]');
+  const submitter = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+  const buttons = Array.from(form.querySelectorAll('button[type="submit"]'));
   const status = form.querySelector("[data-assistant-proposal-status]");
-  if (button) button.disabled = true;
-  if (status) { status.dataset.state = "saving"; status.textContent = "Saving to case memory..."; }
+  const revisionInput = form.querySelector("[data-assistant-proposal-revision]");
+  const decision = submitter && submitter.name === "decision" ? submitter.value : "save";
+  const body = submitter ? new FormData(form, submitter) : new FormData(form);
+  if (submitter && submitter.name && !body.has(submitter.name)) {
+    body.set(submitter.name, submitter.value);
+  }
+  buttons.forEach((btn) => { btn.disabled = true; });
+  if (status) {
+    status.dataset.state = "saving";
+    status.textContent = decision === "review" ? "Marking reviewed..." : (decision === "dismiss" ? "Dismissing..." : "Saving to case memory...");
+  }
   try {
     const response = await window.fetch(form.action, {
-      method: "POST", body: new FormData(form), headers: { Accept: "application/json" },
+      method: "POST", body, headers: { Accept: "application/json" },
     });
     const data = await response.json().catch(() => ({}));
+    buttons.forEach((btn) => { btn.disabled = false; });
     if (!response.ok) {
-      if (button) button.disabled = false;
-      if (status) { status.dataset.state = "error"; status.textContent = data.detail || "Could not save this proposal."; }
+      if (status) { status.dataset.state = "error"; status.textContent = data.detail || "Could not update this proposal."; }
       return;
     }
-    if (button) button.textContent = data.created ? "Saved to case memory" : "Already saved";
+    if (revisionInput && typeof data.updated_at === "string") {
+      revisionInput.value = data.updated_at;
+    }
     if (status) {
-      status.dataset.state = "saved";
-      status.textContent = data.created ? "Saved to case memory." : "Already saved in case memory.";
+      status.dataset.state = data.status || "saved";
+      if (data.status === "confirmed") {
+        status.textContent = "Marked reviewed in case memory.";
+      } else if (data.status === "dismissed") {
+        status.textContent = "Dismissed in case memory.";
+      } else {
+        status.textContent = data.created ? "Saved to case memory." : "Already saved in case memory.";
+      }
     }
   } catch {
-    if (button) button.disabled = false;
-    if (status) { status.dataset.state = "error"; status.textContent = "Network error while saving proposal."; }
+    buttons.forEach((btn) => { btn.disabled = false; });
+    if (status) { status.dataset.state = "error"; status.textContent = "Network error while updating proposal."; }
   }
 });

@@ -536,6 +536,22 @@ class NotebookStoreMixin:
             )
             return self._notebook_item_by_id_locked(matter_id, item_id)
 
+    def notebook_revisions_by_dedupe_keys(
+        self, matter_id: str, actor_id: str, dedupe_keys: Sequence[str],
+    ) -> dict[str, tuple[str, str]]:
+        self.membership(matter_id, actor_id)
+        keys = tuple(dict.fromkeys(str(k).strip() for k in dedupe_keys if str(k).strip()))
+        if not keys:
+            return {}
+        marks = ",".join("?" for _ in keys)
+        with self._lock:
+            rows = tuple(self.connection.execute(
+                f"SELECT dedupe_key, updated_at, status FROM workbench_notebook_item "
+                f"WHERE matter_id=? AND dedupe_key IN ({marks})",
+                (matter_id, *keys),
+            ))
+        return {str(row["dedupe_key"]): (str(row["updated_at"]), str(row["status"])) for row in rows}
+
     def delete_notebook_item(
         self, matter_id: str, actor_id: str, item_id: str, *, expected_updated_at: str,
     ) -> NotebookItemRecord:
