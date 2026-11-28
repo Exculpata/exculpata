@@ -715,7 +715,173 @@ class _LocatorDigitModel:
         }))
 
 
+def test_query_table_group_by_avg_sort_by_and_fail_closed_validation():
+    csv_text = (
+        "wire_id,from_account,amount,date\n"
+        "w-1,stk-0,12500.50,2024-09-01\n"
+        "w-2,stk-1,4000.00,2024-09-02\n"
+        "w-3,stk-0,7500.25,2024-09-05\n"
+        "w-4,stk-1,6000.00,2024-09-06\n"
+    )
+    # 1. Ungrouped avg + numeric descending sort_by
+    avg_payload, avg_receipt = query_table_rows(
+        "doc-csv", "wires.csv", csv_text,
+        aggregate_column="amount", aggregate_op="avg",
+        sort_by="amount", sort_order="desc", precision=2, receipt_id="calc-1",
+    )
+    assert avg_receipt is not None and avg_receipt.operation == "avg" and avg_receipt.result == "7500.19"
+    assert [r["wire_id"] for r in avg_payload["rows"]] == ["w-1", "w-3", "w-4", "w-2"]
+
+    # 2. Grouped sum with per-group auditable CalculationReceipts
+    grouped_payload, grouped_receipt = query_table_rows(
+        "doc-csv", "wires.csv", csv_text,
+        group_by="from_account", aggregate_column="amount", aggregate_op="sum",
+        sort_by="date", sort_order="asc", receipt_id="calc-1",
+    )
+    assert grouped_payload["grouped_by"] == "from_account"
+    groups = {g["group"]: g for g in grouped_payload["groups"]}
+    assert groups["stk-0"]["value"] == "20000.75" and groups["stk-0"]["row_count"] == 2
+    assert groups["stk-1"]["value"] == "10000" and groups["stk-1"]["row_count"] == 2
+    assert groups["stk-0"]["receipt_id"] == "calc-1" and groups["stk-1"]["receipt_id"] == "calc-2"
+    assert grouped_receipt is not None and grouped_receipt.receipt_id == "calc-1"
+
+    # 3. Grouped avg and count
+    avg_grouped, _ = query_table_rows(
+        "doc-csv", "wires.csv", csv_text,
+        group_by="from_account", aggregate_column="amount", aggregate_op="avg", precision=2, receipt_id="calc-10",
+    )
+    avg_map = {g["group"]: g["value"] for g in avg_grouped["groups"]}
+    assert avg_map == {"stk-0": "10000.38", "stk-1": "5000"}
+
+    cnt_grouped, _ = query_table_rows(
+        "doc-csv", "wires.csv", csv_text, group_by="from_account", aggregate_op="count", receipt_id="calc-20",
+    )
+    assert {g["group"]: g["value"] for g in cnt_grouped["groups"]} == {"stk-0": "2", "stk-1": "2"}
+
+    # 4. Fail-closed validation
+    for bad_kwargs in (
+        {"group_by": "missing_col", "aggregate_op": "count"},
+        {"group_by": "from_account"},  # missing aggregate_op
+        {"sort_by": "missing_col"},
+        {"sort_by": "amount", "sort_order": "sideways"},
+    ):
+        with pytest.raises(AssistantToolError):
+            query_table_rows("doc-csv", "wires.csv", csv_text, **bad_kwargs)
+
+    # 5. Distinct group cap (> 100 groups) fails closed
+    many_rows = "acct,amt\n" + "".join(f"acct-{i},10\n" for i in range(105))
+    with pytest.raises(AssistantToolError):
+        query_table_rows("doc-many", "many.csv", many_rows, group_by="acct", aggregate_column="amt", aggregate_op="sum")
 
 
+def test_case_assistant_verifies_grouped_table_receipts_end_to_end(tmp_path):
+    import json
+    from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn, CaseAssistant
+
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test", malware_scanner=CleanScanner(), malware_scan_mode="extended")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Grouped Table Matter")
+        wires_csv = b"wire_id,from_account,amount\nw-1,stk-0,10000.50\nw-2,stk-1,2500.00\nw-3,stk-0,5000.25\nw-4,stk-1,1500.00\n"
+        res = client.post(f"/matters/{slug}/uploads", files=[("files", ("wires.csv", wires_csv, "text/csv"))])
+        assert res.status_code == 200
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        backend = WorkbenchToolBackend(bench, actor)
+        runtime = MatterToolRuntime(matter.matter_id, actor, backend)
+        csv_id = runtime.invoke("list_sources", {"limit": 10})["sources"][0]["document_id"]
+
+        class _GroupedTableModel:
+            def __init__(self) -> None:
+                self.step = 0
+
+            def complete_turn(self, messages, *, tools):
+                self.step += 1
+                if self.step == 1:
+                    return AssistantTurn(tool_calls=(AssistantModelCall("g1", "query_table", {
+                        "document_id": csv_id, "group_by": "from_account",
+                        "aggregate_column": "amount", "aggregate_op": "sum",
+                        "sort_by": "amount", "sort_order": "desc",
+                    }),))
+                payload = json.loads(messages[-1]["content"])
+                groups = {g["group"]: g for g in payload["groups"]}
+                cite = {"document_id": csv_id, "source_name": payload["source_name"], "location": payload["location"], "source_version_id": payload["source_version_id"]}
+                return AssistantTurn(content=json.dumps({
+                    "answerable": True,
+                    "summary": f"Account stk-0 wired {groups['stk-0']['value']} and stk-1 wired {groups['stk-1']['value']}.",
+                    "findings": [
+                        {"text": f"Account stk-0 sent {groups['stk-0']['value']} in wires.", "citations": [cite], "calculation_ids": [groups["stk-0"]["receipt_id"]]},
+                        {"text": f"Account stk-1 sent {groups['stk-1']['value']} in wires.", "citations": [cite], "calculation_ids": [groups["stk-1"]["receipt_id"]]},
+                    ],
+                    "gaps": [], "competing_accounts": [],
+                }))
+
+        fresh_runtime = MatterToolRuntime(matter.matter_id, actor, backend)
+        inv = CaseAssistant(_GroupedTableModel()).investigate("Total wires per account?", fresh_runtime)
+        assert inv.answerable is True and len(inv.findings) == 2 and inv.omitted_findings == 0
+        assert set(inv.receipts) == {"calc-1", "calc-2"}
+        assert {r.result for r in inv.receipts.values()} == {"15000.75", "4000"}
 
 
+def test_grouped_table_keeps_blank_distinct_from_literal_blank_and_grounds_keys_past_limit(tmp_path):
+    import json
+    from case_intelligence.case_assistant import AssistantModelCall, AssistantTurn, CaseAssistant
+
+    # 1. Empty cells and literal "(blank)" cells stay in separate buckets with collision-safe labels.
+    collision_csv = "acct,amount\n,10\n(blank),20\n"
+    res, _ = query_table_rows(
+        "doc-blank", "blank.csv", collision_csv,
+        group_by="acct", aggregate_column="amount", aggregate_op="sum", receipt_id="calc-1",
+    )
+    assert len(res["groups"]) == 2
+    by_label = {g["group"]: g for g in res["groups"]}
+    assert by_label["(blank)"]["value"] == "20" and not by_label["(blank)"].get("is_blank")
+    blank_groups = [g for g in res["groups"] if g.get("is_blank")]
+    assert len(blank_groups) == 1 and blank_groups[0]["value"] == "10" and blank_groups[0]["group"] != "(blank)"
+
+    # 2. Numeric group keys only appearing past rows[:limit] remain grounded for CaseAssistant verification.
+    app = create_workbench_app(tmp_path / "runtime", auth_mode="test", malware_scanner=CleanScanner(), malware_scan_mode="extended")
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Numeric Group Beyond Limit Matter")
+        acct_csv = b"acct,amount\n111111,10\n222222,20\n"
+        up = client.post(f"/matters/{slug}/uploads", files=[("files", ("accts.csv", acct_csv, "text/csv"))])
+        assert up.status_code == 200
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+        backend = WorkbenchToolBackend(bench, actor)
+        rt0 = MatterToolRuntime(matter.matter_id, actor, backend)
+        csv_id = rt0.invoke("list_sources", {"limit": 10})["sources"][0]["document_id"]
+
+        class _PastLimitModel:
+            def __init__(self, op: str) -> None:
+                self.op = op
+                self.step = 0
+
+            def complete_turn(self, messages, *, tools):
+                self.step += 1
+                if self.step == 1:
+                    args: dict[str, object] = {"document_id": csv_id, "group_by": "acct", "aggregate_op": self.op, "limit": 1}
+                    if self.op != "count":
+                        args["aggregate_column"] = "amount"
+                    return AssistantTurn(tool_calls=(AssistantModelCall("g1", "query_table", args),))
+                payload = json.loads(messages[-1]["content"])
+                assert len(payload["rows"]) == 1 and payload["truncated"] is True
+                g2 = next(g for g in payload["groups"] if g["group"] == "222222")
+                sref = g2["calculation"]["inputs"][0]["source_refs"][0]
+                cite = {"document_id": sref["document_id"], "source_name": sref["source_name"], "location": sref["location"], "source_version_id": sref["source_version_id"]}
+                text = (
+                    f"Account 222222 sent {g2['value']}."
+                    if self.op != "count"
+                    else f"Account 222222 appears in {g2['value']} row."
+                )
+                return AssistantTurn(content=json.dumps({
+                    "answerable": True,
+                    "summary": text,
+                    "findings": [{"text": text, "citations": [cite], "calculation_ids": [g2["receipt_id"]]}],
+                    "gaps": [], "competing_accounts": [],
+                }))
+
+        for op in ("sum", "count"):
+            inv = CaseAssistant(_PastLimitModel(op)).investigate("Check account 222222?", MatterToolRuntime(matter.matter_id, actor, backend))
+            assert inv.answerable is True and len(inv.findings) == 1 and inv.omitted_findings == 0

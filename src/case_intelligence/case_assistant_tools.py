@@ -18,9 +18,9 @@ ALLOWED_TOOLS = frozenset({
     "inspect_production",
 })
 ALLOWED_CALC_OPS = frozenset({"sum", "subtract", "multiply", "divide", "percent", "days_between", "running_balance"})
-ALLOWED_TABLE_AGG_OPS = frozenset({"count", "sum", "min", "max"})
+ALLOWED_TABLE_AGG_OPS = frozenset({"count", "sum", "min", "max", "avg"})
 ALLOWED_KNOWLEDGE_SECTIONS = frozenset({"all", "entities", "assertions", "timeline", "case_theory", "notes", "purpose"})
-MAX_LIST_LIMIT, MAX_SEARCH_LIMIT, MAX_EXCERPT_CHARS, MAX_CALC_INPUTS = 100, 50, 4_000, 500
+MAX_LIST_LIMIT, MAX_SEARCH_LIMIT, MAX_EXCERPT_CHARS, MAX_CALC_INPUTS, MAX_TABLE_GROUPS = 100, 50, 4_000, 500, 100
 _CALC_PRECISION = 64
 _MAX_CALC_EXPONENT = 24
 _COMMA_NUMBER_RE = re.compile(r"^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?$")
@@ -127,11 +127,15 @@ TOOL_DEFINITIONS: tuple[dict[str, object], ...] = (
                            "value": {"type": "string", "minLength": 1, "maxLength": 64},
                            "source_refs": {"type": "array", "items": {"type": "object"}}}}},
         "unit": {"type": "string", "maxLength": 32}, "precision": {"type": "integer", "minimum": 0, "maximum": 12}}, required=("operation", "inputs")),
-    _tool_spec("query_table", "Filter CSV/TSV/XLSX source rows and optionally compute exact Decimal column aggregates.", {
+    _tool_spec("query_table", "Filter, sort, group, and compute exact Decimal column aggregates (count, sum, min, max, avg) over CSV/TSV/XLSX rows.", {
         "document_id": {"type": "string", "minLength": 1, "maxLength": 128},
         "sheet": {"type": "string", "maxLength": 120},
-        "filters": {"type": "object"}, "aggregate_column": {"type": "string", "maxLength": 120},
+        "filters": {"type": "object"}, "group_by": {"type": "string", "maxLength": 120},
+        "aggregate_column": {"type": "string", "maxLength": 120},
         "aggregate_op": {"type": "string", "enum": sorted(ALLOWED_TABLE_AGG_OPS)},
+        "sort_by": {"type": "string", "maxLength": 120},
+        "sort_order": {"type": "string", "enum": ["asc", "desc"]},
+        "precision": {"type": "integer", "minimum": 0, "maximum": 12},
         "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIST_LIMIT}}, required=("document_id",)),
     _tool_spec("read_email_thread", "Read the linked email thread containing an authorized email source with pagination.", {
         "document_id": {"type": "string", "minLength": 1, "maxLength": 128},
@@ -411,17 +415,117 @@ def _parse_table_rows(text: str) -> tuple[list[str], list[dict[str, str]]]:
     return cols, [row for row, _, _ in tagged]
 
 
+def _sort_table_rows(
+    matched: list[tuple[dict[str, str], str, str]], sort_by: str, sort_order: str,
+) -> list[tuple[dict[str, str], str, str]]:
+    if sort_order not in {"asc", "desc"}:
+        raise AssistantToolError(f"Unsupported sort_order: {sort_order!r}. Use 'asc' or 'desc'.")
+    reverse = sort_order == "desc"
+    non_empty = [r.get(sort_by, "").strip() for r, _, _ in matched if r.get(sort_by, "").strip()]
+    numeric_keys: list[Decimal | None] | None = []
+    for r, _, _ in matched:
+        raw = r.get(sort_by, "").strip()
+        if not raw:
+            numeric_keys.append(None)
+            continue
+        try:
+            numeric_keys.append(_parse_decimal(raw, sort_by))
+        except AssistantToolError:
+            numeric_keys = None
+            break
+    if non_empty and numeric_keys is not None:
+        populated = [(idx, numeric_keys[idx], matched[idx]) for idx in range(len(matched)) if numeric_keys[idx] is not None]
+        blanks = [matched[idx] for idx in range(len(matched)) if numeric_keys[idx] is None]
+        populated.sort(key=lambda item: item[1], reverse=reverse)
+        return [item[2] for item in populated] + blanks
+    populated_txt = [(idx, matched[idx][0].get(sort_by, "").strip().casefold(), matched[idx]) for idx in range(len(matched)) if matched[idx][0].get(sort_by, "").strip()]
+    blanks_txt = [matched[idx] for idx in range(len(matched)) if not matched[idx][0].get(sort_by, "").strip()]
+    populated_txt.sort(key=lambda item: item[1], reverse=reverse)
+    return [item[2] for item in populated_txt] + blanks_txt
+
+
+def _compute_table_aggregate(
+    document_id: str, source_name: str, rows: Sequence[tuple[dict[str, str], str, str]], *,
+    columns: Sequence[str], aggregate_op: str, aggregate_column: str, precision: int,
+    receipt_id: str, default_loc: str, default_ver: str, group_label: str = "",
+) -> tuple[str, CalculationReceipt]:
+    scope_suffix = f" [group={group_label}]" if group_label else ""
+    if aggregate_op == "count":
+        if len(rows) > MAX_CALC_INPUTS:
+            raise AssistantToolError(
+                f"Row count over {len(rows)} matched rows exceeds auditable receipt limit ({MAX_CALC_INPUTS}); narrow filters."
+            )
+        val = str(len(rows))
+        count_inputs = tuple(
+            CalculationInput(f"row-{i}", "1", (SourceRef(document_id, source_name, rloc, rver),))
+            for i, (_, rloc, rver) in enumerate(rows, 1)
+        )
+        if not count_inputs:
+            count_inputs = (CalculationInput("matched_rows", "0", (SourceRef(document_id, source_name, default_loc, default_ver),)),)
+        return val, CalculationReceipt(receipt_id, "count", f"count({source_name}{scope_suffix}) = {val}", val, "rows", count_inputs)
+    if not aggregate_column or aggregate_column not in columns:
+        raise AssistantToolError(f"Aggregate column {aggregate_column!r} not found in table.")
+    val_rows = [
+        (_parse_decimal(r.get(aggregate_column, ""), aggregate_column), rloc, rver)
+        for r, rloc, rver in rows if r.get(aggregate_column, "")
+    ]
+    if not val_rows:
+        raise AssistantToolError(f"No numeric values matched for column {aggregate_column!r}{scope_suffix}.")
+    if len(val_rows) > MAX_CALC_INPUTS:
+        raise AssistantToolError(
+            f"Aggregate over {len(val_rows)} values exceeds auditable receipt limit ({MAX_CALC_INPUTS}); narrow filters."
+        )
+    with localcontext() as ctx:
+        ctx.prec = _CALC_PRECISION
+        if aggregate_op == "sum":
+            agg = Decimal(0)
+            for v, _, _ in val_rows:
+                agg += v
+            formatted = _format_exact_decimal(agg)
+        elif aggregate_op == "avg":
+            total = Decimal(0)
+            for v, _, _ in val_rows:
+                total += v
+            formatted = _format_decimal(total / Decimal(len(val_rows)), precision)
+        elif aggregate_op == "min":
+            formatted = _format_exact_decimal(min(v for v, _, _ in val_rows))
+        else:
+            formatted = _format_exact_decimal(max(v for v, _, _ in val_rows))
+    return formatted, CalculationReceipt(
+        receipt_id, aggregate_op, f"{aggregate_op}({aggregate_column}{scope_suffix} over {len(val_rows)} rows) = {formatted}",
+        formatted, "", tuple(
+            CalculationInput(f"row-{i}", _format_exact_decimal(v), (SourceRef(document_id, source_name, rloc, rver),))
+            for i, (v, rloc, rver) in enumerate(val_rows, 1)
+        ),
+    )
+
+
+def _next_receipt_id(base_receipt_id: str, offset: int) -> str:
+    if offset == 0:
+        return base_receipt_id
+    match = re.fullmatch(r"(.+?)(\d+)", base_receipt_id)
+    if match:
+        return f"{match.group(1)}{int(match.group(2)) + offset}"
+    return f"{base_receipt_id}-{offset + 1}"
+
+
 def query_table_rows(
     document_id: str, source_name: str, text: str = "", *, filters: Mapping[str, object] | None = None,
-    aggregate_column: str = "", aggregate_op: str = "", limit: int = 50,
+    aggregate_column: str = "", aggregate_op: str = "", group_by: str = "",
+    sort_by: str = "", sort_order: str = "asc", precision: int = 6, limit: int = 50,
     source_version_id: str = "", location: str = "Line 1", receipt_id: str = "calc-1",
     sections: Sequence[tuple[str, str, str]] | None = None, sheet: str = "",
     preparsed: tuple[Sequence[str], Sequence[tuple[dict[str, str], str, str]]] | None = None,
     header_location: str = "", header_source_version_id: str = "",
+    extra_receipts: list[CalculationReceipt] | None = None,
 ) -> tuple[dict[str, object], CalculationReceipt | None]:
-    """Filter CSV/TSV/extracted spreadsheet rows and compute exact Decimal aggregates with per-section provenance."""
+    """Filter, sort, group, and compute exact Decimal aggregates over CSV/TSV/XLSX rows with provenance."""
     if aggregate_op and aggregate_op not in ALLOWED_TABLE_AGG_OPS:
         raise AssistantToolError(f"Unsupported table aggregate operation: {aggregate_op!r}.")
+    if type(precision) is not int or not 0 <= precision <= 12:
+        raise AssistantToolError("precision must be an integer between 0 and 12.")
+    if sort_order not in {"asc", "desc"}:
+        raise AssistantToolError(f"Unsupported sort_order: {sort_order!r}. Use 'asc' or 'desc'.")
     if preparsed is not None:
         columns = _ensure_unique_headers(preparsed[0])
         all_rows = [(dict(r), str(loc), str(ver)) for r, loc, ver in preparsed[1]]
@@ -456,6 +560,15 @@ def query_table_rows(
         hdr_ver = header_source_version_id or first_nonempty[1]
     if not columns:
         raise AssistantToolError("Source does not contain a tabular header row.")
+    group_col = group_by.strip()
+    sort_col = sort_by.strip()
+    if group_col:
+        if group_col not in columns:
+            raise AssistantToolError(f"group_by column {group_col!r} not found in table (available: {', '.join(columns)}).")
+        if not aggregate_op:
+            raise AssistantToolError("'group_by' requires 'aggregate_op' (count, sum, min, max, or avg).")
+    if sort_col and sort_col not in columns:
+        raise AssistantToolError(f"sort_by column {sort_col!r} not found in table (available: {', '.join(columns)}).")
     matched: list[tuple[dict[str, str], str, str]] = []
     filter_map = dict(filters or {})
     for col, cond in filter_map.items():
@@ -486,55 +599,64 @@ def query_table_rows(
         if keep:
             cleaned = {k: str(v or "").strip() for k, v in row.items() if k is not None}
             matched.append((cleaned, row_loc, row_ver))
+    if sort_col and matched:
+        matched = _sort_table_rows(matched, sort_col, sort_order)
+    first_loc, first_ver = section_list[0][0], section_list[0][1]
     receipt: CalculationReceipt | None = None
-    if aggregate_op:
-        if aggregate_op == "count":
-            if len(matched) > MAX_CALC_INPUTS:
-                raise AssistantToolError(
-                    f"Row count over {len(matched)} matched rows exceeds auditable receipt limit ({MAX_CALC_INPUTS}); narrow filters."
-                )
-            val = str(len(matched))
-            count_inputs = tuple(
-                CalculationInput(f"row-{i}", "1", (SourceRef(document_id, source_name, rloc, rver),))
-                for i, (_, rloc, rver) in enumerate(matched, 1)
+    group_rows_payload: list[dict[str, object]] = []
+    if group_col:
+        if len(matched) > MAX_CALC_INPUTS:
+            raise AssistantToolError(
+                f"Grouped aggregate over {len(matched)} matched rows exceeds auditable receipt limit ({MAX_CALC_INPUTS}); narrow filters."
             )
-            if not count_inputs:
-                first_loc, first_ver = section_list[0][0], section_list[0][1]
-                count_inputs = (CalculationInput("matched_rows", "0", (SourceRef(document_id, source_name, first_loc, first_ver),)),)
-            receipt = CalculationReceipt(receipt_id, "count", f"count({source_name}) = {val}", val, "rows", count_inputs)
-        else:
-            if not aggregate_column or aggregate_column not in columns:
-                raise AssistantToolError(f"Aggregate column {aggregate_column!r} not found in table.")
-            val_rows = [
-                (_parse_decimal(r.get(aggregate_column, ""), aggregate_column), rloc, rver)
-                for r, rloc, rver in matched if r.get(aggregate_column, "")
-            ]
-            if not val_rows:
-                raise AssistantToolError(f"No numeric values matched for column {aggregate_column!r}.")
-            if len(val_rows) > MAX_CALC_INPUTS:
-                raise AssistantToolError(
-                    f"Aggregate over {len(val_rows)} values exceeds auditable receipt limit ({MAX_CALC_INPUTS}); narrow filters."
-                )
-            with localcontext() as ctx:
-                ctx.prec = _CALC_PRECISION
-                if aggregate_op == "sum":
-                    agg = Decimal(0)
-                    for v, _, _ in val_rows:
-                        agg += v
-                elif aggregate_op == "min":
-                    agg = min(v for v, _, _ in val_rows)
-                else:
-                    agg = max(v for v, _, _ in val_rows)
-            formatted = _format_exact_decimal(agg)
-            receipt = CalculationReceipt(
-                receipt_id, aggregate_op, f"{aggregate_op}({aggregate_column} over {len(val_rows)} rows) = {formatted}",
-                formatted, "", tuple(
-                    CalculationInput(f"row-{i}", _format_exact_decimal(v), (SourceRef(document_id, source_name, rloc, rver),))
-                    for i, (v, rloc, rver) in enumerate(val_rows, 1)
-                ),
+        buckets: dict[str, list[tuple[dict[str, str], str, str]]] = {}
+        for item in matched:
+            raw_key = item[0].get(group_col, "").strip()
+            buckets.setdefault(raw_key, []).append(item)
+        if len(buckets) > MAX_TABLE_GROUPS:
+            raise AssistantToolError(
+                f"Grouped query produced {len(buckets)} distinct groups, exceeding limit ({MAX_TABLE_GROUPS}); narrow filters."
             )
-    primary_loc = matched[0][1] if matched else section_list[0][0]
-    primary_ver = matched[0][2] if matched else section_list[0][1]
+        blank_label = "(blank)"
+        if "" in buckets:
+            existing_labels = {k.casefold() for k in buckets if k != ""}
+            if blank_label.casefold() in existing_labels:
+                blank_label = "(empty)"
+                suffix = 1
+                while blank_label.casefold() in existing_labels:
+                    suffix += 1
+                    blank_label = f"(empty {suffix})"
+        ordered_keys = sorted(buckets, key=lambda k: (k == "", k.casefold()))
+        for idx, raw_key in enumerate(ordered_keys):
+            g_rows = buckets[raw_key]
+            display_label = blank_label if raw_key == "" else raw_key
+            g_rid = _next_receipt_id(receipt_id, idx)
+            g_val, g_rec = _compute_table_aggregate(
+                document_id, source_name, g_rows, columns=columns,
+                aggregate_op=aggregate_op, aggregate_column=aggregate_column,
+                precision=precision, receipt_id=g_rid,
+                default_loc=first_loc, default_ver=first_ver, group_label=display_label,
+            )
+            if receipt is None:
+                receipt = g_rec
+            if extra_receipts is not None:
+                extra_receipts.append(g_rec)
+            entry: dict[str, object] = {
+                "group": display_label, "row_count": len(g_rows), "value": g_val,
+                "receipt_id": g_rid, "calculation": asdict(g_rec),
+            }
+            if raw_key == "":
+                entry["is_blank"] = True
+            group_rows_payload.append(entry)
+    elif aggregate_op:
+        _, receipt = _compute_table_aggregate(
+            document_id, source_name, matched, columns=columns,
+            aggregate_op=aggregate_op, aggregate_column=aggregate_column,
+            precision=precision, receipt_id=receipt_id,
+            default_loc=first_loc, default_ver=first_ver,
+        )
+    primary_loc = matched[0][1] if matched else first_loc
+    primary_ver = matched[0][2] if matched else first_ver
     matched_locations = list(dict.fromkeys(rloc for _, rloc, _ in matched))
     out_rows = [{**row, "_location": rloc, "_source_version_id": rver} for row, rloc, rver in matched[:limit]]
     payload: dict[str, object] = {
@@ -544,6 +666,9 @@ def query_table_rows(
         "columns": columns, "total_rows": len(all_rows), "matched_rows": len(matched),
         "rows": out_rows, "truncated": len(matched) > limit,
     }
+    if group_col:
+        payload["grouped_by"] = group_col
+        payload["groups"] = group_rows_payload
     if receipt is not None:
         payload["calculation"] = asdict(receipt)
     return payload, receipt
@@ -802,8 +927,13 @@ class MatterToolRuntime:
         if tool_name == "query_table":
             document_id = self._check_doc_scope(str(args.get("document_id", "")))
             limit = _int_arg(args, "limit", 50, minimum=1, maximum=MAX_LIST_LIMIT)
+            precision = _int_arg(args, "precision", 6, minimum=0, maximum=12)
             sheet = str(args.get("sheet", "")).strip()
+            group_by = str(args.get("group_by", "")).strip()
+            sort_by = str(args.get("sort_by", "")).strip()
+            sort_order = str(args.get("sort_order", "asc")).strip()
             receipt_id = f"calc-{len(self._receipts) + 1}"
+            group_receipts: list[CalculationReceipt] = []
             structured_handler = getattr(self.backend, "read_structured_table", None)
             structured = (
                 structured_handler(self.matter_id, document_id, sheet=sheet)
@@ -821,10 +951,12 @@ class MatterToolRuntime:
                     document_id, source_name,
                     filters=args.get("filters") if isinstance(args.get("filters"), Mapping) else None,
                     aggregate_column=str(args.get("aggregate_column", "")).strip(),
-                    aggregate_op=str(args.get("aggregate_op", "")).strip(), limit=limit,
-                    source_version_id=first_ver, location=first_loc,
+                    aggregate_op=str(args.get("aggregate_op", "")).strip(),
+                    group_by=group_by, sort_by=sort_by, sort_order=sort_order, precision=precision,
+                    limit=limit, source_version_id=first_ver, location=first_loc,
                     header_location=header_loc, header_source_version_id=first_ver,
                     receipt_id=receipt_id, preparsed=(columns, tagged_rows),
+                    extra_receipts=group_receipts,
                 )
             else:
                 result = self.backend.read_source(self.matter_id, document_id, start_page=1, end_page=None)
@@ -837,11 +969,16 @@ class MatterToolRuntime:
                     result.document_id, result.source_name,
                     filters=args.get("filters") if isinstance(args.get("filters"), Mapping) else None,
                     aggregate_column=str(args.get("aggregate_column", "")).strip(),
-                    aggregate_op=str(args.get("aggregate_op", "")).strip(), limit=limit,
-                    receipt_id=receipt_id, sections=sections, sheet=sheet,
+                    aggregate_op=str(args.get("aggregate_op", "")).strip(),
+                    group_by=group_by, sort_by=sort_by, sort_order=sort_order, precision=precision,
+                    limit=limit, receipt_id=receipt_id, sections=sections, sheet=sheet,
+                    extra_receipts=group_receipts,
                 )
                 refs = [SourceRef(result.document_id, result.source_name, p.location, p.source_version_id, p.excerpt_digest) for p in result.pages]
-            if receipt is not None:
+            if group_receipts:
+                for rec in group_receipts:
+                    self._receipts[rec.receipt_id] = rec
+            elif receipt is not None:
                 self._receipts[receipt_id] = receipt
             return payload, refs, receipt
         if tool_name == "read_email_thread":
