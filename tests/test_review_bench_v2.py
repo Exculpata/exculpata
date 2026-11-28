@@ -822,3 +822,31 @@ def test_fallback_reranker_ties_preserve_existing_order_keys():
     assert [item.chunk_id for item in ranked] == ["a", "c", "b", "rare"]
     assert all(item.score == pytest.approx(100.03) for item in ranked)
     assert DeterministicReranker().rerank("amber", ()) == ()
+
+
+def test_fallback_reranker_keeps_named_heading_document_in_comparative_packet():
+    query = (
+        "How do the first account from Alex Rown and the parcel discrepancy report "
+        "differ about the teal crate beside the loading platform?"
+    )
+    distractors = tuple(
+        _c(
+            "matter-alpha", f"distractor-{i}", i + 1,
+            "Account memo\nAlex Rown mentioned the first account of the teal crate beside the loading platform.",
+            score=0.03,
+        )
+        for i in range(10)
+    )
+    named = _c(
+        "matter-alpha", "parcel-discrepancy", 12,
+        "Parcel discrepancy\nThe crate beside the platform held empty cardboard dividers.",
+        score=0.03,
+    )
+    reranker = DeterministicReranker()
+    ranked = reranker.rerank(query, distractors + (named,))
+    named_rank = next(i for i, item in enumerate(ranked, 1) if item.chunk_id == named.chunk_id)
+    assert named_rank <= 8, f"Named heading document ranked {named_rank}, outside top 8"
+    # Heading bonus remains strictly pool-invariant.
+    solo = reranker.rerank(query, (named,))
+    assert solo[0].score == next(item.score for item in ranked if item.chunk_id == named.chunk_id)
+

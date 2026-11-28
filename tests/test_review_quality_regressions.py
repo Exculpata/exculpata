@@ -456,3 +456,48 @@ def test_exact_record_precision_requires_half_the_subject_terms():
     assert ranked[0] is report and ranked[1] is decoy
 
 
+def test_exact_record_preserves_clause_matching_temporal_record_in_two_part_question():
+    query = (
+        "At what time did the route inspection end, and on what date did "
+        "Alex Rown plan to carry the teal lantern parcel to Harbor Arcade?"
+    )
+    plan_decoys = tuple(
+        _exact_record_candidate(
+            f"plan-{i}", f"p-{i}", f"plan-{i}.txt",
+            "Alex Rown planned to carry the teal lantern parcel to Harbor Arcade on 2034-04-18.",
+            0.7,
+        )
+        for i in range(9)
+    )
+    route_end = _exact_record_candidate(
+        "route-end", "r-end", "route-inspection.txt",
+        "Route inspection report: the route inspection ended at 14:22.",
+        0.65,
+    )
+    ranked = rank_exact_record_candidates(query, plan_decoys + (route_end,), matter_id="matter-quality")
+    rank = next(i for i, item in enumerate(ranked, 1) if item.document_id == "route-end")
+    assert rank <= 8, f"Clause-1 temporal record displaced to rank {rank}"
+
+
+def test_exact_record_ignores_rfc5322_date_header_clocks_in_raw_eml_chunks():
+    query = "At what time did the route inspection end at Harbor Arcade?"
+    report = _exact_record_candidate(
+        "report", "r1", "route-inspection.txt",
+        "Route inspection at Harbor Arcade ended at 14:22.",
+        0.9,
+    )
+    emails = tuple(
+        _exact_record_candidate(
+            f"mail-{i}", f"m-{i}", f"notice-{i}.eml",
+            "From: sender@example.test\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Route inspection\n\n"
+            "Route inspection schedule for Harbor Arcade is confirmed.",
+            0.5,
+        )
+        for i in range(9)
+    )
+    ranked = rank_exact_record_candidates(query, (report,) + emails, matter_id="matter-quality")
+    assert ranked[0].document_id == "report"
+
+
+
+

@@ -247,11 +247,29 @@ def _query_subject_terms(query: str) -> frozenset[str]:
     )
 
 
+def _query_clause_subject_sets(query: str) -> tuple[frozenset[str], ...]:
+    parts = re.split(r"[?;]|\b(?:and|or)\b", query)
+    clauses = tuple(terms for part in parts if len(terms := _query_subject_terms(part)) >= 2)
+    return clauses if len(clauses) > 1 else ()
+
+
+def _clock_scan_text(candidate: RankedCandidate) -> str:
+    if candidate.location_label == "Email headers":
+        return ""
+    text = candidate.text
+    if candidate.source_name.casefold().endswith(".eml"):
+        head, sep, body = text.partition("\n\n")
+        if sep and any(line.startswith(("From:", "Date:", "Subject:")) for line in head.splitlines()):
+            return body
+    return text
+
+
 def _exact_record_features(
     query: str,
     candidate: RankedCandidate,
     *,
     subject_terms: frozenset[str],
+    clause_subject_sets: tuple[frozenset[str], ...] = (),
 ) -> tuple[int, int, int, int]:
     haystack = f"{candidate.source_name}\n{candidate.text}"
     identifiers = tuple(dict.fromkeys(_IDENTIFIER.findall(query.upper())))
@@ -259,18 +277,22 @@ def _exact_record_features(
     identifier_matches = sum(
         1 for identifier in identifiers if identifier in candidate_identifiers
     )
-    clocks = _CLOCK.findall(candidate.text)
+    clocks = _CLOCK.findall(_clock_scan_text(candidate))
     temporal_precision = 0
-    if candidate.location_label != "Email headers" and _TEMPORAL_OBJECTIVE.search(query) and clocks:
+    if _TEMPORAL_OBJECTIVE.search(query) and clocks:
         temporal_precision = 2 if any(value.count(":") >= 2 for value in clocks) else 1
     authority = int(bool(_AUTHORITATIVE_RECORD.search(haystack)))
     if _LATER_SUMMARY.search(candidate.source_name):
         authority -= 1
     candidate_terms = set(_QUERY_TOKEN.findall(haystack.casefold()))
     subject_overlap = len(subject_terms.intersection(candidate_terms))
+    clause_relevant = any(
+        (overlap := len(clause.intersection(candidate_terms))) >= 2 and overlap * 2 >= len(clause)
+        for clause in clause_subject_sets
+    )
     relevant = bool(identifier_matches) or (
         bool(subject_terms) and subject_overlap * 2 >= len(subject_terms)
-    )
+    ) or clause_relevant
     return (
         identifier_matches, int(relevant),
         temporal_precision if relevant else 0, authority if relevant else 0,
@@ -295,8 +317,11 @@ def rank_exact_record_candidates(
     if not (_IDENTIFIER.search(query.upper()) or _TEMPORAL_OBJECTIVE.search(query)):
         return bounded
     subject_terms = _query_subject_terms(query)
+    clause_subject_sets = _query_clause_subject_sets(query)
     features = [
-        _exact_record_features(query, item, subject_terms=subject_terms)
+        _exact_record_features(
+            query, item, subject_terms=subject_terms, clause_subject_sets=clause_subject_sets,
+        )
         for item in bounded
     ]
     if not any(feature[0] or feature[1] for feature in features):

@@ -239,7 +239,14 @@ class DeterministicReranker:
             overlap = sum(weights[term] for term in query_terms if term in terms)
             pairs = set(zip(tokens, tokens[1:]))
             bonus = 0.35 * len(query_pairs.intersection(pairs))
-            scored.append(replace(candidate, score=(overlap + bonus) * 100 + candidate.score))
+            heading_bonus = 0.0
+            if "\n" in candidate.text and query_tokens:
+                first_line = next((line.strip() for line in candidate.text.splitlines() if line.strip()), "")
+                heading = tuple(token for token in _tokens(first_line) if token not in self._STOP_WORDS)
+                span = len(heading)
+                if 2 <= span <= 8 and any(query_tokens[i:i + span] == heading for i in range(len(query_tokens) - span + 1)):
+                    heading_bonus = max(len(query_terms), 4) * 0.65
+            scored.append(replace(candidate, score=(overlap + bonus + heading_bonus) * 100 + candidate.score))
         return tuple(sorted(scored, key=lambda item: (-item.score, item.page_number, item.chunk_id)))
 
 

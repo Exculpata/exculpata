@@ -27,9 +27,10 @@ Following #381 (ranked OR PostgreSQL lexical matching) and #484 (clause balancin
    - For multi-line candidates (`"\n" in candidate.text`), inspect the first non-empty line as a document heading when it contains between 2 and 8 non-stop tokens.
    - If those heading tokens appear as a contiguous subsequence of the query's non-stop tokens, award a deterministic, pool-invariant heading-match bonus proportional to the query scale (`max(len(query_terms), 4) * 0.65`, added into `(overlap + bonus + heading_bonus) * 100 + candidate.score`).
    - Depends strictly on `(query, candidate)` (preserves total pool invariance) and leaves single-line candidates and all existing fallback-reranker unit tests unchanged.
-2. **Clause-aware relevance gate in `_exact_record_features` (`src/case_intelligence/review_quality.py`):**
+2. **Clause-aware relevance gate and RFC-5322 email header exclusion in `_exact_record_features` (`src/case_intelligence/review_quality.py`):**
    - Split multi-clause queries on `[?;]|\b(?:and|or)\b` into substantive clauses (`len(clause_terms) >= 2`).
    - Treat a candidate as relevant when it matches an explicit identifier, or satisfies the half-subject-term gate on the full query, OR satisfies the half-subject-term gate on at least one substantive clause (with at least 2 matched clause subject terms). Single-clause questions preserve the exact existing half-subject gate.
+   - Exclude RFC-5322 email header blocks (lines before the first blank-line separator in `.eml` chunks carrying `From:`/`Date:`/`Subject:` headers, alongside `location_label == "Email headers"`) when scanning for clock precision so RFC-5322 `Date: ... HH:MM:SS` transport headers do not outrank body event timestamps.
 
 ## Vision check
 
