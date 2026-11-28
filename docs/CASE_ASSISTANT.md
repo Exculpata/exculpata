@@ -87,8 +87,9 @@ cited originals and explicitly saves or dismisses each proposal inline (preservi
 ## Synthetic synthesis evaluation
 
 `case_assistant_eval.py` exercises the real multi-turn Case Assistant against the
-synthetic 405-document stock-case benchmark (combining filings, brokerage
-statements, corporate splits/buybacks, emails, spreadsheets, transcripts, and
-deliberately unreadable files) to score cross-document synthesis, exact math
+synthetic 405-document stock-case benchmark (`--suite stock-ownership`, default) and
+an expanded 8-case suite (`--suite extended`) adding Bates-gap production inspection,
+email-thread attachment-gap disclosure, timestamped transcript-window contradictions,
+and structured CSV ledger aggregation to score cross-document synthesis, exact math
 receipts, source citations, and honest gap reporting against an operator-configured
 model endpoint. See [eval](EVAL.md) and the archived design notes under `specs/archive/case-assistant*.md`.

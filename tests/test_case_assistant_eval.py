@@ -163,3 +163,72 @@ def test_pr591_round2_pagination_exact_mode_and_report_metadata(tmp_path):
     assert "Synthetic reference run" not in live_md
 
 
+def test_extended_eval_suite_covers_bates_email_transcript_and_table_tools(tmp_path):
+    import pytest
+    from case_intelligence.case_assistant_eval import build_extended_eval_suite
+    from case_intelligence.case_assistant_tools import AssistantAccessError, MatterToolRuntime
+
+    out_json = tmp_path / "extended.json"
+    out_md = tmp_path / "extended.md"
+    rc = main(["--backend", "scripted", "--suite", "extended", "--seed", "7", "--out-json", str(out_json), "--out-md", str(out_md)])
+    assert rc == 0
+    report = json.loads(out_json.read_text(encoding="utf-8"))
+    assert report["suite"] == "extended" and report["score"] == 100.0
+    case_ids = {row["case_id"] for row in report["cases"]}
+    expected_new = {
+        "bates_gap_production_audit",
+        "email_thread_attachment_gap",
+        "transcript_window_contradiction",
+        "table_ledger_aggregation",
+    }
+    assert expected_new.issubset(case_ids)
+    assert len(report["cases"]) == 8
+    assert all(row["score"] == 100.0 for row in report["cases"])
+    md = out_md.read_text(encoding="utf-8")
+    assert "suite=extended" in md and "bates_gap_production_audit" in md and "table_ledger_aggregation" in md
+
+    # Scorer penalizes missing attachment-gap disclosure on email_thread_attachment_gap.
+    suite, backend = build_extended_eval_suite(seed=7)
+    email_case = next(c for c in suite if c.case_id == "email_thread_attachment_gap")
+    email_ref = SourceRef("ext-email-2", "EXT-0002-email.eml", "Page 1", "v1-ext-email-2")
+    no_gap_res = AssistantInvestigationResult(
+        answerable=True, summary="The thread discussed a side letter.",
+        findings=(AssistantFinding("Message 2 referenced a side letter attachment.", (email_ref,), ()),),
+        omitted_findings=0, gaps=(), competing_accounts=(),
+        citations=(email_ref,), receipts={}, trace=(), turns_used=2, elapsed_ms=5,
+    )
+    scored_no_gap = score_eval_case(email_case, no_gap_res)
+    assert "missed_unreadable_gap" in scored_no_gap["penalties"] and scored_no_gap["score"] < 100.0
+
+    # Backend enforces document-scope isolation on rich tools (including suppressing load_file_attempts).
+    from case_intelligence.case_assistant_tools import AssistantToolError
+
+    scoped = MatterToolRuntime(backend.matter_id, "eval-defender", backend, allowed_document_ids=frozenset({"ext-ledger"}))
+    with pytest.raises(AssistantAccessError):
+        scoped.invoke("read_email_thread", {"document_id": "ext-email-1"})
+    with pytest.raises(AssistantAccessError):
+        scoped.invoke("read_transcript_window", {"document_id": "ext-transcript", "start_seconds": 0, "end_seconds": 120})
+    scoped_prod = scoped.invoke("inspect_production", {})
+    assert scoped_prod["load_file_attempts"] == []
+    assert scoped_prod["bates_gaps"]["computed"] is False
+
+    # Transcript window uses interval overlap (includes cue [90, 105] when querying [95, 110]).
+    full_rt = MatterToolRuntime(backend.matter_id, "eval-defender", backend)
+    overlap = full_rt.invoke("read_transcript_window", {"document_id": "ext-transcript", "start_seconds": 95, "end_seconds": 110})
+    assert overlap["count"] == 1 and overlap["cues"][0]["start_seconds"] == 90.0
+
+    # inspect_production honors load_file_document_id: rejects missing IDs, does not report gaps for non-load-file docs,
+    # and requires an explicit target when multiple CSVs exist in the corpus.
+    with pytest.raises(AssistantToolError, match="not found"):
+        full_rt.invoke("inspect_production", {"load_file_document_id": "does-not-exist"})
+    wrong_doc = full_rt.invoke("inspect_production", {"load_file_document_id": "ext-ledger"})
+    assert wrong_doc["bates_gaps"]["computed"] is False and wrong_doc["bates_gaps"]["facts"] == []
+    untargeted = full_rt.invoke("inspect_production", {})
+    assert untargeted["bates_gaps"]["computed"] is False and untargeted["bates_gaps"]["facts"] == []
+
+    # read_email_thread includes the requested message in the default window (omitted offset vs explicit offset=0).
+    default_win = full_rt.invoke("read_email_thread", {"document_id": "ext-email-2", "limit": 1})
+    assert default_win["count"] == 1 and default_win["messages"][0]["document_id"] == "ext-email-2"
+    zero_win = full_rt.invoke("read_email_thread", {"document_id": "ext-email-2", "limit": 1, "offset": 0})
+    assert zero_win["count"] == 1 and zero_win["messages"][0]["document_id"] == "ext-email-1"
+
