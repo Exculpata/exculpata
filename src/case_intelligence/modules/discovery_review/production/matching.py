@@ -1,10 +1,12 @@
 """Conservative record comparisons with bounded candidate accumulators."""
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 import hashlib
 import json
 import re
+import threading
 import unicodedata
 
 from case_intelligence.source_load_files import DAT_INTAKE_ROLES, DAT_TEXT_HEADER_KEYS
@@ -208,3 +210,92 @@ def candidate_agrees(projection: Projection, candidate: dict) -> bool:
 def literal_identifiers(projection: Projection) -> tuple[str, ...]:
     return tuple(projection.values[key] for key in ("begin_bates", "end_bates", "control_number")
                  if projection.values.get(key, "").strip())
+
+
+def source_input_identity(item) -> tuple[object, ...]:
+    """Canonical candidate snapshot tuple shared by ProductionService and freshness checks."""
+    return (item.version_id, item.digest, item.display_name, item.relative_path,
+            item.media_type, item.state, item.origin)
+
+
+_FRESHNESS_CACHE_LIMIT = 256
+_FRESHNESS_CACHE_LOCK = threading.Lock()
+_FRESHNESS_CACHE: OrderedDict[tuple[object, ...], bool] = OrderedDict()
+
+
+def _remember_freshness(cache_key: tuple[object, ...], fresh: bool) -> bool:
+    with _FRESHNESS_CACHE_LOCK:
+        _FRESHNESS_CACHE[cache_key] = fresh
+        _FRESHNESS_CACHE.move_to_end(cache_key)
+        while len(_FRESHNESS_CACHE) > _FRESHNESS_CACHE_LIMIT:
+            _FRESHNESS_CACHE.popitem(last=False)
+    return fresh
+
+
+def attempt_dependencies_fresh(
+    repository, matter_id: str, *, load_document_id: str, load_version_id: str,
+    root_key: str, input_revision: str, updated_at: str = "", store=None,
+) -> bool:
+    """Verify a persisted complete production attempt still matches live root dependencies."""
+    try:
+        parsed = json.loads(input_revision) if input_revision and input_revision.startswith("{") else {}
+    except (TypeError, ValueError):
+        return False
+    deps = parsed.get("dependencies") if isinstance(parsed, dict) else None
+    if not isinstance(deps, dict) or deps.get("paused") or deps.get("state") != "complete":
+        return False
+    if store is None:
+        if repository.provenance(matter_id, load_document_id, load_version_id) != root_key:
+            return False
+        if updated_at:
+            after = ""
+            while True:
+                rows = repository.candidates(matter_id, root_key, after=after, limit=100)
+                if not rows:
+                    break
+                if any((row.get("updated_at") or "") > updated_at for row in rows):
+                    return False
+                after = rows[-1]["document_id"]
+        return True
+    expected_epoch = f"production-v2-{store.source_changes.epoch}"
+    if deps.get("epoch") != expected_epoch:
+        return False
+    expected_hash = deps.get("hash")
+    if not isinstance(expected_hash, str):
+        return False
+    data_version_row = repository.execute("PRAGMA data_version").fetchone()
+    data_version = data_version_row[0] if data_version_row else 0
+    cache_key = (
+        store.source_changes.epoch,
+        store.revision,
+        repository.db.connection.total_changes,
+        data_version,
+        matter_id,
+        load_document_id,
+        load_version_id,
+        root_key,
+        input_revision,
+        updated_at,
+    )
+    with _FRESHNESS_CACHE_LOCK:
+        cached = _FRESHNESS_CACHE.get(cache_key)
+        if cached is not None:
+            _FRESHNESS_CACHE.move_to_end(cache_key)
+            return cached
+    if repository.provenance(matter_id, load_document_id, load_version_id) != root_key:
+        return _remember_freshness(cache_key, False)
+    digest_hash, after = "", ""
+    while True:
+        rows = repository.candidates(matter_id, root_key, after=after, limit=100)
+        if not rows:
+            break
+        by_doc: dict[str, list] = {}
+        for item in store.source_changes.read([row["document_id"] for row in rows]):
+            by_doc.setdefault(item.document_id, []).append(item)
+        for row in rows:
+            doc_id = row["document_id"]
+            data = [(item.document_id, source_input_identity(item)) for item in by_doc.get(doc_id, ())]
+            digest_hash = hashlib.sha256((digest_hash + json.dumps(data, sort_keys=True)).encode()).hexdigest()
+            after = doc_id
+    return _remember_freshness(cache_key, digest_hash == expected_hash)
+

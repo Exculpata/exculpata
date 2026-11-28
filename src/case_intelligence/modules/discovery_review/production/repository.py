@@ -12,14 +12,14 @@ import math
 import sqlite3
 from contextvars import ContextVar
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Callable, Mapping
 
 from case_intelligence.modules import ModuleDatabase
-from .matching import dat_text_paths, path_key
+from .matching import attempt_dependencies_fresh, dat_text_paths, path_key
 
 MAX_ORDINAL = 9_223_372_036_854_775_807
 MAX_BATCH_RECORDS = 256
@@ -1346,23 +1346,29 @@ class ProductionRepository:
             view.identifier = self.identifier_stamp(matter_id)
         return view
 
-    def document_bates_ranges(self, matter_id: str, document_ids=None) -> dict[str, str]:
+    def document_bates_ranges(self, matter_id: str, document_ids=None, *, store=None) -> dict[str, str]:
         """Return exact produced Bates range per document when uniquely matched and fresh."""
         ids = None if document_ids is None else tuple(dict.fromkeys(str(d) for d in document_ids if d))
         if ids is not None and not ids:
             return {}
         found: dict[str, set[str]] = {}
+        attempt_ok: dict[str, bool] = {}
         chunks = [None] if ids is None else [ids[i:i + 200] for i in range(0, len(ids), 200)]
-        with self.db.lock:
+        store_guard = store.mutation_guard() if store is not None else nullcontext()
+        with store_guard, self.db.lock:
             for chunk in chunks:
                 base_sql = (
-                    "SELECT r.document_id,r.semantic_json,p.input_revision "
+                    "SELECT r.document_id,r.semantic_json,p.input_revision,p.attempt_id,"
+                    "p.document_id,p.version_id,p.root_key,p.updated_at "
                     "FROM workbench_discovery_dat_record r "
                     "JOIN workbench_discovery_production p "
                     "ON p.matter_id=r.matter_id AND p.attempt_id=r.attempt_id "
                     "JOIN workbench_source_catalog c "
                     "ON c.matter_id=p.matter_id AND c.document_id=p.document_id "
-                    "AND c.version_id=p.version_id AND c.source_state='ready' "
+                    "AND c.version_id=p.version_id AND c.source_state='ready' AND c.origin='upload' "
+                    "JOIN workbench_source_catalog t "
+                    "ON t.matter_id=r.matter_id AND t.document_id=r.document_id "
+                    "AND t.source_state='ready' AND t.origin='upload' "
                     "WHERE r.matter_id=? AND p.status='complete' "
                     "AND r.association_status='matched' AND r.generation=p.generation "
                 )
@@ -1371,13 +1377,15 @@ class ProductionRepository:
                 else:
                     marks = ",".join("?" for _ in chunk)
                     rows = tuple(self.execute(base_sql + f"AND r.document_id IN ({marks})", (matter_id, *chunk)))
-                for doc_id, semantic_json, input_rev in rows:
-                    try:
-                        parsed_rev = json.loads(input_rev) if input_rev and input_rev.startswith("{") else {}
-                    except (TypeError, ValueError):
-                        parsed_rev = {}
-                    deps = parsed_rev.get("dependencies", {}) if isinstance(parsed_rev, Mapping) else {}
-                    if isinstance(deps, Mapping) and deps.get("paused"):
+                for doc_id, semantic_json, input_rev, att_id, load_doc_id, load_ver_id, root_key, updated_at in rows:
+                    fresh = attempt_ok.get(att_id)
+                    if fresh is None:
+                        fresh = attempt_dependencies_fresh(
+                            self, matter_id, load_document_id=load_doc_id, load_version_id=load_ver_id,
+                            root_key=root_key, input_revision=input_rev, updated_at=updated_at, store=store,
+                        )
+                        attempt_ok[att_id] = fresh
+                    if not fresh:
                         continue
                     try:
                         raw = json.loads(semantic_json)
@@ -1396,14 +1404,12 @@ class ProductionRepository:
         }
 
 
-def document_bates_label(connection, lock, matter_id: str, document_id: str) -> str:
+def document_bates_label(connection, lock, matter_id: str, document_id: str, *, store=None) -> str:
     """Resolve exact produced Bates range or Team ID read-only for one document."""
     if connection is None or lock is None or not document_id:
         return ""
-    from case_intelligence.modules import ModuleDatabase
-
     repo = ProductionRepository(ModuleDatabase(connection, lock))
-    produced = repo.document_bates_ranges(matter_id, (document_id,)).get(document_id, "")
+    produced = repo.document_bates_ranges(matter_id, (document_id,), store=store).get(document_id, "")
     if produced:
         return f"Bates: {produced}"
     if repo.document_status(matter_id, document_id) != "complete":
