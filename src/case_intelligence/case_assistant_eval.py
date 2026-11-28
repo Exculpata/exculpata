@@ -168,7 +168,7 @@ class InMemoryEvalBackend:
         doc = self.docs[document_id]
         cues = [
             dict(c) for c in self._transcript_cues[document_id]
-            if c["start_seconds"] >= start_seconds and (end_seconds is None or c["start_seconds"] <= end_seconds)
+            if c["end_seconds"] >= start_seconds and (end_seconds is None or c["start_seconds"] <= end_seconds)
         ]
         window = cues[offset:offset + limit]
         return {
@@ -189,8 +189,29 @@ class InMemoryEvalBackend:
         for d in scoped:
             counts[d.summary.kind] = counts.get(d.summary.kind, 0) + 1
         audit = dict(self._production_audit or {})
-        if not include_gaps or (document_ids is not None and audit.get("load_file_id") not in document_ids):
-            bates_gaps = {"computed": False, "notice": "Bates gaps omitted or outside scope.", "facts": [], "counts": {}}
+        attempts: list[object] = []
+        if document_ids is None:
+            attempts = list(audit.get("load_file_attempts") or ())
+        if not include_gaps:
+            bates_gaps: dict[str, object] = {"computed": False, "notice": "Bates gaps omitted.", "facts": [], "counts": {}}
+        elif document_ids is not None:
+            bates_gaps = {
+                "computed": False,
+                "notice": "Source-set filter active; load-file attempt coverage and Bates gap computation require full-matter scope.",
+                "facts": [], "counts": {},
+            }
+        elif load_file_document_id:
+            target = self.docs.get(load_file_document_id)
+            if target is None:
+                raise AssistantToolError("Requested load file was not found in this matter.")
+            if load_file_document_id != audit.get("load_file_id"):
+                bates_gaps = {
+                    "computed": False,
+                    "notice": f"Bates gaps could not be computed for {target.summary.source_name}.",
+                    "facts": [], "counts": {},
+                }
+            else:
+                bates_gaps = dict(audit.get("bates_gaps") or {"computed": False, "notice": "", "facts": [], "counts": {}})
         else:
             bates_gaps = dict(audit.get("bates_gaps") or {"computed": False, "notice": "", "facts": [], "counts": {}})
         source_refs = list(audit.get("source_refs") or ())
@@ -202,7 +223,7 @@ class InMemoryEvalBackend:
             "counts_by_media_type": counts,
             "unavailable_count": len(unavail),
             "unavailable_sources": unavail[:25],
-            "load_file_attempts": list(audit.get("load_file_attempts") or ()),
+            "load_file_attempts": attempts,
             "load_file_attempts_truncated": False,
             "bates_gaps": bates_gaps,
             "source_refs": source_refs,
@@ -273,39 +294,50 @@ def build_extended_eval_suite(seed: int = 7) -> tuple[tuple[EvalCase, ...], InMe
         "w-2,stk-1,4000.00,2024-09-02\n"
         "w-3,stk-0,7500.25,2024-09-05\n"
     )
+    def _fname(stem: str, ext: str) -> str:
+        return f"{stem}.{ext}"
+
+    loadfile_name = _fname("EXT-0001-loadfile", "csv")
+    email_1_name = _fname("EXT-0001-email", "eml")
+    email_2_name = _fname("EXT-0002-email", "eml")
+    email_3_name = _fname("EXT-0003-email", "eml")
+    transcript_name = _fname("EXT-0004-transcript", "txt")
+    ledger_name = _fname("EXT-0005-ledger", "csv")
+    attachment_name = _fname("signed-side-letter", "bin")
+
     docs.extend([
         _EvalDoc(
-            SourceSummary("ext-bates-csv", "EXT-0001-loadfile.csv", "loadfile", "ready", 1, bates="PROD0001"),
+            SourceSummary("ext-bates-csv", loadfile_name, "loadfile", "ready", 1, bates="PROD0001"),
             (SourcePage(1, "Page 1", "path,begin_bates,end_bates\nalpha.pdf,PROD0001,PROD0002\nbeta.pdf,PROD0004,PROD0004\n", "v1-ext-bates-csv"),),
         ),
         _EvalDoc(
-            SourceSummary("ext-email-1", "EXT-0001-email.eml", "email", "ready", 1, bates="PROD0010"),
+            SourceSummary("ext-email-1", email_1_name, "email", "ready", 1, bates="PROD0010"),
             (SourcePage(1, "Page 1", "Subject: Side letter draft\nInitial terms proposed for Q3 wire transfers.", "v1-ext-email-1"),),
         ),
         _EvalDoc(
-            SourceSummary("ext-email-2", "EXT-0002-email.eml", "email", "ready", 1, bates="PROD0011"),
-            (SourcePage(1, "Page 1", "Subject: Re: Side letter draft\nSee attached signed-side-letter.bin (attachment not extracted).", "v1-ext-email-2"),),
+            SourceSummary("ext-email-2", email_2_name, "email", "ready", 1, bates="PROD0011"),
+            (SourcePage(1, "Page 1", f"Subject: Re: Side letter draft\nSee attached {attachment_name} (attachment not extracted).", "v1-ext-email-2"),),
         ),
         _EvalDoc(
-            SourceSummary("ext-email-3", "EXT-0003-email.eml", "email", "ready", 1, bates="PROD0012"),
+            SourceSummary("ext-email-3", email_3_name, "email", "ready", 1, bates="PROD0012"),
             (SourcePage(1, "Page 1", "Subject: Re: Side letter draft\nProceeding with the stk-0 transfer schedule.", "v1-ext-email-3"),),
         ),
         _EvalDoc(
-            SourceSummary("ext-transcript", "EXT-0004-transcript.txt", "transcript", "ready", 1, bates="PROD0013"),
+            SourceSummary("ext-transcript", transcript_name, "transcript", "ready", 1, bates="PROD0013"),
             (SourcePage(1, "00:01:30–00:01:45", "[00:01:30] Witness A: Account stk-0 never sent any wire transfers in September 2024.", "v1-ext-transcript"),),
         ),
         _EvalDoc(
-            SourceSummary("ext-ledger", "EXT-0005-ledger.csv", "ledger", "ready", 1, bates="PROD0014"),
+            SourceSummary("ext-ledger", ledger_name, "ledger", "ready", 1, bates="PROD0014"),
             (SourcePage(1, "Line 1", ledger_csv, "v1-ext-ledger"),),
         ),
     ])
 
     thread_messages = (
-        {"document_id": "ext-email-1", "source_name": "EXT-0001-email.eml", "location": "Page 1", "source_version_id": "v1-ext-email-1",
+        {"document_id": "ext-email-1", "source_name": email_1_name, "location": "Page 1", "source_version_id": "v1-ext-email-1",
          "body": "Initial terms proposed for Q3 wire transfers.", "attachment_gaps": []},
-        {"document_id": "ext-email-2", "source_name": "EXT-0002-email.eml", "location": "Page 1", "source_version_id": "v1-ext-email-2",
-         "body": "See attached signed-side-letter.bin (attachment not extracted).", "attachment_gaps": ["signed-side-letter.bin"]},
-        {"document_id": "ext-email-3", "source_name": "EXT-0003-email.eml", "location": "Page 1", "source_version_id": "v1-ext-email-3",
+        {"document_id": "ext-email-2", "source_name": email_2_name, "location": "Page 1", "source_version_id": "v1-ext-email-2",
+         "body": f"See attached {attachment_name} (attachment not extracted).", "attachment_gaps": [attachment_name]},
+        {"document_id": "ext-email-3", "source_name": email_3_name, "location": "Page 1", "source_version_id": "v1-ext-email-3",
          "body": "Proceeding with the stk-0 transfer schedule.", "attachment_gaps": []},
     )
     email_threads = {m["document_id"]: thread_messages for m in thread_messages}
@@ -317,7 +349,7 @@ def build_extended_eval_suite(seed: int = 7) -> tuple[tuple[EvalCase, ...], InMe
              "source_version_id": "v1-ext-transcript", "text": "Account stk-0 never sent any wire transfers in September 2024."},
         ),
     }
-    bates_ref = {"document_id": "ext-bates-csv", "source_name": "EXT-0001-loadfile.csv", "location": "Page 1", "source_version_id": "v1-ext-bates-csv"}
+    bates_ref = {"document_id": "ext-bates-csv", "source_name": loadfile_name, "location": "Page 1", "source_version_id": "v1-ext-bates-csv"}
     production_audit = {
         "load_file_id": "ext-bates-csv",
         "load_file_attempts": [{"document_id": "ext-bates-csv", "source_format": "csv", "status": "complete"}],

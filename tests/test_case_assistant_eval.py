@@ -200,12 +200,25 @@ def test_extended_eval_suite_covers_bates_email_transcript_and_table_tools(tmp_p
     scored_no_gap = score_eval_case(email_case, no_gap_res)
     assert "missed_unreadable_gap" in scored_no_gap["penalties"] and scored_no_gap["score"] < 100.0
 
-    # Backend enforces document-scope isolation on rich tools.
+    # Backend enforces document-scope isolation on rich tools (including suppressing load_file_attempts).
+    from case_intelligence.case_assistant_tools import AssistantToolError
+
     scoped = MatterToolRuntime(backend.matter_id, "eval-defender", backend, allowed_document_ids=frozenset({"ext-ledger"}))
     with pytest.raises(AssistantAccessError):
         scoped.invoke("read_email_thread", {"document_id": "ext-email-1"})
     with pytest.raises(AssistantAccessError):
         scoped.invoke("read_transcript_window", {"document_id": "ext-transcript", "start_seconds": 0, "end_seconds": 120})
+    scoped_prod = scoped.invoke("inspect_production", {})
+    assert scoped_prod["load_file_attempts"] == []
+    assert scoped_prod["bates_gaps"]["computed"] is False
 
+    # Transcript window uses interval overlap (includes cue [90, 105] when querying [95, 110]).
+    full_rt = MatterToolRuntime(backend.matter_id, "eval-defender", backend)
+    overlap = full_rt.invoke("read_transcript_window", {"document_id": "ext-transcript", "start_seconds": 95, "end_seconds": 110})
+    assert overlap["count"] == 1 and overlap["cues"][0]["start_seconds"] == 90.0
 
-
+    # inspect_production honors load_file_document_id: rejects missing IDs and does not report gaps for non-load-file docs.
+    with pytest.raises(AssistantToolError, match="not found"):
+        full_rt.invoke("inspect_production", {"load_file_document_id": "does-not-exist"})
+    wrong_doc = full_rt.invoke("inspect_production", {"load_file_document_id": "ext-ledger"})
+    assert wrong_doc["bates_gaps"]["computed"] is False and wrong_doc["bates_gaps"]["facts"] == []
