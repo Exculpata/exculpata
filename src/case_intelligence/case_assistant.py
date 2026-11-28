@@ -500,8 +500,15 @@ class CaseAssistant:
                                 str(v) for k, v in row.items() if k not in {"_location", "_source_version_id"}
                             )
                             inspected_texts[key] = (inspected_texts.get(key, "") + "\n" + cell_text).strip()
-                    calc_payload = result.get("calculation")
-                    if isinstance(calc_payload, Mapping) and calc_payload.get("operation") != "count":
+                    calc_payloads: list[Mapping[str, object]] = []
+                    if isinstance(result.get("calculation"), Mapping):
+                        calc_payloads.append(result["calculation"])
+                    for grp in result.get("groups") or ():
+                        if isinstance(grp, Mapping) and isinstance(grp.get("calculation"), Mapping):
+                            calc_payloads.append(grp["calculation"])
+                    for calc_payload in calc_payloads:
+                        if calc_payload.get("operation") == "count":
+                            continue
                         for inp in calc_payload.get("inputs") or ():
                             if not isinstance(inp, Mapping):
                                 continue

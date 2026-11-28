@@ -57,7 +57,7 @@ tools, cross-matter reads, unauthorized actors, and dynamic code execution fail 
 | `read_source` | Read exact original source spans with source/version identity preserved. |
 | `get_case_knowledge` | Read saved reviewer-confirmed case memory (case theory, entities, assertions, timelines) for the matter. |
 | `calculate` | Execute exact `Decimal` and calendar-date operations (`sum`, `subtract`, `multiply`, `divide`, `percent`, `days_between`, `running_balance`) with zero `eval`/`exec`, returning a source-cited `CalculationReceipt`. Division by zero and `NaN` fail closed. |
-| `query_table` | Filter, sort, and inspect structured CSV/spreadsheet tables within the matter without loading whole workbooks into prose. |
+| `query_table` | Filter, sort (`sort_by`/`sort_order`), group (`group_by`), and compute exact `Decimal` column aggregates (`count`, `sum`, `min`, `max`, `avg`) with per-group `CalculationReceipt`s over structured CSV/TSV/spreadsheet tables. |
 | `read_email_thread` | Read chronologically ordered messages across a matter email thread with attachment-coverage notices preserved. |
 | `read_transcript_window` | Read timestamped windows around media transcript segments with speaker labels and provenance preserved. |
 | `inspect_production` | Inspect production counts by media type, failed/unreadable sources, DAT/OPT/LFP/DII load-file coverage, and lossless Bates-gap findings within authorized scope. |
