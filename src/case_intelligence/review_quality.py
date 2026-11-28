@@ -260,9 +260,24 @@ _RFC5322_TRANSPORT_HEADERS = _RFC5322_ENVELOPE_HEADERS | frozenset(
 )
 
 
-def _query_clause_subject_sets(query: str) -> tuple[frozenset[str], ...]:
+_EMAIL_TRANSMISSION_NOUN = re.compile(r"\b(?:email|e-mail|message)\b", re.IGNORECASE)
+_EMAIL_TRANSMISSION_VERB = re.compile(
+    r"\b(?:send|sent|receive|received|arrive|arrived|dispatch|dispatched|reply|replied|forward|forwarded)\b",
+    re.IGNORECASE,
+)
+
+
+def _asks_email_transmission_time(query: str) -> bool:
+    return bool(_EMAIL_TRANSMISSION_NOUN.search(query) and _EMAIL_TRANSMISSION_VERB.search(query))
+
+
+def _query_clause_subject_sets(query: str) -> tuple[tuple[frozenset[str], bool], ...]:
     parts = _CLAUSE_SPLIT_PATTERN.split(query)
-    clauses = tuple(terms for part in parts if len(terms := _query_subject_terms(part)) >= 2)
+    clauses = tuple(
+        (terms, bool(_TEMPORAL_OBJECTIVE.search(part)))
+        for part in parts
+        if len(terms := _query_subject_terms(part)) >= 2
+    )
     return clauses if len(clauses) > 1 else ()
 
 
@@ -282,13 +297,14 @@ def _is_rfc5322_header_block(head: str) -> bool:
     return bool(seen_headers & _RFC5322_ENVELOPE_HEADERS) and len(seen_headers & _RFC5322_TRANSPORT_HEADERS) >= 2
 
 
-def _clock_scan_text(candidate: RankedCandidate) -> str:
+def _clock_scan_text(candidate: RankedCandidate, *, query: str = "") -> str:
+    keep_email_headers = _asks_email_transmission_time(query)
     if candidate.location_label == "Email headers":
-        return ""
+        return candidate.text if keep_email_headers else ""
     if candidate.location_label:
         return candidate.text
     text = candidate.text
-    if candidate.source_name.casefold().endswith(".eml"):
+    if not keep_email_headers and candidate.source_name.casefold().endswith(".eml"):
         head, sep, body = text.partition("\n\n")
         if sep and _is_rfc5322_header_block(head):
             return body
@@ -300,7 +316,7 @@ def _exact_record_features(
     candidate: RankedCandidate,
     *,
     subject_terms: frozenset[str],
-    clause_subject_sets: tuple[frozenset[str], ...] = (),
+    clause_subject_sets: tuple[tuple[frozenset[str], bool], ...] = (),
 ) -> tuple[int, int, int, int]:
     haystack = f"{candidate.source_name}\n{candidate.text}"
     identifiers = tuple(dict.fromkeys(_IDENTIFIER.findall(query.upper())))
@@ -308,7 +324,7 @@ def _exact_record_features(
     identifier_matches = sum(
         1 for identifier in identifiers if identifier in candidate_identifiers
     )
-    clocks = _CLOCK.findall(_clock_scan_text(candidate))
+    clocks = _CLOCK.findall(_clock_scan_text(candidate, query=query))
     temporal_precision = 0
     if _TEMPORAL_OBJECTIVE.search(query) and clocks:
         temporal_precision = 2 if any(value.count(":") >= 2 for value in clocks) else 1
@@ -317,16 +333,22 @@ def _exact_record_features(
         authority -= 1
     candidate_terms = set(_QUERY_TOKEN.findall(haystack.casefold()))
     subject_overlap = len(subject_terms.intersection(candidate_terms))
-    clause_relevant = any(
-        (overlap := len(clause.intersection(candidate_terms))) >= 2 and overlap * 2 >= len(clause)
-        for clause in clause_subject_sets
-    )
-    relevant = bool(identifier_matches) or (
+    full_relevant = bool(identifier_matches) or (
         bool(subject_terms) and subject_overlap * 2 >= len(subject_terms)
-    ) or clause_relevant
+    )
+    clause_relevant = False
+    temporal_clause_relevant = False
+    for clause_terms, is_temporal in clause_subject_sets:
+        overlap = len(clause_terms.intersection(candidate_terms))
+        if overlap >= 2 and overlap * 2 >= len(clause_terms):
+            clause_relevant = True
+            if is_temporal:
+                temporal_clause_relevant = True
+    relevant = full_relevant or clause_relevant
+    temporal_relevant = full_relevant or temporal_clause_relevant
     return (
         identifier_matches, int(relevant),
-        temporal_precision if relevant else 0, authority if relevant else 0,
+        temporal_precision if temporal_relevant else 0, authority if relevant else 0,
     )
 
 

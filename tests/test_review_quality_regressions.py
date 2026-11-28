@@ -532,3 +532,44 @@ def test_exact_record_preserves_clock_in_labeled_email_body_with_subject_line():
     )
     ranked = rank_exact_record_candidates(query, (summary, body), matter_id="matter-quality")
     assert ranked[0].document_id == "body"
+
+
+def test_exact_record_restricts_clock_promotion_to_temporal_clause():
+    query = "At what time did the route inspection at Harbor Arcade end, and who signed the inventory audit?"
+    route = _exact_record_candidate(
+        "route", "r1", "route-end.txt",
+        "Route inspection end at Harbor Arcade: 14:22.",
+        0.9,
+    )
+    audits = tuple(
+        _exact_record_candidate(
+            f"audit-{i}", f"a-{i}", f"audit-{i}.txt",
+            "Inventory audit signed by Jordan Stone at 12:00:00.",
+            0.5,
+        )
+        for i in range(9)
+    )
+    ranked = rank_exact_record_candidates(query, (route,) + audits, matter_id="matter-quality")
+    assert ranked[0].document_id == "route"
+
+
+def test_exact_record_preserves_header_clock_when_query_asks_when_email_was_sent():
+    query = "At what time did Alex Rown send the route inspection email to Jordan Stone?"
+    email = _exact_record_candidate(
+        "mail", "m1", "inspection.eml",
+        "From: Alex Rown <alex@example.test>\nTo: Jordan Stone <jordan@example.test>\n"
+        "Date: Mon, 17 Apr 2034 14:22:17 +0000\nSubject: Route inspection\n\n"
+        "Please find the route inspection update attached.",
+        0.5,
+    )
+    memos = tuple(
+        _exact_record_candidate(
+            f"memo-{i}", f"n-{i}", f"memo-{i}.txt",
+            "Alex Rown sent the route inspection email to Jordan Stone.",
+            0.9,
+        )
+        for i in range(9)
+    )
+    ranked = rank_exact_record_candidates(query, memos + (email,), matter_id="matter-quality")
+    assert ranked[0].document_id == "mail"
+
