@@ -260,15 +260,16 @@ _RFC5322_TRANSPORT_HEADERS = _RFC5322_ENVELOPE_HEADERS | frozenset(
 )
 
 
-_EMAIL_TRANSMISSION_NOUN = re.compile(r"\b(?:email|e-mail|message)\b", re.IGNORECASE)
-_EMAIL_TRANSMISSION_VERB = re.compile(
-    r"\b(?:send|sent|receive|received|arrive|arrived|dispatch|dispatched|reply|replied|forward|forwarded)\b",
+_EMAIL_TRANSMISSION_QUERY = re.compile(
+    r"\b(?:send|sent|receive|received|dispatch|dispatched|forward|forwarded|reply\s+to|replied\s+to)\s+"
+    r"(?:the\s+|an?\s+|this\s+|that\s+)?(?:[a-z0-9_-]+\s+){0,4}(?:email|e-mail|message)\b"
+    r"|\b(?:email|e-mail|message)\s+(?:was\s+|had\s+been\s+)?(?:sent|received|dispatched|forwarded)\b",
     re.IGNORECASE,
 )
 
 
 def _asks_email_transmission_time(query: str) -> bool:
-    return bool(_EMAIL_TRANSMISSION_NOUN.search(query) and _EMAIL_TRANSMISSION_VERB.search(query))
+    return bool(_EMAIL_TRANSMISSION_QUERY.search(query))
 
 
 def _query_clause_subject_sets(query: str) -> tuple[tuple[frozenset[str], bool], ...]:

@@ -573,3 +573,27 @@ def test_exact_record_preserves_header_clock_when_query_asks_when_email_was_sent
     ranked = rank_exact_record_candidates(query, memos + (email,), matter_id="matter-quality")
     assert ranked[0].document_id == "mail"
 
+
+def test_exact_record_ignores_email_header_clock_for_body_event_mentioned_in_email():
+    query = "At what time did the route inspection team arrive according to the email?"
+    report = _exact_record_candidate(
+        "report", "r1", "inspection-report.txt",
+        "Route inspection team arrived at 14:22 according to the email log.",
+        0.9,
+    )
+    headers = tuple(
+        replace(
+            _exact_record_candidate(
+                f"hdr-{i}", f"h-{i}", f"notice-{i}.eml",
+                "From: dispatch@example.test\nDate: Mon, 17 Apr 2034 12:00:00 +0000\n"
+                "Subject: Route inspection team arrival email\n",
+                0.5,
+            ),
+            location_label="Email headers",
+        )
+        for i in range(9)
+    )
+    ranked = rank_exact_record_candidates(query, (report,) + headers, matter_id="matter-quality")
+    assert ranked[0].document_id == "report"
+
+
