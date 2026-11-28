@@ -12,7 +12,7 @@ import math
 import sqlite3
 from contextvars import ContextVar
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
@@ -1354,7 +1354,8 @@ class ProductionRepository:
         found: dict[str, set[str]] = {}
         attempt_ok: dict[str, bool] = {}
         chunks = [None] if ids is None else [ids[i:i + 200] for i in range(0, len(ids), 200)]
-        with self.db.lock:
+        store_guard = store.mutation_guard() if store is not None else nullcontext()
+        with store_guard, self.db.lock:
             for chunk in chunks:
                 base_sql = (
                     "SELECT r.document_id,r.semantic_json,p.input_revision,p.attempt_id,"

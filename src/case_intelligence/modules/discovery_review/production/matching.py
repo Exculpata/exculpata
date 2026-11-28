@@ -1,10 +1,12 @@
 """Conservative record comparisons with bounded candidate accumulators."""
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 import hashlib
 import json
 import re
+import threading
 import unicodedata
 
 from case_intelligence.source_load_files import DAT_INTAKE_ROLES, DAT_TEXT_HEADER_KEYS
@@ -216,6 +218,20 @@ def source_input_identity(item) -> tuple[object, ...]:
             item.media_type, item.state, item.origin)
 
 
+_FRESHNESS_CACHE_LIMIT = 256
+_FRESHNESS_CACHE_LOCK = threading.Lock()
+_FRESHNESS_CACHE: OrderedDict[tuple[object, ...], bool] = OrderedDict()
+
+
+def _remember_freshness(cache_key: tuple[object, ...], fresh: bool) -> bool:
+    with _FRESHNESS_CACHE_LOCK:
+        _FRESHNESS_CACHE[cache_key] = fresh
+        _FRESHNESS_CACHE.move_to_end(cache_key)
+        while len(_FRESHNESS_CACHE) > _FRESHNESS_CACHE_LIMIT:
+            _FRESHNESS_CACHE.popitem(last=False)
+    return fresh
+
+
 def attempt_dependencies_fresh(
     repository, matter_id: str, *, load_document_id: str, load_version_id: str,
     root_key: str, input_revision: str, updated_at: str = "", store=None,
@@ -228,9 +244,9 @@ def attempt_dependencies_fresh(
     deps = parsed.get("dependencies") if isinstance(parsed, dict) else None
     if not isinstance(deps, dict) or deps.get("paused") or deps.get("state") != "complete":
         return False
-    if repository.provenance(matter_id, load_document_id, load_version_id) != root_key:
-        return False
     if store is None:
+        if repository.provenance(matter_id, load_document_id, load_version_id) != root_key:
+            return False
         if updated_at:
             after = ""
             while True:
@@ -247,15 +263,39 @@ def attempt_dependencies_fresh(
     expected_hash = deps.get("hash")
     if not isinstance(expected_hash, str):
         return False
+    data_version_row = repository.execute("PRAGMA data_version").fetchone()
+    data_version = data_version_row[0] if data_version_row else 0
+    cache_key = (
+        store.source_changes.epoch,
+        store.revision,
+        repository.db.connection.total_changes,
+        data_version,
+        matter_id,
+        load_document_id,
+        load_version_id,
+        root_key,
+        input_revision,
+        updated_at,
+    )
+    with _FRESHNESS_CACHE_LOCK:
+        cached = _FRESHNESS_CACHE.get(cache_key)
+        if cached is not None:
+            _FRESHNESS_CACHE.move_to_end(cache_key)
+            return cached
+    if repository.provenance(matter_id, load_document_id, load_version_id) != root_key:
+        return _remember_freshness(cache_key, False)
     digest_hash, after = "", ""
     while True:
-        rows = repository.candidates(matter_id, root_key, after=after, limit=8)
+        rows = repository.candidates(matter_id, root_key, after=after, limit=100)
         if not rows:
             break
+        by_doc: dict[str, list] = {}
+        for item in store.source_changes.read([row["document_id"] for row in rows]):
+            by_doc.setdefault(item.document_id, []).append(item)
         for row in rows:
-            snapshot = store.source_changes.read([row["document_id"]])
-            data = [(item.document_id, source_input_identity(item)) for item in snapshot]
+            doc_id = row["document_id"]
+            data = [(item.document_id, source_input_identity(item)) for item in by_doc.get(doc_id, ())]
             digest_hash = hashlib.sha256((digest_hash + json.dumps(data, sort_keys=True)).encode()).hexdigest()
-            after = row["document_id"]
-    return digest_hash == expected_hash
+            after = doc_id
+    return _remember_freshness(cache_key, digest_hash == expected_hash)
 

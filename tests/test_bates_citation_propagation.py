@@ -159,3 +159,72 @@ def test_cold_reopen_and_companion_mutation_withhold_stale_bates_until_reindexed
         complete_listing(reopened)
         assert reopened_repo.document_bates_ranges(reopened.matter.matter_id, [memo_id], store=reopened.store) == {memo_id: "PROD0001\u2013PROD0003"}
 
+
+def test_bates_freshness_acquires_store_before_db_and_reuses_revision_cache(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
+    monkeypatch.setenv("CASE_INTELLIGENCE_OCR_MODE", "disabled")
+    dat = dat_bytes(
+        ("BEGDOC", "ENDDOC", "NATIVEPATH"),
+        [
+            ("PROD0001", "PROD0002", "NATIVES\\memo_a.txt"),
+            ("PROD0003", "PROD0004", "NATIVES\\memo_b.txt"),
+        ],
+    )
+    with opened_review(tmp_path / "runtime") as review:
+        upload_image_production(review, {
+            "Vol1/NATIVES/memo_a.txt": b"Harbor alpha synthetic statement.\n",
+            "Vol1/NATIVES/memo_b.txt": b"Harbor beta synthetic statement.\n",
+            "Vol1/DATA/records.dat": dat,
+        })
+        complete_listing(review)
+        memo_a_id = review.document("Vol1/NATIVES/memo_a.txt").document_id
+        memo_b_id = review.document("Vol1/NATIVES/memo_b.txt").document_id
+
+        events: list[str] = []
+        raw_db_lock = review.bench.workspace._lock
+        raw_guard = review.store.mutation_guard
+
+        class _TrackedDbLock:
+            def __enter__(self):
+                events.append("db_enter")
+                raw_db_lock.__enter__()
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                events.append("db_exit")
+                return raw_db_lock.__exit__(exc_type, exc, tb)
+
+        @contextmanager
+        def _tracked_guard():
+            events.append("store_enter")
+            with raw_guard():
+                yield
+            events.append("store_exit")
+
+        monkeypatch.setattr(review.store, "mutation_guard", _tracked_guard)
+        repo = ProductionRepository(ModuleDatabase(review.bench.workspace.connection, _TrackedDbLock()))
+
+        read_calls: list[list[str]] = []
+        raw_read = review.store.source_changes.read
+
+        def _tracked_read(doc_ids):
+            read_calls.append(list(doc_ids))
+            return raw_read(doc_ids)
+
+        monkeypatch.setattr(review.store.source_changes, "read", _tracked_read)
+
+        # First call validates freshness once (batched across candidates) with store acquired before db.
+        assert repo.document_bates_ranges(review.matter.matter_id, [memo_a_id], store=review.store) == {memo_a_id: "PROD0001\u2013PROD0002"}
+        assert events[:2] == ["store_enter", "db_enter"]
+        assert len(read_calls) == 1
+
+        # Subsequent citation reads at the same store revision reuse the validated freshness result.
+        assert repo.document_bates_ranges(review.matter.matter_id, [memo_b_id], store=review.store) == {memo_b_id: "PROD0003\u2013PROD0004"}
+        hits = {hit.document_id: hit for hit in review.bench.search(review.matter, "harbor", limit=10)}
+        assert hits[memo_a_id].bates_label == "Bates: PROD0001\u2013PROD0002"
+        assert hits[memo_b_id].bates_label == "Bates: PROD0003\u2013PROD0004"
+        assert len(read_calls) == 1
+
+
