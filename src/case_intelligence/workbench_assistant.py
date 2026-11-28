@@ -1227,7 +1227,10 @@ def saved_proposal_states(bench, matter_id: str, actor_id: str, messages: Sequen
                 key_to_pair[f"assistant-proposal:{msg_id}:{pid}"] = f"{msg_id}:{pid}"
     if not key_to_pair:
         return {}
-    found = bench.workspace.notebook_revisions_by_dedupe_keys(matter_id, actor_id, tuple(key_to_pair))
+    try:
+        found = bench.workspace.notebook_revisions_by_dedupe_keys(matter_id, actor_id, tuple(key_to_pair))
+    except KeyError:
+        return {}
     return {
         key_to_pair[dkey]: {"updated_at": updated_at, "status": status}
         for dkey, (updated_at, status) in found.items()

@@ -350,3 +350,85 @@ def test_pr609_round2_proposal_grounding_deterministic_detection_and_revision_tr
     assert "new FormData(form, submitter)" in js_src
     assert "data-assistant-proposal-revision" in js_src
 
+
+def test_pr609_round3_thirteenth_citation_truncation_admin_preview_and_long_conversation_state(tmp_path, monkeypatch):
+    from case_intelligence.case_assistant import verify_assistant_answer
+    from case_intelligence.workbench_assistant import saved_proposal_states
+
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
+    monkeypatch.setenv("CASE_INTELLIGENCE_CASE_ASSISTANT", "1")
+
+    from types import SimpleNamespace
+
+    refs = [SourceRef(f"d-{i}", f"doc-{i}.txt", "Page 1", f"v-{i}") for i in range(1, 14)]
+    rt = SimpleNamespace(inspected_refs=tuple(refs), receipts={}, trace=())
+    inspected_texts = {
+        (r.document_id, r.location, r.source_version_id): (
+            "Synthetic memo mentioning $250000." if idx == 13 else f"Routine neutral note {idx}."
+        )
+        for idx, r in enumerate(refs, 1)
+    }
+    raw = {
+        "answerable": True,
+        "summary": "Routine note 1.",
+        "findings": [{
+            "text": "Routine note 1.",
+            "citations": [{"document_id": "d-1", "location": "Page 1", "source_version_id": "v-1"}],
+            "calculation_ids": [],
+        }],
+        "proposals": [{
+            "category": "disclosure_review",
+            "subtype": "witness_benefit",
+            "title": "Payment of $250000 noted in thirteenth reference",
+            "detail": "Candidate for review citing $250000.",
+            "citations": [
+                {"document_id": r.document_id, "location": r.location, "source_version_id": r.source_version_id}
+                for r in refs
+            ],
+        }],
+        "gaps": [], "competing_accounts": [],
+    }
+    verified = verify_assistant_answer(raw, rt, inspected_texts, (), turns_used=1, budget_exhausted=False, elapsed_ms=1)
+    assert verified.raw_proposals == ()
+
+    # 2 & 3. Nonmember admin preview omits proposal_states cleanly without KeyError, and workspace renders
+    #        saved expected_updated_at even after >8 subsequent conversation messages push the card out of the dock window.
+    app = create_workbench_app(
+        tmp_path / "rt3", generator=_NoProposalAndFabricatedNumClient(emit_fabricated_proposal=False), auth_mode="test",
+    )
+    with TestClient(app) as client:
+        slug = _create_matter(client, "Synthetic Long Conversation Proposal Matter")
+        up = client.post(f"/matters/{slug}/uploads", files=[
+            ("files", ("proffer-memo.txt", b"Cooperating witness signed a cooperation agreement for sentencing leniency.\n", "text/plain")),
+        ])
+        assert up.status_code == 200
+        workspace = client.get(f"/matters/{slug}")
+        conv_id = re.search(r'name="conversation" value="([^"]+)"', workspace.text).group(1)
+
+        _, page = _answer_and_wait(client, slug, conv_id, "Review the proffer memo.")
+        csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.text).group(1)
+        actions: list[str] = []
+        for match in re.findall(r'action="(/matters/[^"]+/assistant-proposals/[^"]+)"', page.text):
+            if match not in actions:
+                actions.append(match)
+        saved = client.post(actions[0], data={"csrf_token": csrf, "decision": "save"}, headers={"Accept": "application/json"})
+        assert saved.status_code == 200
+        rev = saved.json()["updated_at"]
+
+        bench = app.state.workbench
+        actor = "development-taylor-morgan"
+        matter = bench.workspace.get_matter(slug, actor)
+
+        # Nonmember administrator call must return {} rather than raising KeyError.
+        msgs = bench.workspace.messages(matter.matter_id, conv_id)
+        assert saved_proposal_states(bench, matter.matter_id, "nonmember-admin-id", msgs) == {}
+
+        # Append 10 more messages so the saved proposal message falls outside assistant_context's [-8:] slice.
+        for i in range(10):
+            bench.workspace.append_message(matter.matter_id, conv_id, "user", f"Follow-up note {i}")
+
+        reloaded = client.get(f"/matters/{slug}", params={"conversation": conv_id})
+        assert reloaded.status_code == 200
+        assert f'name="expected_updated_at" value="{rev}"' in reloaded.text
+
+

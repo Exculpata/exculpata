@@ -331,7 +331,7 @@ def verify_assistant_answer(
         omitted += 1
         raw_findings = ()
     def _verify_item(
-        text: str, raw_cites: object, raw_calcs: object,
+        text: str, raw_cites: object, raw_calcs: object, *, max_citations: int | None = None,
     ) -> tuple[tuple[SourceRef, ...], tuple[str, ...]] | None:
         if not isinstance(raw_cites, list) or not raw_cites:
             return None
@@ -351,7 +351,10 @@ def verify_assistant_answer(
             )
             if ref is None:
                 return None
-            cites.append(ref)
+            if ref not in cites:
+                cites.append(ref)
+        if max_citations is not None:
+            cites = cites[:max_citations]
         for ref in cites:
             allowed_nums.update(_extract_nums(_inspected_text_for(inspected_texts, ref)))
         for cid in (raw_calcs or ()):
@@ -442,6 +445,7 @@ def verify_assistant_answer(
                 f"{title} {detail} {date_label}",
                 prop.get("citations"),
                 prop.get("calculation_ids"),
+                max_citations=12,
             )
             if checked_prop is None:
                 continue
